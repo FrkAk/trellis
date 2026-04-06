@@ -1,0 +1,137 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { motion } from 'motion/react';
+import { ProgressBar } from '@/components/shared/ProgressBar';
+import { deleteProject } from '@/lib/graph/mutations';
+
+interface ProjectCardProps {
+  /** @param id - Project ID. */
+  id: string;
+  /** @param title - Project title. */
+  title: string;
+  /** @param description - Short project description. */
+  description: string;
+  /** @param status - Project lifecycle status. */
+  status: string;
+  /** @param tasksDone - Number of completed tasks. */
+  tasksDone: number;
+  /** @param totalTasks - Total number of tasks. */
+  totalTasks: number;
+  /** @param tasksInProgress - Number of in-progress tasks. */
+  tasksInProgress: number;
+  /** @param lastActive - Relative time string. */
+  lastActive: string;
+}
+
+/**
+ * Card displaying a project summary with progress, stats, and delete action.
+ * @param props - Project data for rendering.
+ * @returns A linked project card element.
+ */
+export function ProjectCard({
+  id,
+  title,
+  description,
+  status,
+  tasksDone,
+  totalTasks,
+  tasksInProgress,
+  lastActive,
+}: ProjectCardProps) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const progress = totalTasks > 0 ? Math.round((tasksDone / totalTasks) * 100) : 0;
+  const progressStatus = progress === 100 ? 'done' : 'in-progress';
+
+  const href = status === 'brainstorming'
+    ? `/new/brainstorm?projectId=${id}`
+    : status === 'decomposing'
+      ? `/new/decompose?projectId=${id}`
+      : `/project/${id}`;
+
+  const handleDelete = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    await deleteProject(id);
+    router.refresh();
+  }, [confirming, id, router]);
+
+  const handleCancelDelete = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConfirming(false);
+  }, []);
+
+  return (
+    <Link href={href} className="block no-underline">
+      <motion.div
+        whileHover={{ y: -2 }}
+        className="group glow-card relative rounded-xl border border-border bg-surface p-5 transition-colors hover:border-border-strong"
+      >
+        {/* Delete button */}
+        <div className="absolute right-3 top-3">
+          {confirming ? (
+            <div className="flex items-center gap-1.5" onClick={(e) => e.preventDefault()}>
+              <button
+                onClick={handleDelete}
+                className="cursor-pointer rounded px-2 py-1 text-[10px] font-semibold text-danger transition-colors hover:bg-danger/10"
+              >
+                Delete
+              </button>
+              <button
+                onClick={handleCancelDelete}
+                className="cursor-pointer rounded px-2 py-1 text-[10px] text-text-muted transition-colors hover:bg-surface-hover"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleDelete}
+              className="cursor-pointer rounded p-1.5 text-text-muted opacity-0 transition-all hover:bg-surface-hover hover:text-danger group-hover:opacity-100"
+              title="Delete project"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 000 1.5h.3l.815 8.15A1.5 1.5 0 005.357 15h5.285a1.5 1.5 0 001.493-1.35l.815-8.15h.3a.75.75 0 000-1.5H11v-.75A2.25 2.25 0 008.75 1h-1.5A2.25 2.25 0 005 3.25zm2.25-.75a.75.75 0 00-.75.75V4h3v-.75a.75.75 0 00-.75-.75h-1.5zM6.05 6a.75.75 0 01.787.713l.275 5.5a.75.75 0 01-1.498.075l-.275-5.5A.75.75 0 016.05 6zm3.9 0a.75.75 0 01.712.787l-.275 5.5a.75.75 0 01-1.498-.075l.275-5.5a.75.75 0 01.786-.711z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <h3 className="mb-1 text-base font-semibold text-text-primary pr-8">{title}</h3>
+        <p className="mb-4 text-sm leading-relaxed text-text-secondary line-clamp-2">
+          {description}
+        </p>
+
+        <ProgressBar value={progress} status={progressStatus} className="mb-3" />
+
+        <div className="flex items-center justify-between font-mono text-xs text-text-muted">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            status === 'active' ? 'bg-done/10 text-done'
+            : status === 'decomposing' ? 'bg-progress/10 text-progress'
+            : status === 'brainstorming' ? 'bg-accent/10 text-accent'
+            : 'bg-text-muted/10 text-text-muted'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              status === 'active' ? 'bg-done'
+              : status === 'decomposing' ? 'bg-progress'
+              : status === 'brainstorming' ? 'bg-accent'
+              : 'bg-text-muted'
+            }`} />
+            {status === 'brainstorming' ? 'Idea' : status === 'decomposing' ? 'Building' : status === 'active' ? 'Active' : status}
+          </span>
+          <span>{tasksDone}/{totalTasks} tasks{tasksInProgress > 0 ? ` · ${tasksInProgress} active` : ''} · {lastActive}</span>
+        </div>
+      </motion.div>
+    </Link>
+  );
+}
+
+export default ProjectCard;

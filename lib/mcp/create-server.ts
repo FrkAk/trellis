@@ -1,0 +1,244 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod/v4";
+import {
+  DESCRIPTIONS,
+  handleProject,
+  handleTask,
+  handleEdge,
+  handleQuery,
+  handleContext,
+  handleAnalyze,
+} from "@/lib/ai/tool-handlers";
+import type { ToolResult } from "@/lib/ai/tool-handlers";
+
+/**
+ * Format a successful tool result as MCP content.
+ * @param data - Result data from a tool handler.
+ * @returns MCP content response.
+ */
+function json(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
+}
+
+/**
+ * Format an error as MCP content.
+ * @param message - Error message.
+ * @returns MCP error response.
+ */
+function err(message: string) {
+  return { content: [{ type: "text" as const, text: message }], isError: true as const };
+}
+
+/**
+ * Convert a ToolResult to MCP response format.
+ * Handles string results (context depths) as raw text.
+ * @param result - Tool handler result.
+ * @returns MCP content response.
+ */
+function toMcp(result: ToolResult) {
+  if (!result.ok) return err(result.error);
+  if (typeof result.data === "string") {
+    return { content: [{ type: "text" as const, text: result.data }] };
+  }
+  return json(result.data);
+}
+
+const INSTRUCTIONS = [
+  "Mymir is a persistent context network for coding projects.",
+  "It tracks tasks, dependencies, decisions, and implementation records across sessions.",
+  "",
+  "This is a remote stateless endpoint — no session state.",
+  "Always pass projectId explicitly on every call.",
+  "The `select` action on mymir_project is not supported in remote mode.",
+].join("\n");
+
+/**
+ * Create a stateless MCP server with all 6 Mymir tools registered.
+ * No session state — callers must always pass projectId explicitly.
+ * @returns Configured McpServer instance.
+ */
+export function createMcpServer(): McpServer {
+  const server = new McpServer(
+    { name: "mymir", version: "0.2.0" },
+    { instructions: INSTRUCTIONS },
+  );
+
+  server.registerTool(
+    "mymir_project",
+    {
+      description: DESCRIPTIONS.mymir_project,
+      inputSchema: z.object({
+        action: z.enum(["list", "create", "update"])
+          .describe("list=get all, create=new, update=modify"),
+        projectId: z.string().optional()
+          .describe("Project UUID. Required for update"),
+        title: z.string().optional()
+          .describe("Project name (2-5 words). Required for create"),
+        description: z.string().optional()
+          .describe("3-5 sentence brief: problem, user, features, tech direction, constraints"),
+        status: z.enum(["brainstorming", "decomposing", "active", "archived"]).optional()
+          .describe("Lifecycle: brainstorming → decomposing → active → archived"),
+        categories: z.array(z.string()).optional()
+          .describe("Task categories for drawer grouping"),
+      }),
+    },
+    async (params) => {
+      try {
+        const result = await handleProject(params);
+        return toMcp(result);
+      } catch (e) {
+        return err(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  server.registerTool(
+    "mymir_task",
+    {
+      description: DESCRIPTIONS.mymir_task,
+      inputSchema: z.object({
+        action: z.enum(["create", "update", "delete", "reorder"])
+          .describe("create=new task, update=modify fields, delete=remove, reorder=change position"),
+        taskId: z.string().optional()
+          .describe("Task UUID. Required for update/delete/reorder"),
+        projectId: z.string().optional()
+          .describe("Project UUID. Required for create"),
+        title: z.string().optional()
+          .describe("Short task name. Required for create"),
+        description: z.string().optional()
+          .describe("2-4 sentences: what to build, why it matters, key technical approach"),
+        status: z.enum(["draft", "planned", "in_progress", "done"]).optional()
+          .describe("Task lifecycle status"),
+        acceptanceCriteria: z.array(z.string()).optional()
+          .describe("2-4 testable done conditions"),
+        decisions: z.array(z.string()).optional()
+          .describe("Key technical decisions and constraints"),
+        tags: z.array(z.string()).optional()
+          .describe("Tags for grouping"),
+        category: z.string().optional()
+          .describe("Drawer group for this task"),
+        files: z.array(z.string()).optional()
+          .describe("File paths this task touches"),
+        implementationPlan: z.string().optional()
+          .describe("Implementation plan written during planning phase"),
+        executionRecord: z.string().optional()
+          .describe("Summary of what was built during implementation"),
+        order: z.number().int().optional()
+          .describe("0-based position"),
+        preview: z.boolean().optional().default(true)
+          .describe("For delete only: true=show impact, false=actually delete"),
+        overwriteArrays: z.boolean().optional().default(false)
+          .describe("For update: true=replace arrays entirely, false=append"),
+      }),
+    },
+    async (params) => {
+      try {
+        const result = await handleTask(params);
+        return toMcp(result);
+      } catch (e) {
+        return err(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  server.registerTool(
+    "mymir_edge",
+    {
+      description: DESCRIPTIONS.mymir_edge,
+      inputSchema: z.object({
+        action: z.enum(["create", "update", "remove"])
+          .describe("create=new edge, update=modify, remove=delete"),
+        edgeId: z.string().optional()
+          .describe("Edge UUID. Required for update. For remove: use this OR source+target+type"),
+        sourceTaskId: z.string().optional()
+          .describe("Source task UUID. Required for create"),
+        targetTaskId: z.string().optional()
+          .describe("Target task UUID. Required for create"),
+        edgeType: z.enum(["depends_on", "relates_to"]).optional()
+          .describe("depends_on = source needs target done first. relates_to = informational link"),
+        note: z.string().optional()
+          .describe("Why this relationship exists — propagates to agent context"),
+      }),
+    },
+    async (params) => {
+      try {
+        const result = await handleEdge(params);
+        return toMcp(result);
+      } catch (e) {
+        return err(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  server.registerTool(
+    "mymir_query",
+    {
+      description: DESCRIPTIONS.mymir_query,
+      inputSchema: z.object({
+        type: z.enum(["search", "list", "edges", "overview"])
+          .describe("search=find by name or tag, list=all tasks, edges=task relationships, overview=project structure"),
+        query: z.string().optional()
+          .describe("Search string for type='search'"),
+        taskId: z.string().optional()
+          .describe("Task UUID for type='edges'"),
+        projectId: z.string().optional()
+          .describe("Project UUID. Required for search/list/overview"),
+      }),
+    },
+    async (params) => {
+      try {
+        const result = await handleQuery(params);
+        return toMcp(result);
+      } catch (e) {
+        return err(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  server.registerTool(
+    "mymir_context",
+    {
+      description: DESCRIPTIONS.mymir_context,
+      inputSchema: z.object({
+        taskId: z.string().describe("Task UUID"),
+        depth: z.enum(["summary", "working", "agent", "planning"]).default("working")
+          .describe("summary=quick, working=detailed, agent=multi-hop for coding, planning=spec for pre-implementation"),
+        projectId: z.string().optional()
+          .describe("Project UUID. Required for 'working' depth"),
+      }),
+    },
+    async (params) => {
+      try {
+        const result = await handleContext(params);
+        return toMcp(result);
+      } catch (e) {
+        return err(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  server.registerTool(
+    "mymir_analyze",
+    {
+      description: DESCRIPTIONS.mymir_analyze,
+      inputSchema: z.object({
+        type: z.enum(["ready", "blocked", "downstream", "critical_path", "plannable"])
+          .describe("ready=unblocked work, blocked=waiting tasks, downstream=impact, critical_path=bottleneck, plannable=draft tasks ready for planning"),
+        taskId: z.string().optional()
+          .describe("Task UUID. Required for 'downstream'"),
+        projectId: z.string().optional()
+          .describe("Project UUID. Required for ready/blocked/critical_path/plannable"),
+      }),
+    },
+    async (params) => {
+      try {
+        const result = await handleAnalyze(params);
+        return toMcp(result);
+      } catch (e) {
+        return err(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  return server;
+}

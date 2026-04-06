@@ -1,0 +1,147 @@
+"use server";
+
+import { eq, sql } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { tasks, projects } from "@/lib/db/schema";
+import { getDependencyChain, getDownstream } from "@/lib/graph/traversal";
+import {
+  fetchEdgeNotesBySource,
+  fetchEdgeNotesByTarget,
+  fetchTaskSummaries,
+} from "@/lib/graph/queries";
+import { section, formatCriteria, formatDecisions } from "./format";
+
+/**
+ * Build planning-optimized context for a task.
+ * Planners can't read the codebase — they depend on project description, execution records,
+ * and downstream task specs for breadth. Sections ordered by U-shaped attention.
+ * No token budget — all content included as-is.
+ * @param taskId - UUID of the task.
+ * @returns Formatted planning context string.
+ */
+export async function buildPlanningContext(taskId: string): Promise<string> {
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
+  if (!task) return "# Task not found";
+
+  const [project] = await db
+    .select({ title: projects.title, description: projects.description })
+    .from(projects)
+    .where(eq(projects.id, task.projectId));
+
+  const tags = (task.tags as string[] | null) ?? [];
+
+  // --- START: highest recall zone (primacy) — big picture + task spec ---
+
+  const headerLines: string[] = [`# Task: ${task.title}`];
+  if (tags.length > 0) {
+    headerLines.push(`Tags: ${tags.map((t) => `\`${t}\``).join(", ")}`);
+  }
+
+  const parts: string[] = [headerLines.join("\n")];
+
+  if (project) {
+    const projectLines = [`Project: ${project.title}`];
+    if (project.description) {
+      projectLines.push(project.description);
+    }
+    parts.push(section("Project Context") + "\n" + projectLines.join("\n"));
+  }
+
+  parts.push(section("Description") + "\n" + task.description);
+  parts.push(section("Acceptance Criteria") + "\n" + formatCriteria(task.acceptanceCriteria));
+
+  if (task.implementationPlan) {
+    parts.push(section("Existing Implementation Plan") + "\n" + task.implementationPlan);
+  }
+
+  // --- MIDDLE: lowest recall zone — prerequisites + what's been built ---
+
+  const [deps, downstream, upstreamEdgeNotes] = await Promise.all([
+    getDependencyChain(taskId, 2),
+    getDownstream(taskId, 2),
+    fetchEdgeNotesBySource(taskId),
+  ]);
+
+  if (deps.length > 0) {
+    const prereqLines: string[] = [];
+    const execLines: string[] = [];
+
+    const depIds = deps.map((d) => d.id);
+    const depTasks = await db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        executionRecord: tasks.executionRecord,
+      })
+      .from(tasks)
+      .where(sql`${tasks.id} IN ${depIds}`);
+
+    const depMap = new Map(depTasks.map((dt) => [dt.id, dt]));
+
+    for (const dep of deps) {
+      const info = depMap.get(dep.id);
+      if (!info) continue;
+      const note = upstreamEdgeNotes.get(dep.id);
+      let line = `- **${info.title}** [${info.status}]`;
+      if (note) line += ` — ${note}`;
+      prereqLines.push(line);
+
+      if (info.status === "done" && info.executionRecord) {
+        execLines.push(`### ${info.title}`);
+        execLines.push(info.executionRecord);
+      }
+    }
+
+    if (prereqLines.length > 0) {
+      parts.push(
+        section("Prerequisites (context only — do NOT implement these)") +
+          "\n" +
+          prereqLines.join("\n"),
+      );
+    }
+
+    if (execLines.length > 0) {
+      parts.push(
+        section("What's Been Built (from done prerequisites)") +
+          "\n" +
+          execLines.join("\n"),
+      );
+    }
+  }
+
+  if (task.decisions.length > 0) {
+    parts.push(section("Decisions") + "\n" + formatDecisions(task.decisions));
+  }
+
+  // --- END: second-highest recall zone (recency) — downstream ---
+
+  if (downstream.length > 0) {
+    const [downstreamEdgeNotes, downstreamSummaries] = await Promise.all([
+      fetchEdgeNotesByTarget(taskId),
+      fetchTaskSummaries(downstream.map((d) => d.id)),
+    ]);
+    const summaryMap = new Map(downstreamSummaries.map((s) => [s.id, s]));
+    const downLines: string[] = [];
+
+    for (const d of downstream) {
+      const info = summaryMap.get(d.id);
+      if (!info) continue;
+      const note = downstreamEdgeNotes.get(d.id);
+      let line = `- **${info.title}** [${info.status}]`;
+      if (note) line += ` — ${note}`;
+      if (info.description) line += `\n  ${info.description}`;
+      downLines.push(line);
+    }
+
+    if (downLines.length > 0) {
+      parts.push(
+        section("Downstream (tasks that depend on this task's output)") +
+          "\n" +
+          downLines.join("\n"),
+      );
+    }
+  }
+
+  return parts.join("\n");
+}
