@@ -1,0 +1,63 @@
+/** Semantic relationship between two tasks. */
+export type EdgeType = "depends_on" | "relates_to";
+
+/** Top-level project lifecycle status. */
+export type ProjectStatus =
+  | "brainstorming"
+  | "decomposing"
+  | "active"
+  | "archived";
+
+/** Task lifecycle status. */
+export type TaskStatus = "draft" | "planned" | "in_progress" | "done";
+
+/** A single tool invocation within a chat message. */
+export type ToolCall = {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+};
+
+/** A chat message in a conversation. */
+export type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  toolCalls?: ToolCall[];
+  createdAt: string;
+};
+
+/** A recorded decision made during any project phase. */
+export type Decision = {
+  id: string;
+  text: string;
+  date: string;
+  source: "brainstorm" | "refinement" | "planning" | "execution";
+};
+
+/** A timestamped event in a node's history. */
+export type HistoryEntry = {
+  id: string;
+  type:
+    | "created"
+    | "refined"
+    | "decision"
+    | "edge_added"
+    | "edge_removed"
+    | "edge_updated"
+    | "status_change"
+    | "planned"
+    | "moved";
+  date: string;
+  label: string;
+  description: string;
+  actor: "user" | "ai";
+};
+
+/** A verifiable acceptance criterion for a task. */
+export type AcceptanceCriterion = {
+  id: string;
+  text: string;
+  checked: boolean;
+};

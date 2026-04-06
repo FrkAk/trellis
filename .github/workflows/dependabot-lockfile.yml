@@ -1,0 +1,45 @@
+name: Update bun.lock
+
+on:
+  pull_request_target:
+    paths:
+      - "package.json"
+
+permissions:
+  contents: write
+
+jobs:
+  update-lockfile:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout base branch (NOT the PR head) to avoid executing untrusted code
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - name: Fetch PR package.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${{ github.repository }}/contents/package.json?ref=${{ github.event.pull_request.head.sha }}" \
+            --jq '.content' | base64 -d > package.json
+      - run: bun install
+      - name: Commit updated lockfile
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --quiet bun.lock; then
+            echo "bun.lock unchanged, skipping"
+            exit 0
+          fi
+          BASE_TREE=$(gh api "repos/${REPO}/git/commits/${HEAD_SHA}" --jq '.tree.sha')
+          BLOB=$(base64 -w0 bun.lock | jq -Rs '{"content": ., "encoding": "base64"}' | \
+            gh api "repos/${REPO}/git/blobs" --input - --jq '.sha')
+          TREE=$(jq -n --arg bt "$BASE_TREE" --arg blob "$BLOB" \
+            '{base_tree: $bt, tree: [{path: "bun.lock", mode: "100644", type: "blob", sha: $blob}]}' | \
+            gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
+          COMMIT=$(jq -n --arg t "$TREE" --arg p "$HEAD_SHA" --arg m "chore: update bun.lock" \
+            '{message: $m, tree: $t, parents: [$p]}' | \
+            gh api "repos/${REPO}/git/commits" --input - --jq '.sha')
+          gh api "repos/${REPO}/git/refs/heads/${{ github.head_ref }}" -X PATCH -f sha="$COMMIT"

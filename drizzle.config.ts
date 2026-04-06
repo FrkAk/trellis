@@ -1,0 +1,25 @@
+import { readFileSync, existsSync } from "fs";
+import { defineConfig } from "drizzle-kit";
+
+// drizzle-kit doesn't auto-load .env.local — load it manually
+const envPath = ".env.local";
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq > 0) {
+      const key = trimmed.slice(0, eq).trim();
+      if (!process.env[key]) process.env[key] = trimmed.slice(eq + 1).trim();
+    }
+  }
+}
+
+export default defineConfig({
+  out: "./drizzle",
+  schema: "./lib/db/schema.ts",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+});

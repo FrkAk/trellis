@@ -1,0 +1,35 @@
+name: Quality Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        if: github.actor != 'dependabot[bot]'
+      - name: Install dependencies (Dependabot)
+        run: bun install
+        if: github.actor == 'dependabot[bot]'
+      - name: Validate PR title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! echo "$PR_TITLE" | grep -Pq '^(feat|fix|chore|docs|refactor|test|ci|perf|style|build|revert)(\(.+\))?!?: .+'; then
+            echo "::error::PR title must follow conventional commits: <type>: <description>"
+            echo "  Types: feat, fix, chore, docs, refactor, test, ci, perf, style, build, revert"
+            echo "  Examples: 'feat: add task graph', 'fix(ai): rate limiter timing'"
+            exit 1
+          fi
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck
