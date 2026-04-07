@@ -31,19 +31,20 @@ export function ContinueBanner({
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="mb-6 flex items-center justify-between rounded-xl border border-accent/20 bg-accent-glow p-4 shadow-[var(--shadow-card)] transition-all hover:border-accent/40"
+        className="group mb-6 flex items-center gap-4 rounded-xl border border-accent/15 bg-accent/[0.04] px-5 py-3.5 transition-all hover:border-accent/30 hover:bg-accent/[0.06]"
       >
-        <div>
-          <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-accent">
+        <div className="flex-1 min-w-0">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-accent mb-0.5">
             Continue where you left off
           </p>
-          <p className="text-sm font-medium text-text-primary">{projectName}</p>
-          <p className="mt-0.5 text-xs text-text-secondary">
-            {lastActiveNode}
-            <span className="text-text-muted"> &middot; {lastActive}</span>
+          <p className="text-sm font-medium text-text-primary truncate">{projectName}</p>
+          <p className="mt-0.5 text-xs text-text-muted">
+            {lastActiveNode} &middot; {lastActive}
           </p>
         </div>
-        <span className="text-lg text-accent">&rarr;</span>
+        <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4 shrink-0 text-accent/40 transition-all group-hover:text-accent group-hover:translate-x-0.5">
+          <path fillRule="evenodd" d="M6.22 4.22a.75.75 0 011.06 0l3.25 3.25a.75.75 0 010 1.06l-3.25 3.25a.75.75 0 01-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+        </svg>
       </motion.div>
     </Link>
   );

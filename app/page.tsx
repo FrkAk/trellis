@@ -23,12 +23,14 @@ export default async function HomePage() {
       <AutoRefresh />
       <TopBar />
       <PageShell>
-        <h1 className="text-3xl font-bold text-gradient mb-2">
-          Your Projects
-        </h1>
-        <p className="text-text-secondary mb-8">
-          Brainstorm, decompose, refine, plan, execute, track.
-        </p>
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-text-primary mb-1">
+            Your Projects
+          </h1>
+          <p className="text-sm text-text-muted">
+            Brainstorm, decompose, refine, plan, execute, track.
+          </p>
+        </div>
 
         {activeProject && (
           <ContinueBanner
@@ -39,7 +41,7 @@ export default async function HomePage() {
           />
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           <NewProjectCard />
           {projects.map((project) => (
             <ProjectCard

@@ -117,12 +117,9 @@ function ReviewContent() {
     <>
       <TopBar projectName={graph.title} stageLabel="Review" />
       <PageShell>
-        <div className="mb-4 flex items-center gap-2">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-accent">
-            Review
-          </span>
-          <span className="text-text-muted">&middot;</span>
-          <span className="text-sm text-text-secondary truncate">{graph.title}</span>
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-text-primary mb-1">Review</h1>
+          <p className="text-sm text-text-muted truncate">{graph.title}</p>
         </div>
 
         <Card animated className="mb-8 p-6">
@@ -151,7 +148,7 @@ function ReviewContent() {
                 {allTags.map((tag) => (
                   <span
                     key={tag}
-                    className="rounded-md bg-surface-raised px-2 py-0.5 text-xs text-text-secondary"
+                    className="rounded-md bg-accent/8 px-2 py-0.5 text-xs text-accent-light"
                   >
                     {tag}
                   </span>
@@ -211,7 +208,7 @@ function statusDotColor(status: string): string {
     case 'done': return 'bg-done';
     case 'in_progress': return 'bg-progress';
     case 'planned': return 'bg-planned';
-    default: return 'bg-text-muted';
+    default: return 'bg-draft';
   }
 }
 

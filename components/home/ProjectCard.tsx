@@ -44,7 +44,6 @@ export function ProjectCard({
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const progress = totalTasks > 0 ? Math.round((tasksDone / totalTasks) * 100) : 0;
-  const progressStatus = progress === 100 ? 'done' : 'in-progress';
 
   const href = status === 'brainstorming'
     ? `/new/brainstorm?projectId=${id}`
@@ -73,7 +72,7 @@ export function ProjectCard({
     <Link href={href} className="block no-underline">
       <motion.div
         whileHover={{ y: -2 }}
-        className="group glow-card relative rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-card)] transition-all hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
+        className="group relative flex flex-col rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-card)] transition-all hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
       >
         {/* Delete button */}
         <div className="absolute right-3 top-3">
@@ -81,13 +80,13 @@ export function ProjectCard({
             <div className="flex items-center gap-1.5" onClick={(e) => e.preventDefault()}>
               <button
                 onClick={handleDelete}
-                className="cursor-pointer rounded px-2 py-1 text-[10px] font-semibold text-danger transition-colors hover:bg-danger/10"
+                className="cursor-pointer rounded-md px-2 py-1 text-[10px] font-semibold text-danger transition-colors hover:bg-danger/10"
               >
                 Delete
               </button>
               <button
                 onClick={handleCancelDelete}
-                className="cursor-pointer rounded px-2 py-1 text-[10px] text-text-muted transition-colors hover:bg-surface-hover"
+                className="cursor-pointer rounded-md px-2 py-1 text-[10px] text-text-muted transition-colors hover:bg-surface-hover"
               >
                 Cancel
               </button>
@@ -95,7 +94,7 @@ export function ProjectCard({
           ) : (
             <button
               onClick={handleDelete}
-              className="cursor-pointer rounded p-1.5 text-text-muted opacity-0 transition-all hover:bg-surface-hover hover:text-danger group-hover:opacity-100"
+              className="cursor-pointer rounded-md p-1.5 text-text-muted opacity-0 transition-all hover:bg-surface-hover hover:text-danger group-hover:opacity-100"
               title="Delete project"
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
@@ -105,14 +104,14 @@ export function ProjectCard({
           )}
         </div>
 
-        <h3 className="mb-1 text-base font-semibold text-text-primary pr-8">{title}</h3>
-        <p className="mb-4 text-sm leading-relaxed text-text-secondary line-clamp-2">
+        <h3 className="mb-1 text-sm font-semibold text-text-primary pr-8">{title}</h3>
+        <p className="mb-4 text-xs leading-relaxed text-text-muted line-clamp-2 flex-1">
           {description}
         </p>
 
-        <ProgressBar value={progress} status={progressStatus} className="mb-3" />
+        <ProgressBar value={progress} status={progress === 100 ? 'done' : 'in-progress'} className="mb-3" />
 
-        <div className="flex items-center justify-between font-mono text-xs text-text-muted">
+        <div className="flex items-center justify-between">
           <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-semibold ${
             status === 'active' ? 'bg-done/10 text-done'
             : status === 'decomposing' ? 'bg-progress/10 text-progress'
@@ -127,7 +126,9 @@ export function ProjectCard({
             }`} />
             {status === 'brainstorming' ? 'Idea' : status === 'decomposing' ? 'Building' : status === 'active' ? 'Active' : status}
           </span>
-          <span>{tasksDone}/{totalTasks} tasks{tasksInProgress > 0 ? ` · ${tasksInProgress} active` : ''} · {lastActive}</span>
+          <span className="font-mono text-[10px] tabular-nums text-text-muted">
+            {tasksDone}/{totalTasks} tasks{tasksInProgress > 0 ? ` · ${tasksInProgress} active` : ''} · {lastActive}
+          </span>
         </div>
       </motion.div>
     </Link>

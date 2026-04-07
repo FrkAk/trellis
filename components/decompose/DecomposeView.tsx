@@ -154,14 +154,9 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
     <>
       <TopBar projectName={graph?.title ?? 'New Project'} stageLabel="Decompose" />
       <PageShell>
-        <div className="mb-6 flex items-center gap-3">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-accent">
-            Decompose
-          </span>
-          <span className="h-3 w-px bg-border-strong" />
-          <span className="font-body text-sm text-text-secondary">
-            {graph?.title ?? 'New Project'}
-          </span>
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-text-primary mb-1">Decompose</h1>
+          <p className="text-sm text-text-muted truncate">{graph?.title ?? 'New Project'}</p>
         </div>
 
         {/* === STATUS STRIP === */}

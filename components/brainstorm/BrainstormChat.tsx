@@ -109,14 +109,9 @@ export function BrainstormChat() {
     <>
       <TopBar stageLabel="Brainstorm" />
       <PageShell>
-        <div className="mb-6 flex items-center gap-3">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-accent">
-            Brainstorm
-          </span>
-          <span className="h-3 w-px bg-border-strong" />
-          <span className="font-body text-sm text-text-secondary truncate max-w-[400px]">
-            {idea.slice(0, 80)}
-          </span>
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-text-primary mb-1">Brainstorm</h1>
+          <p className="text-sm text-text-muted truncate max-w-[500px]">{idea.slice(0, 120)}</p>
         </div>
 
         <ConversationView
