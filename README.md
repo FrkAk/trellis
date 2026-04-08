@@ -1,24 +1,28 @@
 # Mymir
 
-> Context management for the AI-native engineering era.
+> Context management for the agent-native engineering era.
 
 Most of us aren't really writing code anymore, we're directing agents that do. But those agents have no memory. Every session starts from zero, and engineers end up spending their time re-explaining what was built, why decisions were made, and what still needs to happen. That's not engineering, that's babysitting.
 
-Mymir replaces that cycle. Instead of re-onboarding your tools every morning, you give them a persistent context network they can actually reason from.
+Mymir replaces that cycle. It's not just a context layer your agents read from, it's an end-to-end project management tool that agents operate natively. Mymir creates tasks, refines them, plans implementations, provides the right context at the right stage, and tracks everything that happens. Your agent harness doesn't need a briefing. It walks into every session knowing exactly what to do next and why.
 
 ---
 
 ## How it works
 
-Mymir introduces two core concepts:
+Instead of docs, wikis, or messy markdown files, Mymir treats project context as a live knowledge base agents can reason from.
+
+We built Mymir around two core concepts:
 
 **Context network** - a living map of your project that captures not just what was built, but why decisions were made, what was tried and abandoned, and how different parts of the codebase relate to each other.
 
 **Context retrieval interface** - the layer that lets agents query and use that knowledge at the right moment, so they walk into every session already knowing the story so far.
 
-Together, they turn a forgetful agent into one that understands your project end to end, able to plan new features, spot conflicts with past decisions, and execute without needing a briefing every time.
+Together, they don't just inform your agent, they drive it. Mymir manages the full lifecycle: **Brainstorm > Decompose > Refine > Plan > Execute > Track**.
 
-Mymir walks you through **Brainstorm > Decompose > Refine > Plan > Execute > Track**, powered by AI. Describe your idea and the AI decomposes it into tasks with dependency edges, then generates token-dense context packages your coding agent can consume directly.
+Describe your idea and Mymir decomposes it into tasks with dependency edges, determines what's ready to plan or implement, and hands your agent the exact context it needs for that stage. When a task is plannable, your agent gets the spec, prerequisites, and related work. When it's ready to implement, your agent gets the full execution context: upstream decisions, file paths, and acceptance criteria.
+
+The agent moves from task to task with the right context at every step, no manual handoff required.
 
 *We're building Mymir using Mymir, so everything described here is something we're living in real time.*
 
@@ -44,29 +48,29 @@ Zoom out and the full graph renders your entire context network. Clusters, bottl
 
 ## How it runs
 
-Mymir works through `/mymir`, a skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
+Mymir ships as a Claude Code plugin that bundles an MCP server (6 tools), specialized agents (brainstorm, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
 
-Pick up where you left off:
-
-```text
-What should I work on next?
-```
-
-Mymir finds unblocked tasks on the critical path and hands your agent the full context, upstream decisions, execution records, and acceptance criteria included.
-
-Describe what you built and Mymir records it for downstream tasks:
-
-```text
-Done with "Add hide chat toggle to TaskTab", added a collapse toggle to the chat panel using the same pattern as the spec section.
-```
-
-Or start a new project from scratch. The brainstorm agent shapes the idea with you, then the decompose agent breaks it into tasks with dependency edges:
+**Start a new project from scratch.** The brainstorm agent shapes the idea with you, then the decompose agent breaks it into tasks with dependency edges:
 
 ```text
 I want to build a real-time dashboard for server metrics
 ```
 
-The skill auto-invokes when it detects project intent, but you can also call it explicitly with `/mymir`:
+**Ask what's next.** Mymir finds unblocked tasks on the critical path, determines whether they need planning or implementation, and hands your agent the right context for that stage:
+
+```text
+What should I work on next?
+```
+
+Your agent gets stage-appropriate context automatically and acts accordingly.
+
+**Record what happened.** When work is done, Mymir captures execution records, decisions, and file changes so downstream tasks get that context automatically:
+
+```text
+Done with "Add hide chat toggle to TaskTab", added a collapse toggle to the chat panel using the same pattern as the spec section.
+```
+
+**Check status or steer.** The skill auto-invokes when it detects project intent, but you can also call it explicitly:
 
 ```text
 /mymir what's the status of the project?
@@ -74,7 +78,7 @@ The skill auto-invokes when it detects project intent, but you can also call it 
 /mymir show me what's blocked and why
 ```
 
-This covers the full lifecycle: `brainstorm > decompose > refine > plan > execute > track`.
+Your agent moves through the full lifecycle with the right context at every step.
 
 ---
 
@@ -113,7 +117,7 @@ bun run dev
 
 ### Claude Code plugin
 
-Mymir also ships as a Claude Code plugin, so Claude gets persistent project memory right inside the terminal.
+To use Mymir from the terminal, install the Claude Code plugin:
 
 ```text
 mcp/
@@ -148,6 +152,22 @@ Once loaded, Claude has access to:
 49 of 70 tasks done. We are almost there.
 
 ![Progress](assets/progress.png)
+
+---
+
+## What's coming
+
+We're working on a hosted version for those who want the full experience without the setup. Run from anywhere, access your team's projects, collaborate across sessions. Privacy is a core value, which is why it's taking longer than usual to get right.
+
+The hosted version will be a paid service. We can't bear the infrastructure costs on our own, and we'd rather be upfront about that than pretend otherwise. Self-hosted remains free and always will.
+
+---
+
+## Why open source
+
+We believe everyone should have access to tools that help them build better things. Open source is how we make that real.
+
+It also means we ship faster. Community contributions, bug reports, and ideas make Mymir better for everyone. If you care about better infrastructure for agent-driven development, come build with us.
 
 ---
 
