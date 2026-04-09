@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -11,7 +12,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/bun": "latest",
+    "eslint": "^10.2.0",
     "typescript": "^6.0.2",
-    "@types/bun": "latest"
+    "typescript-eslint": "^8.58.1"
   }
 }
