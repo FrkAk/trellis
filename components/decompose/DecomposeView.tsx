@@ -124,10 +124,15 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
       try {
         const res = await fetch(`/api/project/${projectId}/graph`);
         if (cancelled) return;
-        if (res.ok) { const data = await res.json(); setGraph(data); setGraphError(false); }
+        if (res.ok) {
+          const data = await res.json();
+          setGraph(data);
+          setGraphError(false);
+        }
       } catch (err) {
         if (cancelled) return;
-        console.error('[decompose] graph fetch failed:', err); setGraphError(true);
+        console.error('[decompose] graph fetch failed:', err);
+        setGraphError(true);
       }
     })();
     return () => { cancelled = true; };
