@@ -8,7 +8,9 @@ import { buildWorkingContext, formatWorkingContext } from "@/lib/context/working
 import { buildProjectOverview } from "@/lib/context/overview";
 import { db } from "@/lib/db";
 import { conversations, projects } from "@/lib/db/schema";
+import { getSession } from "@/lib/auth/session";
 import { chatRequestSchema, parseOrError } from "@/lib/api/validation";
+import { error as apiError } from "@/lib/api/response";
 import type { Message } from "@/lib/types";
 
 /**
@@ -18,6 +20,9 @@ import type { Message } from "@/lib/types";
  */
 export async function POST(req: Request) {
   try {
+    const session = await getSession();
+    if (!session) return apiError("Unauthorized", 401);
+
     const parsed = parseOrError(chatRequestSchema, await req.json());
     if (!parsed.success) return parsed.error;
     const { messages: rawMessages, scope, taskId, projectId, settings } = parsed.data;

@@ -1,4 +1,5 @@
-import { ok } from "@/lib/api/response";
+import { ok, error } from "@/lib/api/response";
+import { getSession } from "@/lib/auth/session";
 import { modelsRequestSchema, parseOrError } from "@/lib/api/validation";
 
 /** Hardcoded fallbacks when API listing is unavailable. */
@@ -97,6 +98,9 @@ async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
  * @returns JSON with models array.
  */
 export async function POST(req: Request) {
+  const session = await getSession();
+  if (!session) return error("Unauthorized", 401);
+
   const parsed = parseOrError(modelsRequestSchema, await req.json());
   if (!parsed.success) return parsed.error;
   const { apiKey } = parsed.data;

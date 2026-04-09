@@ -1,4 +1,6 @@
 import { dbEvents } from '@/lib/events';
+import { getSession } from '@/lib/auth/session';
+import { error } from '@/lib/api/response';
 
 /**
  * SSE endpoint — streams DB change notifications to the browser.
@@ -8,6 +10,9 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
+  const session = await getSession();
+  if (!session) return error("Unauthorized", 401);
+
   const { projectId } = await params;
 
   const stream = new ReadableStream({

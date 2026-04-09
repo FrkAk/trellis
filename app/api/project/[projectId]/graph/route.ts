@@ -1,4 +1,5 @@
 import { getProject } from '@/lib/graph/queries';
+import { getSession } from '@/lib/auth/session';
 import { ok, error } from '@/lib/api/response';
 
 /**
@@ -12,6 +13,9 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
+    const session = await getSession();
+    if (!session) return error("Unauthorized", 401);
+
     const { projectId } = await params;
     const graph = await getProject(projectId);
 

@@ -1,6 +1,7 @@
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { conversations } from "@/lib/db/schema";
+import { getSession } from "@/lib/auth/session";
 import { ok, error } from "@/lib/api/response";
 
 /**
@@ -26,6 +27,9 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
+    const session = await getSession();
+    if (!session) return error("Unauthorized", 401);
+
     const { projectId } = await params;
     const taskId = new URL(req.url).searchParams.get("taskId");
     const [conv] = await db.select().from(conversations).where(buildCondition(projectId, taskId));
@@ -47,6 +51,9 @@ export async function DELETE(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
+    const session = await getSession();
+    if (!session) return error("Unauthorized", 401);
+
     const { projectId } = await params;
     const taskId = new URL(req.url).searchParams.get("taskId");
     await db.delete(conversations).where(buildCondition(projectId, taskId));
