@@ -122,6 +122,14 @@ Then: `mymir_project` with `action='update'` and `status='active'`
 
 The description should answer: If a developer reads ONLY this description, can they start coding?
 
+### Markdown Formatting Rule (applies to description, acceptanceCriteria, and edge notes — NOT files, which are plain path strings)
+
+Stay concise — same density as before, just use markdown structure so the UI renders it well:
+- Use bullet lists (`-`) when listing 3+ items — never as a run-on sentence
+- Use backticks for code references: file paths, function names, endpoints, variables
+- Use paragraph breaks between distinct topics
+- Do NOT pad text to fill space or add filler — brevity is the goal, markdown is just for structure
+
 ### Acceptance Criteria (2-4 items)
 
 **BAD:**

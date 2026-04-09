@@ -468,7 +468,7 @@ export function TaskTab({
                         <svg viewBox="0 0 16 16" fill="currentColor" className="absolute right-2 top-1.5 h-3 w-3 text-text-muted opacity-0 transition-opacity duration-150 group-hover/dedit:opacity-100">
                           <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.463 11.1a.25.25 0 00-.064.108l-.563 1.97 1.971-.564a.25.25 0 00.108-.064l8.609-8.61a.25.25 0 000-.353l-1.097-1.097z" />
                         </svg>
-                        <span className="break-words">{d.text}</span>
+                        <div className="prose-spec break-words"><Markdown>{d.text}</Markdown></div>
                         <span className="ml-2 font-mono text-[10px] text-text-muted">{d.date}</span>
                       </div>
                     )}
@@ -562,7 +562,7 @@ export function TaskTab({
               <h4 className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                 Execution Record
               </h4>
-              <p className="whitespace-pre-wrap text-sm text-text-secondary">{executionRecord}</p>
+              <div className="prose-spec text-sm text-text-secondary"><Markdown>{executionRecord}</Markdown></div>
             </section>
           )}
         </div>

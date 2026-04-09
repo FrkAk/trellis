@@ -114,13 +114,21 @@ All other project management (status, next task, refine, continue, mark done) is
 
 **REQUIRED**: Steps 4-6 are NOT optional. Execution records feed downstream tasks via `mymir_context depth='agent'`. Skipping them breaks the context chain.
 
+**Markdown formatting rule (applies to description, executionRecord, implementationPlan, and decisions — NOT files, which are plain path strings):**
+Stay concise — same density as before, just use markdown structure so the UI renders it well:
+- Use bullet lists (`-`) when listing 3+ items — never as a run-on sentence
+- Use backticks for code references: file paths, function names, endpoints, variables
+- Use paragraph breaks between distinct topics (executionRecord and decisions should still be short — 3-5 sentences / one-liners)
+- Use headings (`##`, `###`) only in longer fields like implementationPlan
+- Do NOT pad text to fill space or add filler — brevity is the goal, markdown is just for structure
+
 ### Plan a draft task
 1. `mymir_context` `depth='planning'` → spec + prerequisites + related work
 2. Write the implementation plan:
    - **If plan mode was used**: read the plan file (e.g. `~/.claude/plans/*.md`) and use its full content
    - **Otherwise**: write a detailed plan — file paths, line numbers, specific changes, edge cases, verification steps
 3. `mymir_task` `action='update'` `implementationPlan='<full plan content>'` `status='planned'`
-   - Save the **complete, unabridged plan** — do not summarize
+   - Save the **complete, unabridged plan in markdown format** — do not summarize
 
 ### Mark task done
 1. `mymir_query` `type='search'` → find the task
@@ -129,7 +137,7 @@ All other project management (status, next task, refine, continue, mark done) is
    - **User described what they did**: extract executionRecord, decisions, files from conversation
    - **User just said "done"**: ask what was built, key decisions, files touched
    - **Coding agent reported back**: summarize the agent's work into executionRecord
-4. `mymir_task` `action='update'` with `status='done'`, `executionRecord`, `decisions`, `files` — **all three required**
+4. `mymir_task` `action='update'` with `status='done'`, `executionRecord`, `decisions`, `files` — **all three required, all in markdown format**
 5. Run **Propagate Changes** on the completed task
 6. Report what was unlocked: `mymir_analyze type='ready'`
 

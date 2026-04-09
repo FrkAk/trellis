@@ -65,7 +65,7 @@ When a task is `draft` and needs an implementation plan:
    - **If plan mode was used**: a plan file path appears in the conversation (e.g. `~/.claude/plans/*.md`). Read that file and use its full content as the plan.
    - **If plan mode was not used**: write a detailed plan directly — file paths, line numbers, specific changes, edge cases, verification steps.
 3. `mymir_task` with `action='update'`:
-   - `implementationPlan` = the **complete, unabridged plan content** — do not summarize. This is the primary reference for coding agents.
+   - `implementationPlan` = the **complete, unabridged plan content in markdown format** — do not summarize. This is the primary reference for coding agents.
    - `status` = `'planned'`
 4. The task will appear in 'ready' results once all its dependencies are done
 
@@ -74,7 +74,7 @@ When a task is `draft` and needs an implementation plan:
 When a user or coding agent reports they finished a task:
 
 1. If the task is not already `in_progress`, set it first: `mymir_task` with `action='update'`, `status='in_progress'` — this ensures the full lifecycle is recorded in history.
-2. `mymir_task` with `action='update'`:
+2. `mymir_task` with `action='update'` — **all text fields in markdown format**:
    - `status` = `'done'`
    - `executionRecord` = summary of what was built, approach taken, anything surprising
    - `decisions` = key technical choices made (these inform downstream tasks)
@@ -85,11 +85,19 @@ When a user or coding agent reports they finished a task:
 **Format guidelines for high-quality records:**
 
 - **Task titles**: verb+noun format (e.g., "Implement JWT auth", "Add user dashboard", "Fix login redirect").
-- **Execution record**: 3-5 sentences, prose paragraph. Concrete details: function names, file paths, API endpoints, data formats. NO debugging stories or false starts.
-  Example: "Built JWT auth with access (15min) and refresh (7d) tokens. Login at POST /api/auth/login returns {accessToken, refreshToken}. Middleware at lib/auth/middleware.ts validates Bearer tokens. Refresh tokens in Redis with revocation via DELETE /api/auth/revoke."
+- **Execution record**: 3-5 sentences, concise but well-structured. Concrete details: function names, file paths, API endpoints, data formats. NO debugging stories or false starts.
+  Example: "Built JWT auth with access (15min) and refresh (7d) tokens. Login at `POST /api/auth/login` returns `{accessToken, refreshToken}`. Middleware at `lib/auth/middleware.ts` validates Bearer tokens. Refresh tokens in Redis with revocation via `DELETE /api/auth/revoke`."
 - **Decisions**: One-liner per decision: CHOICE + WHY.
   Example: "Chose Redis for refresh tokens — need fast revocation lookups"
 - **Files**: ALWAYS populate the `files` array — this is the highest-ROI field for downstream coding agents. Every file created or modified.
+
+**Markdown formatting rule (applies to description, executionRecord, implementationPlan, and decisions — NOT files, which are plain path strings):**
+Stay concise — same density as before, just use markdown structure so the UI renders it well:
+- Use bullet lists (`-`) when listing 3+ items — never as a run-on sentence
+- Use backticks for code references: file paths, function names, endpoints, variables
+- Use paragraph breaks between distinct topics (executionRecord and decisions should still be short — 3-5 sentences / one-liners)
+- Use headings (`##`, `###`) only in longer fields like implementationPlan
+- Do NOT pad text to fill space or add filler — brevity is the goal, markdown is just for structure
 
 **WARNING**: executionRecord and files are NOT optional. They feed downstream tasks via `mymir_context depth='agent'`. Skipping them breaks the context chain for every task that depends on this one.
 

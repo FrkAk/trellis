@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { Button } from '@/components/shared/Button';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { updateTask } from '@/lib/graph/mutations';
+import Markdown from 'react-markdown';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
 import type { TaskEdge } from '@/lib/db/schema';
 
@@ -213,9 +214,9 @@ export function PlanTab({
             )}
           </div>
         </div>
-        <pre className="max-h-60 overflow-auto rounded-lg border border-border bg-surface-raised p-3 font-mono text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">
-          {plan}
-        </pre>
+        <div className="prose-spec max-h-60 overflow-auto rounded-lg border border-border bg-surface-raised p-3 text-sm text-text-secondary leading-relaxed">
+          <Markdown>{plan}</Markdown>
+        </div>
       </section>
 
       {/* Lifecycle phases */}
@@ -229,9 +230,9 @@ export function PlanTab({
             </h4>
             <UndoButton canUndo={canUndoPlan} onUndo={undoPlan} />
           </div>
-          <pre className="mt-1 max-h-40 overflow-auto rounded bg-surface-raised p-2 font-mono text-xs text-text-secondary whitespace-pre-wrap">
-            {execution}
-          </pre>
+          <div className="prose-spec mt-1 max-h-40 overflow-auto rounded bg-surface-raised p-2 text-sm text-text-secondary">
+            <Markdown>{execution}</Markdown>
+          </div>
         </section>
       ) : !started ? (
         /* Phase B: Planned — start implementation */
