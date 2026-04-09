@@ -28,9 +28,10 @@ export function useUndo<T>(opts: UseUndoOptions<T>): {
 } {
   const [stack, setStack] = useState<T[]>([]);
   const stackRef = useRef(stack);
-  stackRef.current = stack;
   const onUndoRef = useRef(opts.onUndo);
-  onUndoRef.current = opts.onUndo;
+
+  useEffect(() => { stackRef.current = stack; }, [stack]);
+  useEffect(() => { onUndoRef.current = opts.onUndo; }, [opts.onUndo]);
 
   const canUndo = stack.length > 0;
 
@@ -47,9 +48,11 @@ export function useUndo<T>(opts: UseUndoOptions<T>): {
   }, []);
 
   // Auto-clear on resetOn change
-  useEffect(() => {
+  const [prevResetOn, setPrevResetOn] = useState(opts.resetOn);
+  if (opts.resetOn !== prevResetOn) {
+    setPrevResetOn(opts.resetOn);
     setStack([]);
-  }, [opts.resetOn]);
+  }
 
   // Ctrl+Z / Cmd+Z keyboard shortcut
   useEffect(() => {

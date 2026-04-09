@@ -113,13 +113,25 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
   }, [ready, messages.length, hasRecoveredMessages, sendMessage, initialTaskCount]);
 
   // If recovered with messages or tasks already exist, mark as complete
-  useEffect(() => {
-    if ((hasRecoveredMessages || (initialTaskCount ?? 0) > 0) && !isLoading) {
-      setIsComplete(true);
-    }
-  }, [hasRecoveredMessages, initialTaskCount, isLoading]);
+  if (!isComplete && !isLoading && (hasRecoveredMessages || (initialTaskCount ?? 0) > 0)) {
+    setIsComplete(true);
+  }
 
-  useEffect(() => { fetchGraph(); }, [fetchGraph]);
+  // Initial graph fetch
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/project/${projectId}/graph`);
+        if (cancelled) return;
+        if (res.ok) { const data = await res.json(); setGraph(data); setGraphError(false); }
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[decompose] graph fetch failed:', err); setGraphError(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   useEffect(() => {
     if (!isLoading) return;
@@ -130,12 +142,9 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
   const totalTasks = graph?.tasks.length ?? 0;
   const totalEdges = graph?.edges.length ?? 0;
 
-  useEffect(() => {
-    const newCounts = { tasks: totalTasks, edges: totalEdges };
-    if (newCounts.tasks !== prevCounts.tasks || newCounts.edges !== prevCounts.edges) {
-      setPrevCounts(newCounts);
-    }
-  }, [totalTasks, totalEdges, prevCounts]);
+  if (totalTasks !== prevCounts.tasks || totalEdges !== prevCounts.edges) {
+    setPrevCounts({ tasks: totalTasks, edges: totalEdges });
+  }
 
   const lastAssistantMessage = useMemo(() => {
     const assistantMsgs = messages.filter((m) => m.role === 'assistant');

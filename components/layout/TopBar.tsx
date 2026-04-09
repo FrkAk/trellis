@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { getTheme, setTheme } from '@/lib/theme';
 
@@ -19,11 +19,7 @@ interface TopBarProps {
  * @returns A fixed-position navigation bar element.
  */
 export function TopBar({ projectName, stageLabel, taskStats }: TopBarProps) {
-  const [theme, setThemeState] = useState<'light' | 'dark'>('dark');
-
-  useEffect(() => {
-    setThemeState(getTheme());
-  }, []);
+  const [theme, setThemeState] = useState<'light' | 'dark'>(() => getTheme());
 
   /** Toggle between light and dark theme and persist the choice. */
   const toggleTheme = () => {

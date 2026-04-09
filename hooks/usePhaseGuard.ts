@@ -52,15 +52,19 @@ interface PhaseGuardResult {
  */
 export function usePhaseGuard(projectId: string | null, phase: Phase): PhaseGuardResult {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!projectId);
   const [taskCount, setTaskCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [prevProjectId, setPrevProjectId] = useState(projectId);
+
+  if (projectId !== prevProjectId) {
+    setPrevProjectId(projectId);
+    setLoading(!!projectId);
+    setError(null);
+  }
 
   useEffect(() => {
-    if (!projectId) {
-      setLoading(false);
-      return;
-    }
+    if (!projectId) return;
 
     let cancelled = false;
 

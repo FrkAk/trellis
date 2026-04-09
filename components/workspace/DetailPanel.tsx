@@ -93,20 +93,15 @@ export function DetailPanel({
   const [addingTag, setAddingTag] = useState(false);
   const [newTagValue, setNewTagValue] = useState('');
   const [localTitle, setLocalTitle] = useState(task.title);
+  const [prevTitle, setPrevTitle] = useState(task.title);
   const [editingTitle, setEditingTitle] = useState(false);
   const categoryRef = useRef<HTMLDivElement>(null);
   const titleCancelledRef = useRef(false);
 
-  // Sync title from props
-  useEffect(() => { setLocalTitle(task.title); }, [task.title]);
-
-  // Reset UI state when switching tasks
-  useEffect(() => {
-    setActiveTab('refine');
-    setCategoryOpen(false);
-    setAddingTag(false);
-    setEditingTitle(false);
-  }, [taskId]);
+  if (task.title !== prevTitle) {
+    setPrevTitle(task.title);
+    setLocalTitle(task.title);
+  }
 
   // Close category tray on outside click
   useEffect(() => {

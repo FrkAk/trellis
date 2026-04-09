@@ -66,13 +66,14 @@ export function TaskTab({
   const [editingDesc, setEditingDesc] = useState(false);
   const [localCriteria, setLocalCriteria] = useState(acceptanceCriteria ?? []);
   const localCriteriaRef = useRef(localCriteria);
-  localCriteriaRef.current = localCriteria;
   const lastCriteriaMutationRef = useRef(0);
   const [editingCriterionId, setEditingCriterionId] = useState<string | null>(null);
   const [addingCriterion, setAddingCriterion] = useState(false);
   const [localDecisions, setLocalDecisions] = useState(decisions);
   const localDecisionsRef = useRef(localDecisions);
-  localDecisionsRef.current = localDecisions;
+
+  useEffect(() => { localCriteriaRef.current = localCriteria; }, [localCriteria]);
+  useEffect(() => { localDecisionsRef.current = localDecisions; }, [localDecisions]);
   const lastDecisionMutationRef = useRef(0);
   const [editingDecisionId, setEditingDecisionId] = useState<string | null>(null);
   const [addingDecision, setAddingDecision] = useState(false);

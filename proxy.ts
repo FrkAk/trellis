@@ -29,11 +29,11 @@ function checkAuth(request: NextRequest): NextResponse | null {
 }
 
 /**
- * Next.js middleware — auth + validation for API routes.
+ * Next.js proxy — auth + validation for API routes.
  * @param request - Incoming request.
  * @returns Error response or pass-through.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (pathname.startsWith("/api/mymir/") || pathname.startsWith("/api/mcp")) {

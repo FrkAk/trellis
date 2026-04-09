@@ -26,15 +26,22 @@ interface ProjectChatProps {
 export function ProjectChat({ projectId, onGraphChange, className = '' }: ProjectChatProps) {
   const [loadedHistory, setLoadedHistory] = useState<UIMessage[] | null>(null);
   const [historyError, setHistoryError] = useState(false);
+  const [prevProjectId, setPrevProjectId] = useState(projectId);
+
+  if (projectId !== prevProjectId) {
+    setPrevProjectId(projectId);
+    setLoadedHistory(null);
+    setHistoryError(false);
+  }
 
   // Load persisted chat history
   useEffect(() => {
-    setLoadedHistory(null);
-    setHistoryError(false);
+    let cancelled = false;
     fetch(`/api/project/${projectId}/conversations`)
       .then((r) => r.json())
-      .then((data) => setLoadedHistory(convertPersistedToUIMessages(data.messages ?? [])))
-      .catch((err) => { console.error('[chat] history fetch failed:', err); setHistoryError(true); setLoadedHistory([]); });
+      .then((data) => { if (!cancelled) setLoadedHistory(convertPersistedToUIMessages(data.messages ?? [])); })
+      .catch((err) => { if (!cancelled) { console.error('[chat] history fetch failed:', err); setHistoryError(true); setLoadedHistory([]); } });
+    return () => { cancelled = true; };
   }, [projectId]);
 
   const retryHistory = useCallback(() => {

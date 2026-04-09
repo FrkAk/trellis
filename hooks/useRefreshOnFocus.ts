@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 
 /**
  * Refreshes on tab focus + listens for real-time SSE change events.
@@ -10,13 +10,12 @@ import { useEffect, useRef } from 'react';
  * @param sseUrl - Optional SSE endpoint URL for real-time events.
  */
 export function useRefreshOnFocus(callback: () => void, sseUrl?: string) {
-  const callbackRef = useRef(callback);
-  callbackRef.current = callback;
+  const onRefresh = useEffectEvent(() => { callback(); });
 
   // Refresh on tab focus
   useEffect(() => {
     function onVisibilityChange() {
-      if (!document.hidden) callbackRef.current();
+      if (!document.hidden) onRefresh();
     }
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -31,7 +30,7 @@ export function useRefreshOnFocus(callback: () => void, sseUrl?: string) {
 
     function connect() {
       es = new EventSource(sseUrl!);
-      es.onmessage = () => callbackRef.current();
+      es.onmessage = () => onRefresh();
       es.onerror = () => {
         es?.close();
         retryTimeout = setTimeout(connect, 5000);

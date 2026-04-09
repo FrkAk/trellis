@@ -19,22 +19,22 @@ interface CooldownBannerProps {
  */
 export function CooldownBanner({ error, onRetry, className = '' }: CooldownBannerProps) {
   const [seconds, setSeconds] = useState(0);
+  const [trackedError, setTrackedError] = useState<Error | undefined>(undefined);
 
   const isRateLimit = error?.message?.toLowerCase().includes('rate')
     || error?.message?.includes('429')
     || error?.message?.includes('quota')
     || error?.message?.includes('cooldown');
 
-  useEffect(() => {
+  if (error !== trackedError) {
+    setTrackedError(error);
     if (!error || !isRateLimit) {
       setSeconds(0);
-      return;
+    } else {
+      const match = error.message.match(/(\d+)\s*second/);
+      setSeconds(match ? parseInt(match[1], 10) : 30);
     }
-
-    const match = error.message.match(/(\d+)\s*second/);
-    const initial = match ? parseInt(match[1], 10) : 30;
-    setSeconds(initial);
-  }, [error, isRateLimit]);
+  }
 
   useEffect(() => {
     if (seconds <= 0) return;

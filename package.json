@@ -5,10 +5,10 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "db:setup": "docker compose up -d && sleep 2 && bun run db:push",
     "db:generate": "drizzle-kit generate",
@@ -32,7 +32,7 @@
     "d3-quadtree": "^3.0.1",
     "drizzle-orm": "^0.45.2",
     "motion": "^12.38.0",
-    "next": "^15.3.3",
+    "next": "^16.2.3",
     "postgres": "^3.4.8",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -47,8 +47,7 @@
     "@types/node": "^22.15.0",
     "@types/d3-force": "^3.0.10",
     "drizzle-kit": "^0.31.1",
-    "@eslint/eslintrc": "^3.3.1",
     "eslint": "^9.28.0",
-    "eslint-config-next": "^15.3.3"
+    "eslint-config-next": "^16.2.3"
   }
 }

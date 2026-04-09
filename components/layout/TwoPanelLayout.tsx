@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useState, useEffect } from 'react';
+import { type ReactNode, useState } from 'react';
 
 interface TwoPanelLayoutProps {
   /** @param left - Content for the left panel. */
@@ -26,13 +26,15 @@ export function TwoPanelLayout({
   className = '',
   activePanelHint,
 }: TwoPanelLayoutProps) {
-  const [activePanel, setActivePanel] = useState<'left' | 'right'>('left');
+  const [activePanel, setActivePanel] = useState<'left' | 'right'>(activePanelHint ?? 'left');
+  const [prevHint, setPrevHint] = useState(activePanelHint);
 
-  useEffect(() => {
+  if (activePanelHint !== prevHint) {
+    setPrevHint(activePanelHint);
     if (activePanelHint) {
       setActivePanel(activePanelHint);
     }
-  }, [activePanelHint]);
+  }
 
   return (
     <div className={`h-[calc(var(--viewport-height)-var(--topbar-h))] ${className}`}>

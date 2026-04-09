@@ -7,7 +7,7 @@ import {
   forceY,
 } from "d3-force";
 import type { Simulation } from "d3-force";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useCallback, useMemo } from "react";
 import type { Task, TaskEdge } from "@/lib/db/schema";
 import type { GraphNode, GraphLink } from "./graphConstants";
 import { getNodeSize, buildLinkCounts } from "./graphConstants";
@@ -81,7 +81,6 @@ function buildGraph(
 interface UseForceSimulationReturn {
   nodes: GraphNode[];
   links: GraphLink[];
-  simulation: Simulation<GraphNode, GraphLink> | null;
   /** Reheat the simulation (e.g. after drag). */
   reheat: () => void;
   /** Reset: scatter nodes to circle + full reheat with animation. */
@@ -112,12 +111,20 @@ export function useForceSimulation(
   const simulationRef = useRef<Simulation<GraphNode, GraphLink> | null>(null);
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const dimensionsRef = useRef({ width, height });
-  const dataRef = useRef({ taskList, edges });
-  const onSettleRef = useRef(onSettle);
-  dataRef.current = { taskList, edges };
-  onSettleRef.current = onSettle;
+  const onSettleEvent = useEffectEvent(() => { onSettle?.(); });
+  const [prevEmpty, setPrevEmpty] = useState(taskList.length === 0);
 
-  dimensionsRef.current = { width, height };
+  useEffect(() => { dimensionsRef.current = { width, height }; }, [width, height]);
+
+  const isEmpty = taskList.length === 0;
+  if (isEmpty !== prevEmpty) {
+    setPrevEmpty(isEmpty);
+    if (isEmpty) {
+      setNodes([]);
+      setLinks([]);
+      setTicking(false);
+    }
+  }
 
   const dataFingerprint = useMemo(() => {
     const tIds = taskList.map((t) => t.id).sort().join(",");
@@ -159,7 +166,8 @@ export function useForceSimulation(
 
   // Effect A -- Topology: rebuild simulation on data change
   useEffect(() => {
-    const { taskList: tsks, edges: edgs } = dataRef.current;
+    const tsks = taskList;
+    const edgs = edges;
     const w = dimensionsRef.current.width;
     const h = dimensionsRef.current.height;
     const { nodes: newNodes, links: newLinks } = buildGraph(
@@ -170,9 +178,6 @@ export function useForceSimulation(
       simulationRef.current?.stop();
       simulationRef.current = null;
       nodesRef.current = [];
-      setNodes([]);
-      setLinks([]);
-      setTicking(false);
       return;
     }
 
@@ -215,8 +220,9 @@ export function useForceSimulation(
       // Auto-fit at halfway point (alpha ~0.03)
       if (!halfwayFired && sim.alpha() < 0.03) {
         halfwayFired = true;
-        onSettleRef.current?.();
+        onSettleEvent();
       }
+      setTicking(true);
       setNodes([...newNodes]);
       setLinks([...newLinks]);
     });
@@ -227,16 +233,12 @@ export function useForceSimulation(
 
     // Start with visible animation
     sim.alpha(1).restart();
-    setTicking(true);
 
     nodesRef.current = newNodes;
     simulationRef.current = sim;
 
-    setNodes([...newNodes]);
-    setLinks([...newLinks]);
-
     return () => { sim.stop(); };
-  }, [dataFingerprint]);
+  }, [dataFingerprint, taskList, edges]);
 
   // Effect B -- Dimensions: update center force without reheating.
   useEffect(() => {
@@ -246,5 +248,5 @@ export function useForceSimulation(
     sim.force("y", forceY<GraphNode>(height / 2));
   }, [width, height]);
 
-  return { nodes, links, simulation: simulationRef.current, reheat, reset, ticking };
+  return { nodes, links, reheat, reset, ticking };
 }

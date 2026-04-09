@@ -56,20 +56,39 @@ export default function WorkspacePage() {
 
   // Fetch project graph on mount
   useEffect(() => {
-    refreshGraph();
-  }, [refreshGraph]);
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(`/api/project/${projectId}/graph`);
+      if (!res.ok || cancelled) return;
+      const data: ProjectGraph = await res.json();
+      if (cancelled) return;
+      const maxUpdated = getMaxUpdatedAt(data);
+      if (maxUpdated !== lastModifiedRef.current) {
+        lastModifiedRef.current = maxUpdated;
+        setGraph(data);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   // Real-time: SSE for instant updates + tab focus as fallback
   useRefreshOnFocus(refreshGraph, `/api/project/${projectId}/events`);
 
-  // Fetch context when task is selected
-  useEffect(() => {
+  // Clear context when deselecting
+  const [prevSelectedTaskId, setPrevSelectedTaskId] = useState<string | null>(null);
+  if (selectedTaskId !== prevSelectedTaskId) {
+    setPrevSelectedTaskId(selectedTaskId);
     if (!selectedTaskId) {
       setContextText('');
       setPlanningContext('');
-      return;
     }
+  }
 
+  // Fetch context when task is selected
+  useEffect(() => {
+    if (!selectedTaskId) return;
+
+    let cancelled = false;
     const fetchCtx = (depth: string) =>
       fetch('/api/mymir/context', {
         method: 'POST',
@@ -79,10 +98,13 @@ export default function WorkspacePage() {
 
     Promise.all([fetchCtx('agent'), fetchCtx('planning')])
       .then(([agent, planning]) => {
-        setContextText(agent ?? '');
-        setPlanningContext(planning ?? '');
+        if (!cancelled) {
+          setContextText(agent ?? '');
+          setPlanningContext(planning ?? '');
+        }
       })
-      .catch((err) => console.error('[workspace] context fetch failed:', err));
+      .catch((err) => { if (!cancelled) console.error('[workspace] context fetch failed:', err); });
+    return () => { cancelled = true; };
   }, [projectId, selectedTaskId]);
 
   const handleSelectNode = useCallback((taskId: string) => {
@@ -136,6 +158,7 @@ export default function WorkspacePage() {
       right={
         selectedTask ? (
           <DetailPanel
+            key={selectedTaskId!}
             taskId={selectedTaskId!}
             projectId={projectId}
             task={selectedTask}
