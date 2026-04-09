@@ -172,7 +172,7 @@ It also means we ship faster. Community contributions, bug reports, and ideas ma
 
 ## Stack
 
-Next.js 15, TypeScript, React 19, PostgreSQL, Drizzle ORM, Vercel AI SDK, Tailwind CSS v4, Motion
+Next.js 16, TypeScript 6, React 19, PostgreSQL, Drizzle ORM, Vercel AI SDK, Tailwind CSS v4, Motion
 
 ---
 
