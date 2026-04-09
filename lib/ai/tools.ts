@@ -4,7 +4,7 @@
  * which actions are available via narrowed Zod enums.
  */
 
-import { z } from "zod";
+import { z } from "zod/v4";
 import { tool } from "ai";
 import {
   DESCRIPTIONS,

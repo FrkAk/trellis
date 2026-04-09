@@ -1,13 +1,11 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { NextResponse } from "next/server";
 
 /** Zod schema for a single AI SDK message. */
-const messageSchema = z
-  .object({
-    id: z.string(),
-    role: z.enum(["user", "assistant", "system", "tool"]),
-  })
-  .passthrough();
+const messageSchema = z.looseObject({
+  id: z.string(),
+  role: z.enum(["user", "assistant", "system", "tool"]),
+});
 
 /** Zod schema for the chat API request body. */
 export const chatRequestSchema = z.object({
