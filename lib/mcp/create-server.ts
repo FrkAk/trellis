@@ -9,38 +9,53 @@ import {
   handleContext,
   handleAnalyze,
 } from "@/lib/ai/tool-handlers";
-import type { ToolResult } from "@/lib/ai/tool-handlers";
+import type {
+  ToolResult,
+  SearchResult,
+  TaskSlim,
+  DetailedEdge,
+  ProjectOverview,
+  SummaryContext,
+  ReadyTask,
+  BlockedTask,
+  DownstreamNode,
+  CriticalPathTask,
+} from "@/lib/ai/tool-handlers";
+import {
+  formatSearchResults,
+  formatTaskList,
+  formatEdges,
+  formatOverview,
+  formatSummary,
+  formatReadyTasks,
+  formatPlannableTasks,
+  formatBlockedTasks,
+  formatDownstream,
+  formatCriticalPath,
+} from "@/mcp/src/tools/formatters";
 
-/**
- * Format a successful tool result as MCP content.
- * @param data - Result data from a tool handler.
- * @returns MCP content response.
- */
 function json(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
 }
 
-/**
- * Format an error as MCP content.
- * @param message - Error message.
- * @returns MCP error response.
- */
+function text(str: string) {
+  return { content: [{ type: "text" as const, text: str }] };
+}
+
 function err(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true as const };
 }
 
-/**
- * Convert a ToolResult to MCP response format.
- * Handles string results (context depths) as raw text.
- * @param result - Tool handler result.
- * @returns MCP content response.
- */
 function toMcp(result: ToolResult) {
   if (!result.ok) return err(result.error);
-  if (typeof result.data === "string") {
-    return { content: [{ type: "text" as const, text: result.data }] };
-  }
+  if (typeof result.data === "string") return text(result.data);
   return json(result.data);
+}
+
+function extractTasksWithHints<T>(data: unknown): { tasks: T[]; hints: string[] } {
+  if (Array.isArray(data)) return { tasks: data as T[], hints: [] };
+  const obj = data as { tasks: T[]; _hints?: string[] };
+  return { tasks: obj.tasks, hints: obj._hints ?? [] };
 }
 
 const INSTRUCTIONS = [
@@ -185,10 +200,23 @@ export function createMcpServer(): McpServer {
           .describe("Project UUID. Required for search/list/overview"),
       }),
     },
-    async (params) => {
+    async ({ type, query, taskId, projectId }) => {
       try {
-        const result = await handleQuery(params);
-        return toMcp(result);
+        const result = await handleQuery({ type, query, taskId, projectId });
+        if (!result.ok) return err(result.error);
+
+        switch (type) {
+          case "search": {
+            const { results, _hints } = result.data as { results: SearchResult[]; _hints?: string[] };
+            return text(formatSearchResults(results, _hints));
+          }
+          case "list":
+            return text(formatTaskList(result.data as TaskSlim[]));
+          case "edges":
+            return text(formatEdges(result.data as DetailedEdge[]));
+          case "overview":
+            return text(formatOverview(result.data as ProjectOverview));
+        }
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
       }
@@ -207,10 +235,12 @@ export function createMcpServer(): McpServer {
           .describe("Project UUID. Required for 'working' depth"),
       }),
     },
-    async (params) => {
+    async ({ taskId, depth, projectId }) => {
       try {
-        const result = await handleContext(params);
-        return toMcp(result);
+        const result = await handleContext({ taskId, depth, projectId });
+        if (!result.ok) return err(result.error);
+        if (typeof result.data === "string") return text(result.data);
+        return text(formatSummary(result.data as SummaryContext));
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
       }
@@ -230,10 +260,27 @@ export function createMcpServer(): McpServer {
           .describe("Project UUID. Required for ready/blocked/critical_path/plannable"),
       }),
     },
-    async (params) => {
+    async ({ type, taskId, projectId }) => {
       try {
-        const result = await handleAnalyze(params);
-        return toMcp(result);
+        const result = await handleAnalyze({ type, taskId, projectId });
+        if (!result.ok) return err(result.error);
+
+        switch (type) {
+          case "ready": {
+            const { tasks, hints } = extractTasksWithHints<ReadyTask>(result.data);
+            return text(formatReadyTasks(tasks, hints));
+          }
+          case "blocked":
+            return text(formatBlockedTasks(result.data as BlockedTask[]));
+          case "downstream":
+            return text(formatDownstream(result.data as DownstreamNode[]));
+          case "critical_path":
+            return text(formatCriticalPath(result.data as CriticalPathTask[]));
+          case "plannable": {
+            const { tasks, hints } = extractTasksWithHints<ReadyTask>(result.data);
+            return text(formatPlannableTasks(tasks, hints));
+          }
+        }
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
       }
