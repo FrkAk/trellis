@@ -12,55 +12,8 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Constant-time string comparison via SHA-256 hashing.
- * Always performs both hashes regardless of input length to avoid leaking
- * length information. Works on both Bun and CF Workers.
- * @param a - First string.
- * @param b - Second string.
- * @returns true if strings are equal.
- */
-async function timingSafeEqual(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const aBuf = enc.encode(a);
-  const bBuf = enc.encode(b);
-  const lenMatch = aBuf.byteLength === bBuf.byteLength ? 0 : 1;
-  const [aHash, bHash] = await Promise.all([
-    crypto.subtle.digest("SHA-256", aBuf),
-    crypto.subtle.digest("SHA-256", bBuf),
-  ]);
-  const aArr = new Uint8Array(aHash);
-  const bArr = new Uint8Array(bHash);
-  let diff = lenMatch;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
-  return diff === 0;
-}
-
-/**
- * Check Bearer token auth for protected API routes.
- * Returns null if authorized, or a 401 response if not.
- * Bypasses: dev mode (no key set), localhost, same-origin browser requests.
- * @param request - Incoming request.
- * @returns 401 response or null (authorized).
- */
-async function checkAuth(request: NextRequest): Promise<NextResponse | null> {
-  const apiKey = process.env.MYMIR_API_KEY;
-  if (!apiKey) return null;
-
-  const host = request.headers.get("host") ?? "";
-  if (host.startsWith("localhost") || host.startsWith("127.0.0.1"))
-    return null;
-
-  const fetchSite = request.headers.get("sec-fetch-site");
-  if (fetchSite === "same-origin") return null;
-
-  const auth = request.headers.get("authorization");
-  if (auth && (await timingSafeEqual(auth, `Bearer ${apiKey}`))) return null;
-
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-}
-
-/**
- * Next.js proxy — session protection + API key auth + rate limiting + validation.
+ * Next.js proxy — session protection + rate limiting + validation.
+ * MCP/API auth is handled by JWT verification in route handlers.
  * @param request - Incoming request.
  * @returns Redirect, error response, or pass-through.
  */
@@ -79,10 +32,12 @@ export async function proxy(request: NextRequest) {
   const isPublicPath =
     pathname === "/sign-in" ||
     pathname === "/sign-up" ||
+    pathname === "/consent" ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/mymir/") ||
     pathname === "/api/mcp" ||
-    pathname === "/api/test-connection";
+    pathname === "/api/test-connection" ||
+    pathname.startsWith("/.well-known/");
   if (!session && !isPublicPath) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
@@ -108,12 +63,6 @@ export async function proxy(request: NextRequest) {
         }
       }
     }
-  }
-
-  // MCP API key auth
-  if (pathname.startsWith("/api/mymir/") || pathname === "/api/mcp") {
-    const authError = await checkAuth(request);
-    if (authError) return authError;
   }
 
   // UUID validation for project routes

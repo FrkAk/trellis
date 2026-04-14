@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
-import { organization } from "better-auth/plugins";
+import { organization, jwt } from "better-auth/plugins";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -53,9 +54,20 @@ export const auth = betterAuth({
     },
   },
   plugins: [
+    jwt(),
     organization({
       ac,
       roles: { owner, admin, member },
+    }),
+    oauthProvider({
+      loginPage: "/sign-in",
+      consentPage: "/consent",
+      allowDynamicClientRegistration: true,
+      allowUnauthenticatedClientRegistration: true,
+      validAudiences: process.env.BETTER_AUTH_URL
+        ? [process.env.BETTER_AUTH_URL, `${process.env.BETTER_AUTH_URL}/api/mcp`]
+        : ["http://localhost:3000", "http://localhost:3000/api/mcp"],
+      silenceWarnings: { oauthAuthServerConfig: true },
     }),
   ],
 });
