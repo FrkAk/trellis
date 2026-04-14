@@ -154,3 +154,109 @@ export const jwks = neonAuth.table("jwks", {
   createdAt: timestamp("createdAt", { withTimezone: true }).notNull(),
   expiresAt: timestamp("expiresAt", { withTimezone: true }),
 });
+
+/**
+ * OAuth 2.1 Provider tables — used by @better-auth/oauth-provider.
+ * Supports dynamic client registration, JWT access tokens, refresh tokens,
+ * and user consent records for the MCP auth flow.
+ */
+
+export const oauthClient = neonAuth.table(
+  "oauthClient",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clientId: text("clientId").notNull().unique(),
+    clientSecret: text("clientSecret"),
+    name: text("name"),
+    icon: text("icon"),
+    metadata: text("metadata"),
+    redirectUris: text("redirectUris").array().notNull(),
+    postLogoutRedirectUris: text("postLogoutRedirectUris").array(),
+    tokenEndpointAuthMethod: text("tokenEndpointAuthMethod"),
+    grantTypes: text("grantTypes").array(),
+    responseTypes: text("responseTypes").array(),
+    scopes: text("scopes").array(),
+    type: text("type"),
+    public: boolean("public"),
+    disabled: boolean("disabled").default(false),
+    skipConsent: boolean("skipConsent"),
+    enableEndSession: boolean("enableEndSession"),
+    subjectType: text("subjectType"),
+    requirePKCE: boolean("requirePKCE"),
+    uri: text("uri"),
+    contacts: text("contacts").array(),
+    tos: text("tos"),
+    policy: text("policy"),
+    softwareId: text("softwareId"),
+    softwareVersion: text("softwareVersion"),
+    softwareStatement: text("softwareStatement"),
+    referenceId: text("referenceId"),
+    userId: uuid("userId").references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("oauthClient_clientId_uidx").on(table.clientId),
+    index("oauthClient_userId_idx").on(table.userId),
+  ],
+);
+
+export const oauthAccessToken = neonAuth.table(
+  "oauthAccessToken",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    token: text("token").notNull(),
+    clientId: text("clientId").notNull(),
+    sessionId: uuid("sessionId"),
+    refreshId: uuid("refreshId"),
+    userId: uuid("userId").references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("referenceId"),
+    scopes: text("scopes").array().notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("oauthAccessToken_clientId_idx").on(table.clientId),
+    index("oauthAccessToken_userId_idx").on(table.userId),
+  ],
+);
+
+export const oauthRefreshToken = neonAuth.table(
+  "oauthRefreshToken",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    token: text("token").notNull(),
+    clientId: text("clientId").notNull(),
+    sessionId: uuid("sessionId"),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("referenceId"),
+    scopes: text("scopes").array().notNull(),
+    revoked: timestamp("revoked", { withTimezone: true }),
+    authTime: timestamp("authTime", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("oauthRefreshToken_clientId_idx").on(table.clientId),
+    index("oauthRefreshToken_userId_idx").on(table.userId),
+  ],
+);
+
+export const oauthConsent = neonAuth.table(
+  "oauthConsent",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clientId: text("clientId").notNull(),
+    userId: uuid("userId").references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("referenceId"),
+    scopes: text("scopes").array().notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("oauthConsent_clientId_idx").on(table.clientId),
+    index("oauthConsent_userId_idx").on(table.userId),
+  ],
+);
