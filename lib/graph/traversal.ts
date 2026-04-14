@@ -144,7 +144,7 @@ export async function getConnectedTasks(
 // ---------------------------------------------------------------------------
 
 /** A task in a downstream chain with depth. */
-type DownstreamNode = {
+export type DownstreamNode = {
   id: string;
   depth: number;
 };
@@ -198,7 +198,7 @@ export async function getDownstream(
 // ---------------------------------------------------------------------------
 
 /** A task that is ready to be worked on. */
-type ReadyTask = {
+export type ReadyTask = {
   id: string;
   title: string;
   status: string;
@@ -277,7 +277,7 @@ export async function getReadyTasks(
 // ---------------------------------------------------------------------------
 
 /** A draft task with enough content to be planned. */
-type PlannableTask = {
+export type PlannableTask = {
   id: string;
   title: string;
   status: string;
@@ -324,7 +324,7 @@ export async function getPlannableTasks(
 // ---------------------------------------------------------------------------
 
 /** A task blocked by unsatisfied dependencies. */
-type BlockedTask = {
+export type BlockedTask = {
   id: string;
   title: string;
   status: string;
@@ -400,7 +400,7 @@ export async function getBlockedTasks(
 // ---------------------------------------------------------------------------
 
 /** A task in the critical path. */
-type CriticalPathTask = {
+export type CriticalPathTask = {
   id: string;
   title: string;
   status: string;

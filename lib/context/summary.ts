@@ -17,7 +17,7 @@ type EdgeDetail = {
 };
 
 /** Summary context for a task (0-hop). */
-type SummaryContext = {
+export type SummaryContext = {
   node: { title: string; status: string; description: string };
   parent: { title: string; type: "project" } | null;
   edgeCount: Record<EdgeType, number>;
