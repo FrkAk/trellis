@@ -13,8 +13,7 @@
     "db:setup": "docker compose up -d && sleep 2 && bun run db:push",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
-    "docs:gen": "bun scripts/generate-docs.ts"
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.64",

@@ -24,6 +24,34 @@ export async function fetchTask(taskId: string) {
   return row;
 }
 
+/**
+ * Check whether a project exists.
+ * @param projectId - UUID of the project.
+ * @returns True if the project exists.
+ */
+export async function projectExists(projectId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return !!row;
+}
+
+/**
+ * Check whether an edge exists.
+ * @param edgeId - UUID of the edge.
+ * @returns True if the edge exists.
+ */
+export async function edgeExists(edgeId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: taskEdges.id })
+    .from(taskEdges)
+    .where(eq(taskEdges.id, edgeId))
+    .limit(1);
+  return !!row;
+}
+
 // ---------------------------------------------------------------------------
 // Single-entity queries
 // ---------------------------------------------------------------------------

@@ -22,6 +22,9 @@ import {
   searchTasks,
   getProjectTasksSlim,
   getTaskEdgesDetailed,
+  fetchTask,
+  projectExists,
+  edgeExists,
 } from "@/lib/graph/queries";
 import type { TaskState } from "@/lib/graph/queries";
 import { buildProjectOverview } from "@/lib/context/overview";
@@ -76,6 +79,37 @@ const STATE_HINTS: Record<TaskState, string> = {
  */
 function stateHint(state: TaskState): string {
   return STATE_HINTS[state];
+}
+
+// ---------------------------------------------------------------------------
+// Existence guards — return actionable error or null (pass)
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify a project exists. Returns a fail result with recovery hint, or null.
+ * @param id - Project UUID to check.
+ */
+async function requireProject(id: string): Promise<ToolResult | null> {
+  if (await projectExists(id)) return null;
+  return fail(`Project '${id}' not found. Run mymir_project action='list' to see available projects.`);
+}
+
+/**
+ * Verify a task exists. Returns a fail result with recovery hint, or null.
+ * @param id - Task UUID to check.
+ */
+async function requireTask(id: string): Promise<ToolResult | null> {
+  if (await fetchTask(id)) return null;
+  return fail(`Task '${id}' not found. Run mymir_query type='search' to find tasks, or type='list' with your projectId.`);
+}
+
+/**
+ * Verify an edge exists. Returns a fail result with recovery hint, or null.
+ * @param id - Edge UUID to check.
+ */
+async function requireEdge(id: string): Promise<ToolResult | null> {
+  if (await edgeExists(id)) return null;
+  return fail(`Edge '${id}' not found. Run mymir_query type='edges' with a taskId to see current edges.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +246,8 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
       }
       case "update": {
         if (!p.projectId) return fail("projectId required for update");
+        const bad = await requireProject(p.projectId);
+        if (bad) return bad;
         const changes: Record<string, unknown> = {};
         if (p.title !== undefined) changes.title = p.title;
         if (p.description !== undefined) changes.description = p.description;
@@ -235,6 +271,8 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
     switch (p.action) {
       case "create": {
         if (!p.projectId) return fail("projectId required for create");
+        const badProject = await requireProject(p.projectId);
+        if (badProject) return badProject;
         if (!p.title) return fail("title required for create");
         if (!p.description) return fail("description required for create (2-4 sentences: what, why, how)");
         const task = await createTask({
@@ -263,6 +301,8 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
       }
       case "update": {
         if (!p.taskId) return fail("taskId required for update. Use mymir_query type='search' to find it.");
+        const badTask = await requireTask(p.taskId);
+        if (badTask) return badTask;
         const changes: Record<string, unknown> = {};
         if (p.title !== undefined) changes.title = p.title;
         if (p.description !== undefined) changes.description = p.description;
@@ -294,6 +334,8 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
       }
       case "delete": {
         if (!p.taskId) return fail("taskId required for delete");
+        const badDel = await requireTask(p.taskId);
+        if (badDel) return badDel;
         if (p.preview !== false) {
           const result = await deleteTaskPreview(p.taskId);
           return ok({ ...result, _hint: "Preview only. Run again with preview=false to delete." });
@@ -302,6 +344,8 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
       }
       case "reorder": {
         if (!p.taskId) return fail("taskId required for reorder");
+        const badReorder = await requireTask(p.taskId);
+        if (badReorder) return badReorder;
         if (p.order === undefined) return fail("order required for reorder (0-based position)");
         return ok(await reorderTask(p.taskId, p.order));
       }
@@ -339,6 +383,8 @@ export async function handleEdge(p: EdgeParams): Promise<ToolResult> {
       case "update": {
         if (!p.edgeId)
           return fail("edgeId required for update. Use mymir_query type='edges' to find edge IDs.");
+        const badEdge = await requireEdge(p.edgeId);
+        if (badEdge) return badEdge;
         return ok(await updateEdge(p.edgeId, {
           edgeType: p.edgeType as EdgeType | undefined,
           note: p.note,
@@ -346,6 +392,8 @@ export async function handleEdge(p: EdgeParams): Promise<ToolResult> {
       }
       case "remove": {
         if (p.edgeId) {
+          const badRm = await requireEdge(p.edgeId);
+          if (badRm) return badRm;
           await removeEdge(p.edgeId);
           return ok({ removed: p.edgeId });
         }
@@ -379,21 +427,29 @@ export async function handleQuery(p: QueryParams): Promise<ToolResult> {
       case "search": {
         if (!p.query) return fail("query string required for search");
         if (!p.projectId) return fail("projectId required for search");
+        const badSearch = await requireProject(p.projectId);
+        if (badSearch) return badSearch;
         const results = await searchTasks(p.projectId, p.query);
         const hints = results.length === 1 ? [stateHint(results[0].state)] : [];
         return ok({ results, ...(hints.length > 0 && { _hints: hints }) });
       }
       case "list": {
         if (!p.projectId) return fail("projectId required for list");
+        const badList = await requireProject(p.projectId);
+        if (badList) return badList;
         return ok(await getProjectTasksSlim(p.projectId));
       }
       case "edges": {
         if (!p.taskId)
           return fail("taskId required for edges. Use type='search' to find task IDs.");
+        const badEdges = await requireTask(p.taskId);
+        if (badEdges) return badEdges;
         return ok(await getTaskEdgesDetailed(p.taskId));
       }
       case "overview": {
         if (!p.projectId) return fail("projectId required for overview");
+        const badOverview = await requireProject(p.projectId);
+        if (badOverview) return badOverview;
         return ok(await buildProjectOverview(p.projectId));
       }
     }
@@ -410,11 +466,15 @@ export async function handleQuery(p: QueryParams): Promise<ToolResult> {
  */
 export async function handleContext(p: ContextParams): Promise<ToolResult> {
   try {
+    const badCtx = await requireTask(p.taskId);
+    if (badCtx) return badCtx;
     switch (p.depth) {
       case "summary":
         return ok(await buildSummaryContext(p.taskId));
       case "working": {
         if (!p.projectId) return fail("projectId required for working depth");
+        const badWk = await requireProject(p.projectId);
+        if (badWk) return badWk;
         const ctx = await buildWorkingContext(p.taskId, p.projectId);
         return ok(await formatWorkingContext(ctx));
       }
@@ -438,6 +498,8 @@ export async function handleAnalyze(p: AnalyzeParams): Promise<ToolResult> {
     switch (p.type) {
       case "ready": {
         if (!p.projectId) return fail("projectId required for ready");
+        const badReady = await requireProject(p.projectId);
+        if (badReady) return badReady;
         const ready = await getReadyTasks(p.projectId);
         if (Array.isArray(ready) && ready.length === 0) {
           return ok({ tasks: ready, _hints: ["No ready tasks. Run type='plannable' to find tasks to plan, or type='blocked' for blockers."] });
@@ -446,19 +508,27 @@ export async function handleAnalyze(p: AnalyzeParams): Promise<ToolResult> {
       }
       case "blocked": {
         if (!p.projectId) return fail("projectId required for blocked");
+        const badBlocked = await requireProject(p.projectId);
+        if (badBlocked) return badBlocked;
         return ok(await getBlockedTasks(p.projectId));
       }
       case "downstream": {
         if (!p.taskId)
           return fail("taskId required for downstream analysis. Use mymir_query type='search' to find it.");
+        const badDown = await requireTask(p.taskId);
+        if (badDown) return badDown;
         return ok(await getDownstream(p.taskId));
       }
       case "critical_path": {
         if (!p.projectId) return fail("projectId required for critical_path");
+        const badCrit = await requireProject(p.projectId);
+        if (badCrit) return badCrit;
         return ok(await getCriticalPath(p.projectId));
       }
       case "plannable": {
         if (!p.projectId) return fail("projectId required for plannable");
+        const badPlan = await requireProject(p.projectId);
+        if (badPlan) return badPlan;
         const plannable = await getPlannableTasks(p.projectId);
         if (Array.isArray(plannable) && plannable.length === 0) {
           return ok({ tasks: plannable, _hints: ["No plannable tasks. Drafts need description and acceptance criteria before planning."] });

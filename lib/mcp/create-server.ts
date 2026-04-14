@@ -107,7 +107,7 @@ export function registerAllTools(server: McpServer): void {
       description: DESCRIPTIONS.mymir_project,
       inputSchema: z.object({
         action: z.enum(["list", "create", "select", "update"])
-          .describe("list=get all, create=new, select=set current, update=modify"),
+          .describe("list=get all, create=new, select=confirm working project, update=modify"),
         projectId: z.string().optional()
           .describe("Project UUID. Required for select and update"),
         title: z.string().optional()
@@ -133,6 +133,7 @@ export function registerAllTools(server: McpServer): void {
           if (!params.projectId) return err("projectId required for select. Call with action='list' first to get IDs.");
           return json({ selected: params.projectId, _hints: ["Stateless mode — pass this projectId explicitly on every subsequent call."] });
         }
+        // select returns early above; narrow for handleProject
         const { action, ...rest } = params;
         const result = await handleProject({ action: action as "list" | "create" | "update", ...rest });
         return toMcp(result);
