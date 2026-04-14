@@ -87,40 +87,36 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
-  // MCP API key auth (existing behavior preserved)
-  if (pathname.startsWith("/api/mymir/") || pathname === "/api/mcp") {
-    const authError = await checkAuth(request);
-    if (authError) return authError;
-  }
-
+  // Rate limiting — runs before auth so brute-force attempts are throttled
+  let rlHeaders: Record<string, string> | null = null;
   if (!pathname.startsWith("/api/auth/")) {
     const rule = matchRule(pathname);
     if (rule) {
       const key = await extractKey(request, rule.keyStrategy);
       if (key) {
-        const backend = getBackend();
-        const result = await backend.check(
+        const result = await getBackend().check(
           `${rule.pattern}:${key}`,
           rule.max,
           rule.window,
         );
-        const headers = rateLimitHeaders(result, rule);
+        rlHeaders = rateLimitHeaders(result, rule);
         if (!result.allowed) {
           return NextResponse.json(
             { error: "Too many requests. Please try again later." },
-            { status: 429, headers },
+            { status: 429, headers: rlHeaders },
           );
         }
-        const response = NextResponse.next();
-        for (const [k, v] of Object.entries(headers)) {
-          response.headers.set(k, v);
-        }
-        return response;
       }
     }
   }
 
-  // UUID validation for project routes (existing behavior preserved)
+  // MCP API key auth
+  if (pathname.startsWith("/api/mymir/") || pathname === "/api/mcp") {
+    const authError = await checkAuth(request);
+    if (authError) return authError;
+  }
+
+  // UUID validation for project routes
   const match = pathname.match(/^\/api\/project\/([^/]+)/);
   if (match && !UUID_RE.test(match[1])) {
     return NextResponse.json(
@@ -129,7 +125,13 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  if (rlHeaders) {
+    for (const [k, v] of Object.entries(rlHeaders)) {
+      response.headers.set(k, v);
+    }
+  }
+  return response;
 }
 
 export const config = {
