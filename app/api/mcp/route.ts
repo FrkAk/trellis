@@ -27,8 +27,7 @@ async function verifyMcpAuth(request: Request) {
       },
       jwksUrl: `${baseUrl}/api/auth/jwks`,
     });
-  } catch (err) {
-    console.error("[mcp] token verification failed:", err);
+  } catch {
     return null;
   }
 }
