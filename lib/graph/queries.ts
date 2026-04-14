@@ -39,6 +39,20 @@ export async function projectExists(projectId: string): Promise<boolean> {
 }
 
 /**
+ * Check whether a task exists.
+ * @param taskId - UUID of the task.
+ * @returns True if the task exists.
+ */
+export async function taskExists(taskId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1);
+  return !!row;
+}
+
+/**
  * Check whether an edge exists.
  * @param edgeId - UUID of the edge.
  * @returns True if the edge exists.

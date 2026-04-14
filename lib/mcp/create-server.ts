@@ -97,7 +97,7 @@ const INSTRUCTIONS = [
 
 /**
  * Register all 6 Mymir tools on a server instance.
- * Extracted so both createMcpServer and docs generation can reuse it.
+ * Extracted so createMcpServer and external tooling can reuse it.
  * @param server - Any object with a registerTool method (McpServer or mock).
  */
 export function registerAllTools(server: McpServer): void {
