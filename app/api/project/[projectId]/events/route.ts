@@ -27,6 +27,8 @@ export async function GET(
 
   const { projectId } = await params;
 
+  let slotReleased = false;
+
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -48,11 +50,18 @@ export async function GET(
       _req.signal.addEventListener('abort', () => {
         dbEvents.off('change', send);
         clearInterval(heartbeat);
+        if (!slotReleased) {
+          slotReleased = true;
+          releaseSSESlot(userId);
+        }
         controller.close();
       });
     },
     cancel() {
-      releaseSSESlot(userId);
+      if (!slotReleased) {
+        slotReleased = true;
+        releaseSSESlot(userId);
+      }
     },
   });
 
