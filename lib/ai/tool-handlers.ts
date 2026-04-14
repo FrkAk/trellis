@@ -43,6 +43,18 @@ import {
   getPlannableTasks,
 } from "@/lib/graph/traversal";
 import type { EdgeType, Decision } from "@/lib/types";
+import {
+  formatSummary,
+  formatSearchResults,
+  formatTaskList,
+  formatDetailedEdges,
+  formatOverview,
+  formatReadyTasks,
+  formatBlockedTasks,
+  formatDownstream,
+  formatCriticalPath,
+  formatPlannableTasks,
+} from "./format-responses";
 
 // ---------------------------------------------------------------------------
 // Result type
@@ -430,27 +442,28 @@ export async function handleQuery(p: QueryParams): Promise<ToolResult> {
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
         const results = await searchTasks(p.projectId, p.query);
-        const hints = results.length === 1 ? [stateHint(results[0].state)] : [];
-        return ok({ results, ...(hints.length > 0 && { _hints: hints }) });
+        const hint = results.length === 1 ? stateHint(results[0].state) : undefined;
+        return ok(formatSearchResults(results, hint));
       }
       case "list": {
         if (!p.projectId) return fail("projectId required for list");
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
-        return ok(await getProjectTasksSlim(p.projectId));
+        return ok(formatTaskList(await getProjectTasksSlim(p.projectId)));
       }
       case "edges": {
         if (!p.taskId)
           return fail("taskId required for edges. Use type='search' to find task IDs.");
         const notFound = await requireTask(p.taskId);
         if (notFound) return notFound;
-        return ok(await getTaskEdgesDetailed(p.taskId));
+        return ok(formatDetailedEdges(await getTaskEdgesDetailed(p.taskId)));
       }
       case "overview": {
         if (!p.projectId) return fail("projectId required for overview");
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
-        return ok(await buildProjectOverview(p.projectId));
+        const overview = await buildProjectOverview(p.projectId);
+        return ok(overview ? formatOverview(overview) : "Project not found.");
       }
     }
   } catch (e) {
@@ -470,7 +483,7 @@ export async function handleContext(p: ContextParams): Promise<ToolResult> {
     if (notFound) return notFound;
     switch (p.depth) {
       case "summary":
-        return ok(await buildSummaryContext(p.taskId));
+        return ok(formatSummary(await buildSummaryContext(p.taskId)));
       case "working": {
         if (!p.projectId) return fail("projectId required for working depth");
         const notFound = await requireProject(p.projectId);
@@ -500,40 +513,32 @@ export async function handleAnalyze(p: AnalyzeParams): Promise<ToolResult> {
         if (!p.projectId) return fail("projectId required for ready");
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
-        const ready = await getReadyTasks(p.projectId);
-        if (Array.isArray(ready) && ready.length === 0) {
-          return ok({ tasks: ready, _hints: ["No ready tasks. Run type='plannable' to find tasks to plan, or type='blocked' for blockers."] });
-        }
-        return ok(ready);
+        return ok(formatReadyTasks(await getReadyTasks(p.projectId)));
       }
       case "blocked": {
         if (!p.projectId) return fail("projectId required for blocked");
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
-        return ok(await getBlockedTasks(p.projectId));
+        return ok(formatBlockedTasks(await getBlockedTasks(p.projectId)));
       }
       case "downstream": {
         if (!p.taskId)
           return fail("taskId required for downstream analysis. Use mymir_query type='search' to find it.");
         const notFound = await requireTask(p.taskId);
         if (notFound) return notFound;
-        return ok(await getDownstream(p.taskId));
+        return ok(formatDownstream(await getDownstream(p.taskId)));
       }
       case "critical_path": {
         if (!p.projectId) return fail("projectId required for critical_path");
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
-        return ok(await getCriticalPath(p.projectId));
+        return ok(formatCriticalPath(await getCriticalPath(p.projectId)));
       }
       case "plannable": {
         if (!p.projectId) return fail("projectId required for plannable");
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
-        const plannable = await getPlannableTasks(p.projectId);
-        if (Array.isArray(plannable) && plannable.length === 0) {
-          return ok({ tasks: plannable, _hints: ["No plannable tasks. Drafts need description and acceptance criteria before planning."] });
-        }
-        return ok(plannable);
+        return ok(formatPlannableTasks(await getPlannableTasks(p.projectId)));
       }
     }
   } catch (e) {
