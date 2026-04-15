@@ -98,13 +98,14 @@ Add your credentials to `.env.local`:
 
 ```bash
 DATABASE_URL=postgresql://mymir:mymir@localhost:5432/mymir
+BETTER_AUTH_SECRET=generate-a-random-secret-at-least-32-chars
+BETTER_AUTH_URL=http://localhost:3000
 GOOGLE_GENERATIVE_AI_API_KEY=your-key
 ```
 
 Spin up Postgres and push the schema:
 
 ```bash
-docker compose up -d
 bun run db:setup
 ```
 

@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "db:setup": "docker compose up -d && sleep 2 && bun run db:push",
+    "db:setup": "docker compose up -d --wait && docker exec -i mymir-db-1 psql -U mymir -d mymir < docker/init-auth.sql && bun run db:push",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
