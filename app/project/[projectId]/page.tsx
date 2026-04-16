@@ -89,18 +89,19 @@ export default function WorkspacePage() {
     if (!selectedTaskId) return;
 
     let cancelled = false;
-    const fetchCtx = (depth: string) =>
-      fetch('/api/mymir/context', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: selectedTaskId, depth }),
-      }).then((r) => r.json());
-
-    Promise.all([fetchCtx('agent'), fetchCtx('planning')])
-      .then(([agent, planning]) => {
+    fetch(`/api/project/${projectId}/context`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: selectedTaskId }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Context fetch failed: ${r.status}`);
+        return r.json();
+      })
+      .then((data: { agent: string; planning: string }) => {
         if (!cancelled) {
-          setContextText(agent ?? '');
-          setPlanningContext(planning ?? '');
+          setContextText(data.agent ?? '');
+          setPlanningContext(data.planning ?? '');
         }
       })
       .catch((err) => { if (!cancelled) console.error('[workspace] context fetch failed:', err); });
