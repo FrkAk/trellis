@@ -120,7 +120,6 @@ bun run dev
 Make sure the dev server is running, then install the plugin globally:
 
 ```bash
-claude mcp add --transport http -s user mymir http://localhost:3000/api/mcp
 claude plugin marketplace add ./mcp
 claude plugin install mymir@mymir-local
 ```
