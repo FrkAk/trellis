@@ -36,7 +36,6 @@ export interface RateLimitBackend {
 export const RATE_LIMIT_RULES: RateLimitRule[] = [
   { pattern: "/api/chat",            max: 10,  window: 60, keyStrategy: "session" },
   { pattern: "/api/test-connection", max: 5,   window: 60, keyStrategy: "ip" },
-  { pattern: "/api/mymir/*",        max: 60,  window: 60, keyStrategy: "apikey" },
   { pattern: "/api/mcp",            max: 60,  window: 60, keyStrategy: "apikey" },
   { pattern: "/api/*",              max: 100, window: 60, keyStrategy: "session" },
 ];

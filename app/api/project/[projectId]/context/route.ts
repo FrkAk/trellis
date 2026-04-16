@@ -5,7 +5,7 @@ import { buildPlanningContext } from "@/lib/context/planning";
 
 /**
  * POST handler for fetching task context (agent + planning).
- * Uses session auth (cookie-based), unlike the MCP tool endpoint.
+ * Uses session auth (cookie-based).
  * @param req - Request with { taskId } as JSON body.
  * @returns JSON { agent, planning } with context strings.
  */

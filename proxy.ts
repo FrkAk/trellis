@@ -34,7 +34,6 @@ export async function proxy(request: NextRequest) {
     pathname === "/sign-up" ||
     pathname === "/consent" ||
     pathname.startsWith("/api/auth/") ||
-    pathname.startsWith("/api/mymir/") ||
     pathname === "/api/mcp" ||
     pathname === "/api/test-connection" ||
     pathname.startsWith("/.well-known/");
