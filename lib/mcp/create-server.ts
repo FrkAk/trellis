@@ -118,6 +118,8 @@ export function registerAllTools(server: McpServer): void {
           .describe("Lifecycle: brainstorming → decomposing → active → archived"),
         categories: z.array(z.string()).optional()
           .describe("Task categories for this project (e.g. ['backend', 'frontend', 'mcp']). Determines drawer grouping in the UI."),
+        identifier: z.string().optional()
+          .describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, ...). 2-12 chars, uppercase alphanumeric, unique. Auto-derived from title on create if omitted. On update: renames all existing task refs — external references (PR titles, docs) no longer resolve."),
       }),
       annotations: {
         title: "Manage Project",

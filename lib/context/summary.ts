@@ -5,12 +5,14 @@ import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
 import type { EdgeType, AcceptanceCriterion, Decision } from "@/lib/types";
 import { getTaskEdgesDetailed } from "@/lib/graph/queries";
+import { composeTaskRef } from "@/lib/graph/identifier";
 
 /** Detailed edge information for summary context. */
 type EdgeDetail = {
   edgeType: EdgeType;
   direction: "outgoing" | "incoming";
   connectedTaskId: string;
+  connectedTaskRef: string;
   connectedTaskTitle: string;
   connectedTaskStatus: string;
   note: string;
@@ -18,7 +20,7 @@ type EdgeDetail = {
 
 /** Summary context for a task (0-hop). */
 export type SummaryContext = {
-  node: { title: string; status: string; description: string };
+  node: { taskRef: string; title: string; status: string; description: string };
   parent: { title: string; type: "project" } | null;
   edgeCount: Record<EdgeType, number>;
   edges: EdgeDetail[];
@@ -39,7 +41,7 @@ export async function buildSummaryContext(
   if (!task) return emptyContext();
 
   const [project] = await db
-    .select({ title: projects.title })
+    .select({ title: projects.title, identifier: projects.identifier })
     .from(projects)
     .where(eq(projects.id, task.projectId));
 
@@ -49,6 +51,7 @@ export async function buildSummaryContext(
     edgeType: e.edgeType,
     direction: e.direction,
     connectedTaskId: e.connectedTask.id,
+    connectedTaskRef: e.connectedTask.taskRef,
     connectedTaskTitle: e.connectedTask.title,
     connectedTaskStatus: e.connectedTask.status,
     note: e.note,
@@ -57,7 +60,12 @@ export async function buildSummaryContext(
   const edgeCount = buildEdgeCount(edges);
 
   return {
-    node: { title: task.title, status: task.status, description: task.description },
+    node: {
+      taskRef: project ? composeTaskRef(project.identifier, task.sequenceNumber) : "",
+      title: task.title,
+      status: task.status,
+      description: task.description,
+    },
     parent: project ? { title: project.title, type: "project" } : null,
     edgeCount,
     edges,
@@ -89,7 +97,7 @@ function buildEdgeCount(edges: EdgeDetail[]): Record<EdgeType, number> {
  */
 function emptyContext(): SummaryContext {
   return {
-    node: { title: "", status: "", description: "" },
+    node: { taskRef: "", title: "", status: "", description: "" },
     parent: null,
     edgeCount: {
       depends_on: 0,

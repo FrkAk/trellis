@@ -1,25 +1,28 @@
 "use server";
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { tasks, conversations } from "@/lib/db/schema";
+import { tasks, projects, conversations } from "@/lib/db/schema";
 import type { Message } from "@/lib/types";
 import { getAncestors } from "@/lib/graph/traversal";
 import { fetchTask, getTaskEdgesDetailed } from "@/lib/graph/queries";
+import { composeTaskRef } from "@/lib/graph/identifier";
 
 /** Full working context for AI assistant (1-hop). */
 type WorkingContext = {
   node: Record<string, unknown>;
+  taskRef: string;
   ancestors: { id: string; type: "project"; title: string }[];
   edges: {
     id: string;
+    taskRef: string;
     edgeType: string;
     direction: "outgoing" | "incoming";
     title: string;
     status: string;
     note: string;
   }[];
-  siblings: { id: string; title: string; status: string }[];
+  siblings: { id: string; taskRef: string; title: string; status: string }[];
   conversationHistory: Message[];
 };
 
@@ -36,18 +39,22 @@ export async function buildWorkingContext(
 ): Promise<WorkingContext> {
   const task = await fetchTask(taskId);
   if (!task) {
-    return { node: {}, ancestors: [], edges: [], siblings: [], conversationHistory: [] };
+    return { node: {}, taskRef: "", ancestors: [], edges: [], siblings: [], conversationHistory: [] };
   }
 
-  const [ancestors, detailedEdges, siblings, conversationHistory] = await Promise.all([
+  const [projectRow, ancestors, detailedEdges, siblings, conversationHistory] = await Promise.all([
+    db.select({ identifier: projects.identifier }).from(projects).where(eq(projects.id, projectId)).then(r => r[0]),
     getAncestors(taskId),
     getTaskEdgesDetailed(taskId),
     fetchSiblings(taskId, projectId),
     fetchConversation(taskId, projectId),
   ]);
 
+  const taskRef = projectRow ? composeTaskRef(projectRow.identifier, task.sequenceNumber) : "";
+
   const edges = detailedEdges.map((e) => ({
     id: e.connectedTask.id,
+    taskRef: e.connectedTask.taskRef,
     edgeType: e.edgeType as string,
     direction: e.direction,
     title: e.connectedTask.title,
@@ -57,6 +64,7 @@ export async function buildWorkingContext(
 
   return {
     node: task as unknown as Record<string, unknown>,
+    taskRef,
     ancestors,
     edges,
     siblings,
@@ -82,7 +90,7 @@ export async function formatWorkingContext(
 
   // --- START: highest recall (primacy) ---
   const parts: string[] = [
-    `# Task: "${title}" (${status})`,
+    `# ${ctx.taskRef ? `\`${ctx.taskRef}\` ` : ""}"${title}" (${status})`,
   ];
 
   if (description) parts.push(`\n## Description\n${description}`);
@@ -176,7 +184,7 @@ function formatEdgesSection(edges: WorkingContext["edges"]): string {
   const lines = ["\n## Connected Tasks"];
   for (const e of edges) {
     const arrow = e.direction === "outgoing" ? "\u2192" : "\u2190";
-    let line = `- ${e.edgeType} ${arrow} "${e.title}" (${e.status})`;
+    let line = `- ${e.edgeType} ${arrow} \`${e.taskRef}\` "${e.title}" (${e.status})`;
     if (e.note) line += ` \u2014 ${e.note}`;
     lines.push(line);
   }
@@ -192,7 +200,7 @@ function formatSiblingsSection(siblings: WorkingContext["siblings"]): string {
   if (siblings.length === 0) return "";
   const lines = ["\n## Siblings"];
   for (const s of siblings) {
-    lines.push(`- "${s.title}" (${s.status})`);
+    lines.push(`- \`${s.taskRef}\` "${s.title}" (${s.status})`);
   }
   return lines.join("\n");
 }
@@ -221,10 +229,23 @@ function formatConversationSection(history: Message[]): string {
  * @returns Array of siblings with id, title, and status.
  */
 async function fetchSiblings(taskId: string, projectId: string) {
-  return db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status })
+  const rows = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      sequenceNumber: tasks.sequenceNumber,
+      identifier: projects.identifier,
+    })
     .from(tasks)
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
     .where(sql`${tasks.projectId} = ${projectId} AND ${tasks.id} != ${taskId}`);
+  return rows.map((r) => ({
+    id: r.id,
+    taskRef: composeTaskRef(r.identifier, r.sequenceNumber),
+    title: r.title,
+    status: r.status,
+  }));
 }
 
 /**

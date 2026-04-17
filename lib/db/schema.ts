@@ -6,6 +6,7 @@ import {
   timestamp,
   jsonb,
   index,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type {
@@ -25,6 +26,7 @@ import type {
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
+  identifier: text("identifier").notNull().unique("projects_identifier_unique"),
   description: text("description").notNull().default(""),
   status: text("status").$type<ProjectStatus>().notNull().default("brainstorming"),
   categories: jsonb("categories").$type<string[]>().notNull().default([]),
@@ -48,6 +50,7 @@ export const tasks = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    sequenceNumber: integer("sequence_number").notNull(),
     description: text("description").notNull().default(""),
     status: text("status").$type<TaskStatus>().notNull().default("draft"),
     order: integer("order").notNull().default(0),
@@ -65,7 +68,10 @@ export const tasks = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("tasks_project_id_idx").on(t.projectId)],
+  (t) => [
+    index("tasks_project_id_idx").on(t.projectId),
+    unique("tasks_project_sequence_unique").on(t.projectId, t.sequenceNumber),
+  ],
 );
 
 export type Task = typeof tasks.$inferSelect;

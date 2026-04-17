@@ -7,6 +7,21 @@ import {
   projects,
   taskEdges,
 } from "@/lib/db/schema";
+import { composeTaskRef } from "./identifier";
+
+/**
+ * Fetch a project's identifier prefix for composing taskRefs.
+ *
+ * @param projectId - UUID of the project.
+ * @returns Identifier string, or null if project not found.
+ */
+async function getProjectIdentifier(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ identifier: projects.identifier })
+    .from(projects)
+    .where(eq(projects.id, projectId));
+  return row?.identifier ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // Ancestor traversal
@@ -146,11 +161,15 @@ export async function getConnectedTasks(
 /** A task in a downstream chain with depth. */
 export type DownstreamNode = {
   id: string;
+  taskRef: string;
+  title: string;
   depth: number;
 };
 
 /**
  * Follow `depends_on` edges in reverse: find tasks that depend on this task.
+ * Edges are project-scoped so all downstream tasks share the root task's project.
+ *
  * @param taskId - UUID of the starting task.
  * @param maxDepth - Maximum traversal depth (default 10).
  * @returns Array of downstream tasks with depth.
@@ -187,10 +206,41 @@ export async function getDownstream(
     ORDER BY depth ASC
   `);
 
-  return (rows as unknown as { id: string; depth: number }[]).map((row) => ({
+  const raw = (rows as unknown as { id: string; depth: number }[]).map((row) => ({
     id: row.id,
     depth: Number(row.depth),
   }));
+  if (raw.length === 0) return [];
+
+  const ids = raw.map((r) => r.id);
+  const taskRows = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      sequenceNumber: tasks.sequenceNumber,
+      identifier: projects.identifier,
+    })
+    .from(tasks)
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
+    .where(sql`${tasks.id} IN ${ids}`);
+
+  const infoMap = new Map<string, { taskRef: string; title: string }>();
+  for (const t of taskRows) {
+    infoMap.set(t.id, {
+      taskRef: composeTaskRef(t.identifier, t.sequenceNumber),
+      title: t.title,
+    });
+  }
+
+  return raw.map((r) => {
+    const info = infoMap.get(r.id);
+    return {
+      id: r.id,
+      taskRef: info?.taskRef ?? "",
+      title: info?.title ?? "",
+      depth: r.depth,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +250,7 @@ export async function getDownstream(
 /** A task that is ready to be worked on. */
 export type ReadyTask = {
   id: string;
+  taskRef: string;
   title: string;
   status: string;
   tags: string[];
@@ -215,12 +266,16 @@ export type ReadyTask = {
 export async function getReadyTasks(
   projectId: string,
 ): Promise<ReadyTask[]> {
+  const identifier = await getProjectIdentifier(projectId);
+  if (!identifier) return [];
+
   const allTasks = await db
     .select({
       id: tasks.id,
       title: tasks.title,
       status: tasks.status,
       tags: tasks.tags,
+      sequenceNumber: tasks.sequenceNumber,
     })
     .from(tasks)
     .where(eq(tasks.projectId, projectId));
@@ -263,6 +318,7 @@ export async function getReadyTasks(
     if (!isReady(task.id)) continue;
     ready.push({
       id: task.id,
+      taskRef: composeTaskRef(identifier, task.sequenceNumber),
       title: task.title,
       status: task.status,
       tags: task.tags,
@@ -279,6 +335,7 @@ export async function getReadyTasks(
 /** A draft task with enough content to be planned. */
 export type PlannableTask = {
   id: string;
+  taskRef: string;
   title: string;
   status: string;
   tags: string[];
@@ -293,6 +350,9 @@ export type PlannableTask = {
 export async function getPlannableTasks(
   projectId: string,
 ): Promise<PlannableTask[]> {
+  const identifier = await getProjectIdentifier(projectId);
+  if (!identifier) return [];
+
   const allTasks = await db
     .select({
       id: tasks.id,
@@ -301,6 +361,7 @@ export async function getPlannableTasks(
       tags: tasks.tags,
       description: tasks.description,
       acceptanceCriteria: tasks.acceptanceCriteria,
+      sequenceNumber: tasks.sequenceNumber,
     })
     .from(tasks)
     .where(eq(tasks.projectId, projectId));
@@ -313,6 +374,7 @@ export async function getPlannableTasks(
     return true;
   }).map((task) => ({
     id: task.id,
+    taskRef: composeTaskRef(identifier, task.sequenceNumber),
     title: task.title,
     status: task.status,
     tags: task.tags,
@@ -326,9 +388,10 @@ export async function getPlannableTasks(
 /** A task blocked by unsatisfied dependencies. */
 export type BlockedTask = {
   id: string;
+  taskRef: string;
   title: string;
   status: string;
-  blockedBy: { id: string; title: string; status: string }[];
+  blockedBy: { id: string; taskRef: string; title: string; status: string }[];
 };
 
 /**
@@ -339,8 +402,16 @@ export type BlockedTask = {
 export async function getBlockedTasks(
   projectId: string,
 ): Promise<BlockedTask[]> {
+  const identifier = await getProjectIdentifier(projectId);
+  if (!identifier) return [];
+
   const allTasks = await db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status })
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      sequenceNumber: tasks.sequenceNumber,
+    })
     .from(tasks)
     .where(eq(tasks.projectId, projectId));
 
@@ -361,10 +432,16 @@ export async function getBlockedTasks(
       ),
     );
 
-  const taskInfoMap = new Map<string, { title: string; status: string }>();
-  for (const t of allTasks) taskInfoMap.set(t.id, { title: t.title, status: t.status });
+  const taskInfoMap = new Map<string, { taskRef: string; title: string; status: string }>();
+  for (const t of allTasks) {
+    taskInfoMap.set(t.id, {
+      taskRef: composeTaskRef(identifier, t.sequenceNumber),
+      title: t.title,
+      status: t.status,
+    });
+  }
 
-  const blockedMap = new Map<string, { id: string; title: string; status: string }[]>();
+  const blockedMap = new Map<string, { id: string; taskRef: string; title: string; status: string }[]>();
 
   for (const edge of dependsOnEdges) {
     const targetInfo = taskInfoMap.get(edge.targetTaskId);
@@ -374,6 +451,7 @@ export async function getBlockedTasks(
     const existing = blockedMap.get(edge.sourceTaskId) ?? [];
     existing.push({
       id: edge.targetTaskId,
+      taskRef: targetInfo?.taskRef ?? "",
       title: targetInfo?.title ?? "",
       status: targetStatus,
     });
@@ -386,6 +464,7 @@ export async function getBlockedTasks(
     if (!info) continue;
     blocked.push({
       id: taskId,
+      taskRef: info.taskRef,
       title: info.title,
       status: info.status,
       blockedBy: blockers,
@@ -402,6 +481,7 @@ export async function getBlockedTasks(
 /** A task in the critical path. */
 export type CriticalPathTask = {
   id: string;
+  taskRef: string;
   title: string;
   status: string;
 };
@@ -414,6 +494,9 @@ export type CriticalPathTask = {
 export async function getCriticalPath(
   projectId: string,
 ): Promise<CriticalPathTask[]> {
+  const identifier = await getProjectIdentifier(projectId);
+  if (!identifier) return [];
+
   const rows = await db.execute<{
     id: string;
     title: string;
@@ -466,12 +549,24 @@ export async function getCriticalPath(
   const pathIds = longestRow.path.split(",");
 
   const allTasks = await db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status })
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      sequenceNumber: tasks.sequenceNumber,
+    })
     .from(tasks)
     .where(eq(tasks.projectId, projectId));
 
   const taskMap = new Map<string, CriticalPathTask>();
-  for (const t of allTasks) taskMap.set(t.id, { id: t.id, title: t.title, status: t.status });
+  for (const t of allTasks) {
+    taskMap.set(t.id, {
+      id: t.id,
+      taskRef: composeTaskRef(identifier, t.sequenceNumber),
+      title: t.title,
+      status: t.status,
+    });
+  }
 
   return pathIds
     .map((id) => taskMap.get(id))

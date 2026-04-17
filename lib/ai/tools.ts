@@ -82,6 +82,7 @@ export function brainstormTools(projectId: string) {
         description: z.string().optional().describe("3-5 sentence comprehensive brief"),
         status: z.enum(["brainstorming", "decomposing", "active", "archived"]).optional().describe("Project lifecycle status"),
         categories: z.array(z.string()).optional().describe("Task categories for drawer grouping (e.g. ['backend', 'frontend'])"),
+        identifier: z.string().optional().describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, ...). 2-12 chars, uppercase alphanumeric, unique. Renames all existing task refs — external references (PR titles, docs) no longer resolve."),
       }),
       execute: async (params) =>
         unwrap(await handleProject({ ...params, projectId })),
@@ -243,6 +244,7 @@ export function allTools(projectId: string) {
         description: z.string().optional().describe("3-5 sentence brief"),
         status: z.enum(["brainstorming", "decomposing", "active", "archived"]).optional().describe("Project lifecycle status"),
         categories: z.array(z.string()).optional().describe("Task categories for drawer grouping (e.g. ['backend', 'frontend'])"),
+        identifier: z.string().optional().describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, ...). 2-12 chars, uppercase alphanumeric, unique. Renames all existing task refs — external references (PR titles, docs) no longer resolve."),
       }),
       execute: async (params) =>
         unwrap(await handleProject({ ...params, projectId })),

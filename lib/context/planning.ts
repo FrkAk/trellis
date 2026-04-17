@@ -9,6 +9,7 @@ import {
   fetchEdgeNotesByTarget,
   fetchTaskSummaries,
 } from "@/lib/graph/queries";
+import { composeTaskRef } from "@/lib/graph/identifier";
 import { section, formatCriteria, formatDecisions } from "./format";
 
 /**
@@ -24,15 +25,20 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
   if (!task) return "# Task not found";
 
   const [project] = await db
-    .select({ title: projects.title, description: projects.description })
+    .select({
+      title: projects.title,
+      description: projects.description,
+      identifier: projects.identifier,
+    })
     .from(projects)
     .where(eq(projects.id, task.projectId));
 
   const tags = (task.tags as string[] | null) ?? [];
+  const taskRef = project ? composeTaskRef(project.identifier, task.sequenceNumber) : "";
 
   // --- START: highest recall zone (primacy) — big picture + task spec ---
 
-  const headerLines: string[] = [`# Task: ${task.title}`];
+  const headerLines: string[] = [`# ${taskRef ? `\`${taskRef}\` ` : ""}${task.title}`];
   if (tags.length > 0) {
     headerLines.push(`Tags: ${tags.map((t) => `\`${t}\``).join(", ")}`);
   }
@@ -73,22 +79,28 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
         title: tasks.title,
         status: tasks.status,
         executionRecord: tasks.executionRecord,
+        sequenceNumber: tasks.sequenceNumber,
+        identifier: projects.identifier,
       })
       .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(sql`${tasks.id} IN ${depIds}`);
 
-    const depMap = new Map(depTasks.map((dt) => [dt.id, dt]));
+    const depMap = new Map(depTasks.map((dt) => [dt.id, {
+      ...dt,
+      taskRef: composeTaskRef(dt.identifier, dt.sequenceNumber),
+    }]));
 
     for (const dep of deps) {
       const info = depMap.get(dep.id);
       if (!info) continue;
       const note = upstreamEdgeNotes.get(dep.id);
-      let line = `- **${info.title}** [${info.status}]`;
+      let line = `- \`${info.taskRef}\` **${info.title}** [${info.status}]`;
       if (note) line += ` — ${note}`;
       prereqLines.push(line);
 
       if (info.status === "done" && info.executionRecord) {
-        execLines.push(`### ${info.title}`);
+        execLines.push(`### \`${info.taskRef}\` ${info.title}`);
         execLines.push(info.executionRecord);
       }
     }
@@ -128,7 +140,7 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
       const info = summaryMap.get(d.id);
       if (!info) continue;
       const note = downstreamEdgeNotes.get(d.id);
-      let line = `- **${info.title}** [${info.status}]`;
+      let line = `- \`${info.taskRef}\` **${info.title}** [${info.status}]`;
       if (note) line += ` — ${note}`;
       if (info.description) line += `\n  ${info.description}`;
       downLines.push(line);

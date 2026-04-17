@@ -21,8 +21,8 @@ const STATUS_ORDER = ["in_progress", "planned", "draft", "done"] as const;
  * @param t - Task with id, title, status, and optional tags/category.
  * @returns Formatted line string.
  */
-function taskLine(t: { id: string; title: string; status: string; tags?: string[]; category?: string | null }): string {
-  let line = `- "${t.title}" [${t.status}] \`${t.id}\``;
+function taskLine(t: { id: string; taskRef: string; title: string; status: string; tags?: string[]; category?: string | null }): string {
+  let line = `- \`${t.taskRef}\` "${t.title}" [${t.status}] \`${t.id}\``;
   if (t.category) line += ` | ${t.category}`;
   if (t.tags && t.tags.length > 0) line += `  tags: ${t.tags.join(", ")}`;
   return line;
@@ -57,7 +57,10 @@ function renderGrouped<T extends { status: string }>(tasks: T[], renderLine: (t:
  * @returns Formatted text with title, stats, and edges.
  */
 export function formatSummary(ctx: SummaryContext): string {
-  const parts: string[] = [`# "${ctx.node.title}" [${ctx.node.status}]`];
+  const header = ctx.node.taskRef
+    ? `# \`${ctx.node.taskRef}\` "${ctx.node.title}" [${ctx.node.status}]`
+    : `# "${ctx.node.title}" [${ctx.node.status}]`;
+  const parts: string[] = [header];
   if (ctx.parent) parts.push(`Project: "${ctx.parent.title}"`);
   if (ctx.node.description) parts.push(`\n${ctx.node.description}`);
 
@@ -72,7 +75,7 @@ export function formatSummary(ctx: SummaryContext): string {
     parts.push("\n## Edges");
     for (const e of ctx.edges) {
       const arrow = e.direction === "outgoing" ? "\u2192" : "\u2190";
-      let line = `- ${e.edgeType} ${arrow} "${e.connectedTaskTitle}" [${e.connectedTaskStatus}] \`${e.connectedTaskId}\``;
+      let line = `- ${e.edgeType} ${arrow} \`${e.connectedTaskRef}\` "${e.connectedTaskTitle}" [${e.connectedTaskStatus}] \`${e.connectedTaskId}\``;
       if (e.note) line += ` \u2014 ${e.note}`;
       parts.push(line);
     }
@@ -91,7 +94,7 @@ export function formatSearchResults(results: SearchResult[], hint?: string): str
 
   const parts: string[] = [`Found ${results.length} result${results.length > 1 ? "s" : ""}:`];
   for (const r of results) {
-    let line = `- "${r.title}" [${r.status}|${r.state}] \`${r.id}\``;
+    let line = `- \`${r.taskRef}\` "${r.title}" [${r.status}|${r.state}] \`${r.id}\``;
     if (r.category) line += ` | ${r.category}`;
     if (r.tags.length > 0) line += `  tags: ${r.tags.join(", ")}`;
     parts.push(line);
@@ -123,7 +126,7 @@ export function formatDetailedEdges(edges: DetailedEdge[]): string {
   const parts: string[] = [`${edges.length} edge${edges.length > 1 ? "s" : ""}:`];
   for (const e of edges) {
     const arrow = e.direction === "outgoing" ? "\u2192" : "\u2190";
-    let line = `- ${e.edgeType} ${arrow} "${e.connectedTask.title}" [${e.connectedTask.status}] \`${e.edgeId}\``;
+    let line = `- ${e.edgeType} ${arrow} \`${e.connectedTask.taskRef}\` "${e.connectedTask.title}" [${e.connectedTask.status}] \`${e.edgeId}\``;
     if (e.note) line += ` \u2014 ${e.note}`;
     parts.push(line);
   }
@@ -137,7 +140,7 @@ export function formatDetailedEdges(edges: DetailedEdge[]): string {
  */
 export function formatOverview(overview: ProjectOverview): string {
   const parts: string[] = [
-    `# "${overview.title}" [${overview.status}]`,
+    `# \`${overview.identifier}\` "${overview.title}" [${overview.status}]`,
     `Progress: ${overview.doneTasks}/${overview.totalTasks} done (${overview.progress}%) | ${overview.inProgressTasks} in_progress`,
   ];
   if (overview.categories.length > 0) parts.push(`Categories: ${overview.categories.join(", ")}`);
@@ -145,7 +148,7 @@ export function formatOverview(overview: ProjectOverview): string {
 
   if (overview.tasks.length > 0) {
     parts.push(renderGrouped(overview.tasks, (t) => {
-      let line = `- "${t.title}" \`${t.id}\``;
+      let line = `- \`${t.taskRef}\` "${t.title}" \`${t.id}\``;
       if (t.category) line += ` | ${t.category}`;
       return line;
     }));
@@ -154,7 +157,7 @@ export function formatOverview(overview: ProjectOverview): string {
   if (overview.edges.length > 0) {
     parts.push(`\n## Dependencies (${overview.edges.length})`);
     for (const e of overview.edges) {
-      let line = `- "${e.sourceTitle}" ${e.edgeType} \u2192 "${e.targetTitle}"`;
+      let line = `- \`${e.sourceTaskRef}\` "${e.sourceTitle}" ${e.edgeType} \u2192 \`${e.targetTaskRef}\` "${e.targetTitle}"`;
       if (e.note) line += ` \u2014 ${e.note}`;
       parts.push(line);
     }
@@ -184,9 +187,9 @@ export function formatBlockedTasks(tasks: BlockedTask[]): string {
   if (tasks.length === 0) return "No blocked tasks.";
   const parts: string[] = [`${tasks.length} blocked task${tasks.length > 1 ? "s" : ""}:`];
   for (const t of tasks) {
-    parts.push(`- "${t.title}" [${t.status}] \`${t.id}\``);
+    parts.push(`- \`${t.taskRef}\` "${t.title}" [${t.status}] \`${t.id}\``);
     for (const b of t.blockedBy)
-      parts.push(`  blocked by: "${b.title}" [${b.status}] \`${b.id}\``);
+      parts.push(`  blocked by: \`${b.taskRef}\` "${b.title}" [${b.status}] \`${b.id}\``);
   }
   return parts.join("\n");
 }
@@ -199,7 +202,7 @@ export function formatBlockedTasks(tasks: BlockedTask[]): string {
 export function formatDownstream(nodes: DownstreamNode[]): string {
   if (nodes.length === 0) return "No downstream tasks.";
   const parts = [`${nodes.length} downstream task${nodes.length > 1 ? "s" : ""}:`];
-  for (const n of nodes) parts.push(`- depth ${n.depth}: \`${n.id}\``);
+  for (const n of nodes) parts.push(`- depth ${n.depth}: \`${n.taskRef}\` "${n.title}" \`${n.id}\``);
   return parts.join("\n");
 }
 
@@ -213,7 +216,7 @@ export function formatCriticalPath(tasks: CriticalPathTask[]): string {
   const parts = [`Critical path (${tasks.length} task${tasks.length > 1 ? "s" : ""}):`,];
   for (let i = 0; i < tasks.length; i++) {
     const t = tasks[i];
-    parts.push(`${i + 1}. "${t.title}" [${t.status}] \`${t.id}\``);
+    parts.push(`${i + 1}. \`${t.taskRef}\` "${t.title}" [${t.status}] \`${t.id}\``);
   }
   return parts.join("\n");
 }

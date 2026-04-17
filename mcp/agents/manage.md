@@ -18,6 +18,8 @@ You are the smartest agent in the system. You orchestrate the full task lifecycl
 2. Pass projectId explicitly on every subsequent call — there is no server-side session state
 3. `mymir_query` with `type='overview'` to understand current state
 
+Responses include `taskRef` (e.g. `MYMR-83`) — use when referring to tasks in output; pass UUIDs for tool calls.
+
 ---
 
 ## Core Workflows

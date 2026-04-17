@@ -43,6 +43,7 @@ import {
   getPlannableTasks,
 } from "@/lib/graph/traversal";
 import type { EdgeType, Decision } from "@/lib/types";
+import { validateIdentifier } from "@/lib/graph/identifier";
 import {
   formatSummary,
   formatSearchResults,
@@ -183,6 +184,7 @@ export type ProjectParams = {
   description?: string;
   status?: "brainstorming" | "decomposing" | "active" | "archived";
   categories?: string[];
+  identifier?: string;
 };
 
 /** Params for mymir_task. */
@@ -254,7 +256,21 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
         return ok(await getProjectList());
       case "create": {
         if (!p.title) return fail("title required for create");
-        return ok(await createProject({ title: p.title, description: p.description ?? "", categories: p.categories }));
+        if (p.identifier !== undefined) {
+          const err = validateIdentifier(p.identifier);
+          if (err) return fail(err);
+        }
+        const project = await createProject({
+          title: p.title,
+          description: p.description ?? "",
+          categories: p.categories,
+          identifier: p.identifier,
+        });
+        const createHints: string[] = [];
+        if (p.identifier === undefined) {
+          createHints.push(`Auto-derived identifier '${project.identifier}' from title. Pass identifier='...' on create to override (2-12 chars, uppercase alphanumeric).`);
+        }
+        return ok(createHints.length > 0 ? { ...project, _hints: createHints } : project);
       }
       case "update": {
         if (!p.projectId) return fail("projectId required for update");
@@ -265,7 +281,17 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
         if (p.description !== undefined) changes.description = p.description;
         if (p.status !== undefined) changes.status = p.status;
         if (p.categories !== undefined) changes.categories = p.categories;
-        return ok(await updateProject(p.projectId, changes));
+        if (p.identifier !== undefined) {
+          const err = validateIdentifier(p.identifier);
+          if (err) return fail(err);
+          changes.identifier = p.identifier;
+        }
+        const project = await updateProject(p.projectId, changes);
+        const updateHints: string[] = [];
+        if (p.identifier !== undefined) {
+          updateHints.push(`Renamed all task refs to '${p.identifier}-N'. External references (GitHub PRs, docs, commit messages) to the old prefix no longer resolve.`);
+        }
+        return ok(updateHints.length > 0 ? { ...project, _hints: updateHints } : project);
       }
     }
   } catch (e) {
