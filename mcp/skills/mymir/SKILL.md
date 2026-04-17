@@ -31,6 +31,8 @@ Edges connect tasks: `depends_on` (source needs target done first), `relates_to`
 
 Tasks have: title, description, status, category, acceptanceCriteria, decisions, tags, files, implementationPlan, executionRecord
 
+Responses include `taskRef` (e.g. `MYMR-83`) — use when referring to tasks in output; pass UUIDs for tool calls.
+
 `category` determines drawer grouping (one per task, defined at project level). `tags` are freeform for filtering.
 
 Task titles: verb+noun format (e.g., "Implement JWT auth", "Fix login redirect").
