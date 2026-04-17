@@ -68,19 +68,30 @@ export type CreateProjectInput = Omit<NewProject, "id" | "identifier"> & {
   identifier?: string;
 };
 
+/** Advisory-lock key serializing identifier auto-derivation across concurrent creates. */
+const IDENTIFIER_LOCK_KEY = sql`hashtext('mymir:project-identifier')`;
+
 /**
  * Pick an identifier that's not already taken, auto-suffixing on collision.
  *
+ * Must be called inside a transaction that holds the identifier advisory lock;
+ * otherwise the select-then-insert window is racy.
+ *
+ * @param tx - Drizzle transaction handle.
  * @param base - Starting identifier (e.g. derived from title).
  * @returns Unique identifier.
  * @throws If no unique variant found within 1000 attempts.
  */
-async function pickAvailableIdentifier(base: string): Promise<string> {
-  const existing = await db.select({ identifier: projects.identifier }).from(projects);
+async function pickAvailableIdentifier(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  base: string,
+): Promise<string> {
+  const existing = await tx.select({ identifier: projects.identifier }).from(projects);
   const taken = new Set(existing.map((r) => r.identifier));
   if (!taken.has(base)) return base;
   for (let i = 2; i < 1000; i++) {
-    const candidate = `${base}${i}`.slice(0, 12);
+    const suffix = String(i);
+    const candidate = base.slice(0, 12 - suffix.length) + suffix;
     if (!taken.has(candidate)) return candidate;
   }
   throw new Error(`Could not find unique identifier for base "${base}"`);
@@ -90,30 +101,40 @@ async function pickAvailableIdentifier(base: string): Promise<string> {
  * Insert a new project.
  *
  * If `identifier` is omitted, it is derived from the title and auto-suffixed on
- * collision. If provided, collision surfaces the DB unique-violation error.
+ * collision under a transaction-scoped advisory lock. If provided, collision
+ * surfaces the DB unique-violation error.
  *
  * @param data - Project fields. Identifier optional.
  * @returns The created project row.
  */
 export async function createProject(data: CreateProjectInput) {
-  const identifier = data.identifier
-    ?? (await pickAvailableIdentifier(deriveIdentifier(data.title) || "PROJECT"));
+  const project = await db.transaction(async (tx) => {
+    let identifier = data.identifier;
+    if (identifier === undefined) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${IDENTIFIER_LOCK_KEY})`);
+      identifier = await pickAvailableIdentifier(
+        tx,
+        deriveIdentifier(data.title) || "PROJECT",
+      );
+    }
 
-  const [project] = await db
-    .insert(projects)
-    .values({
-      ...data,
-      identifier,
-      history: [
-        makeHistoryEntry({
-          type: "created",
-          label: "Project created",
-          description: `Project "${data.title}" created.`,
-          actor: "user",
-        }),
-      ],
-    })
-    .returning();
+    const [row] = await tx
+      .insert(projects)
+      .values({
+        ...data,
+        identifier,
+        history: [
+          makeHistoryEntry({
+            type: "created",
+            label: "Project created",
+            description: `Project "${data.title}" created.`,
+            actor: "user",
+          }),
+        ],
+      })
+      .returning();
+    return row;
+  });
   notifyChange();
   return project;
 }

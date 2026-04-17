@@ -370,26 +370,41 @@ export type SearchResult = {
   category: string | null;
 };
 
+/** Match a full taskRef like "MYMR-83" (case-insensitive). */
+const TASK_REF_PATTERN = /^([A-Z0-9]+)-(\d+)$/i;
+
 /**
- * Search tasks by title or tags (case-insensitive) within a project.
+ * Search tasks by taskRef, title, or tags (case-insensitive) within a project.
+ *
+ * When the query is a full taskRef (`<identifier>-<sequenceNumber>`) and the
+ * prefix matches the project's identifier, returns the task with that sequence
+ * number. Otherwise falls back to title + tag search.
+ *
  * @param projectId - UUID of the project.
- * @param query - Search string matched against title and tag values.
+ * @param query - Search string. Accepts taskRef, title fragment, or tag value.
  * @returns Up to 20 matching tasks with derived state, title matches ranked first.
  */
 export async function searchTasks(
   projectId: string,
   query: string,
 ): Promise<SearchResult[]> {
-  const pattern = `%${query}%`;
-  const lower = query.toLowerCase();
-
-  const tagMatch = sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${tasks.tags}) AS t WHERE t ILIKE ${pattern})`;
-
   const [proj] = await db
     .select({ identifier: projects.identifier })
     .from(projects)
     .where(eq(projects.id, projectId));
   if (!proj) return [];
+
+  const trimmedQuery = query.trim();
+  const refMatch = trimmedQuery.match(TASK_REF_PATTERN);
+  const seqClause =
+    refMatch && refMatch[1].toUpperCase() === proj.identifier
+      ? eq(tasks.sequenceNumber, Number(refMatch[2]))
+      : null;
+
+  const pattern = `%${query}%`;
+  const lower = query.toLowerCase();
+  const tagMatch = sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${tasks.tags}) AS t WHERE t ILIKE ${pattern})`;
+  const searchClause = seqClause ?? or(ilike(tasks.title, pattern), tagMatch);
 
   const matchingTasks = await db
     .select({
@@ -403,7 +418,7 @@ export async function searchTasks(
       sequenceNumber: tasks.sequenceNumber,
     })
     .from(tasks)
-    .where(and(eq(tasks.projectId, projectId), or(ilike(tasks.title, pattern), tagMatch)));
+    .where(and(eq(tasks.projectId, projectId), searchClause));
 
   matchingTasks.sort((a, b) => {
     const aLower = a.title.toLowerCase();
