@@ -7,7 +7,7 @@ const PROJECT_STATUS_DISPLAY: Record<string, { label: string; dot: string; bg: s
   brainstorming: { label: 'Idea', dot: 'bg-accent', bg: 'bg-accent/15', text: 'text-accent' },
   decomposing: { label: 'Building', dot: 'bg-progress', bg: 'bg-progress/15', text: 'text-progress' },
   active: { label: 'Active', dot: 'bg-done', bg: 'bg-done/15', text: 'text-done' },
-  archived: { label: 'Archived', dot: 'bg-draft', bg: 'bg-draft/15', text: 'text-draft' },
+  archived: { label: 'Archived', dot: 'bg-draft', bg: 'bg-draft/10', text: 'text-draft' },
 };
 
 interface ProjectBreadcrumbProps {

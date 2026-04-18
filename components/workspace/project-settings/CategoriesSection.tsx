@@ -104,7 +104,7 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
                 }}
                 onBlur={() => commitRename(cat)}
                 autoFocus
-                className="w-24 rounded-md bg-accent/5 px-1.5 py-0.5 font-mono text-[10px] font-medium text-accent-light outline-none ring-1 ring-accent/30"
+                className="w-24 rounded-md bg-accent/8 px-1.5 py-0.5 font-mono text-[10px] font-medium text-accent-light outline-none ring-1 ring-accent/30"
               />
             );
           }
@@ -151,7 +151,7 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
             onBlur={handleAdd}
             autoFocus
             placeholder="Category"
-            className="w-28 rounded-md bg-accent/5 px-1.5 py-0.5 font-mono text-[10px] text-accent placeholder:text-accent/30 outline-none ring-1 ring-accent/30"
+            className="w-28 rounded-md bg-accent/8 px-1.5 py-0.5 font-mono text-[10px] text-accent placeholder:text-accent/30 outline-none ring-1 ring-accent/30"
           />
         ) : (
           <motion.button

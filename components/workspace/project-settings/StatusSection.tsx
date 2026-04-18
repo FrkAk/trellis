@@ -52,7 +52,8 @@ export function StatusSection({ projectId, status, onUpdated }: StatusSectionPro
     setPending(next);
     setError(null);
     try {
-      await updateProjectStatus(projectId, next);
+      const result = await updateProjectStatus(projectId, next);
+      if (!result.ok) { setError(result.message); return; }
       onUpdated?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status');

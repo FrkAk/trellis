@@ -178,6 +178,38 @@ export async function deleteProject(projectId: string) {
   notifyChange();
 }
 
+/**
+ * Rename a project's identifier under the shared identifier advisory lock.
+ *
+ * Holding {@link IDENTIFIER_LOCK_KEY} serializes this rename with concurrent
+ * `createProject` auto-suffix allocation, closing the select-then-insert window.
+ * The unique index on `projects.identifier` still surfaces a `23505` if the
+ * target is already taken by a project outside the lock-protected critical
+ * section (e.g. a direct SQL rename).
+ *
+ * @param projectId - UUID of the project to rename.
+ * @param identifier - New identifier (must already be shape-validated).
+ * @returns The updated project row.
+ * @throws {ProjectNotFoundError} If no project matches `projectId`.
+ */
+export async function renameProjectIdentifier(
+  projectId: string,
+  identifier: Identifier,
+) {
+  const updated = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${IDENTIFIER_LOCK_KEY})`);
+    const [row] = await tx
+      .update(projects)
+      .set({ identifier, updatedAt: new Date() })
+      .where(eq(projects.id, projectId))
+      .returning();
+    if (!row) throw new ProjectNotFoundError(projectId);
+    return row;
+  });
+  notifyChange();
+  return updated;
+}
+
 // ---------------------------------------------------------------------------
 // Task
 // ---------------------------------------------------------------------------
@@ -712,7 +744,7 @@ export async function renameCategory(
       .select({ categories: projects.categories })
       .from(projects)
       .where(eq(projects.id, projectId));
-    if (!project) return;
+    if (!project) throw new ProjectNotFoundError(projectId);
 
     const updatedCategories = project.categories.map((c) =>
       c === oldName ? newName : c,
@@ -745,7 +777,7 @@ export async function deleteCategory(
       .select({ categories: projects.categories })
       .from(projects)
       .where(eq(projects.id, projectId));
-    if (!project) return;
+    if (!project) throw new ProjectNotFoundError(projectId);
 
     const updatedCategories = project.categories.filter(
       (c) => c !== categoryName,

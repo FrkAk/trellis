@@ -20,7 +20,8 @@ export function ReviewActions({ projectId }: ReviewActionsProps) {
   const router = useRouter();
 
   const handleEnter = useCallback(async () => {
-    await updateProjectStatus(projectId, 'active');
+    const result = await updateProjectStatus(projectId, 'active');
+    if (!result.ok) throw new Error(result.message);
     router.push(`/project/${projectId}`);
   }, [projectId, router]);
 

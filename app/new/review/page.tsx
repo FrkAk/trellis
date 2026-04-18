@@ -104,7 +104,8 @@ function ReviewContent() {
     try {
       setTransitionError(null);
       setIsTransitioning(true);
-      await updateProjectStatus(projectId, 'active');
+      const result = await updateProjectStatus(projectId, 'active');
+      if (!result.ok) throw new Error(result.message);
       router.push(`/project/${projectId}`);
     } catch (err) {
       console.error('[review] failed to activate project:', err);
