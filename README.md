@@ -162,14 +162,20 @@ Then start Gemini and run `/mcp auth mymir` to complete the OAuth flow. A browse
 
 ### Codex CLI
 
-Add this to `~/.codex/config.toml`:
+Make sure the dev server is running, then run:
 
-```toml
-[mcp_servers.mymir]
-url = "http://localhost:3000/api/mcp"
+```bash
+codex mcp add mymir --url http://localhost:3000/api/mcp
 ```
 
-Make sure the dev server is running before starting a Codex session. On first use, Mymir will return an authorization URL — open it in your browser to complete the OAuth flow.
+This automatically detects the OAuth flow and opens a browser for sign-in. After authorization, Mymir is available the next time you open Codex. Tokens are stored automatically for future sessions.
+
+To install the `/mymir` slash command, install the plugin (one-time, same as Claude Code):
+
+```bash
+claude plugin marketplace add ./mcp
+claude plugin install mymir@mymir-local
+```
 
 ---
 

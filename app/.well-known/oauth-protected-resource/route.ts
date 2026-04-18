@@ -13,7 +13,7 @@ const origin = new URL(baseUrl).origin;
 export async function GET() {
   const metadata = await serverClient.getProtectedResourceMetadata({
     resource: `${origin}/api/mcp`,
-    authorization_servers: [origin],
+    authorization_servers: [`${baseUrl}/api/auth`],
   });
   return new Response(JSON.stringify(metadata), {
     headers: {
