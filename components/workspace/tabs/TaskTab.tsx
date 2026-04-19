@@ -13,8 +13,23 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import { getSettings } from '@/lib/settings';
 import { getMessageText, convertPersistedToUIMessages } from '@/lib/chat-helpers';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
+import { dedupedFetch } from '@/lib/fetch-dedupe';
 import type { TaskEdge } from '@/lib/db/schema';
 import type { AcceptanceCriterion, Decision } from '@/lib/types';
+
+/**
+ * Fetches persisted task chat history, deduped across concurrent callers.
+ * @param projectId - Project UUID.
+ * @param taskId - Task UUID.
+ * @returns Resolved chat messages.
+ */
+function loadHistory(projectId: string, taskId: string): Promise<UIMessage[]> {
+  return dedupedFetch(`task-history:${projectId}:${taskId}`, () =>
+    fetch(`/api/project/${projectId}/conversations?taskId=${taskId}`)
+      .then((r) => r.json())
+      .then((data) => convertPersistedToUIMessages(data.messages ?? [])),
+  );
+}
 
 interface TaskTabProps {
   /** @param taskId - UUID of the selected task. */
@@ -29,8 +44,8 @@ interface TaskTabProps {
   decisions: Decision[];
   /** @param edges - Edges connected to this task. */
   edges: TaskEdge[];
-  /** @param taskMap - Map of task IDs to titles. */
-  taskMap: Map<string, { title: string; status: string }>;
+  /** @param taskMap - Map of task IDs to title, status, and taskRef. */
+  taskMap: Map<string, { title: string; status: string; taskRef: string }>;
   /** @param onSelectNode - Called when a relationship link is clicked. */
   onSelectNode: (taskId: string) => void;
   /** @param files - File paths this task touches. */
@@ -131,18 +146,23 @@ export function TaskTab({
   useEffect(() => {
     setLoadedHistory(null);
     setHistoryError(false);
-    fetch(`/api/project/${projectId}/conversations?taskId=${taskId}`)
-      .then((r) => r.json())
-      .then((data) => setLoadedHistory(convertPersistedToUIMessages(data.messages ?? [])))
-      .catch((err) => { console.error('[refine] history fetch failed:', err); setHistoryError(true); setLoadedHistory([]); });
+    let cancelled = false;
+    loadHistory(projectId, taskId)
+      .then((messages) => { if (!cancelled) setLoadedHistory(messages); })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('[refine] history fetch failed:', err);
+        setHistoryError(true);
+        setLoadedHistory([]);
+      });
+    return () => { cancelled = true; };
   }, [projectId, taskId]);
 
   const retryHistory = useCallback(() => {
     setHistoryError(false);
     setLoadedHistory(null);
-    fetch(`/api/project/${projectId}/conversations?taskId=${taskId}`)
-      .then((r) => r.json())
-      .then((data) => setLoadedHistory(convertPersistedToUIMessages(data.messages ?? [])))
+    loadHistory(projectId, taskId)
+      .then((messages) => setLoadedHistory(messages))
       .catch((err) => { console.error('[refine] history fetch failed:', err); setHistoryError(true); setLoadedHistory([]); });
   }, [projectId, taskId]);
 
@@ -718,8 +738,8 @@ interface RelationshipsSectionProps {
   taskId: string;
   /** @param edges - Edges connected to this task. */
   edges: TaskEdge[];
-  /** @param taskMap - Map of task IDs to title+status. */
-  taskMap: Map<string, { title: string; status: string }>;
+  /** @param taskMap - Map of task IDs to title, status, and taskRef. */
+  taskMap: Map<string, { title: string; status: string; taskRef: string }>;
   /** @param onSelectNode - Navigate to a connected task. */
   onSelectNode: (taskId: string) => void;
   /** @param onGraphChange - Refresh graph data after mutation. */
@@ -846,9 +866,12 @@ function RelationshipsSection({
                   <span className="text-text-muted/30 text-[10px]">&rsaquo;</span>
                   <button
                     onClick={() => onSelectNode(otherId)}
-                    className="min-w-0 cursor-pointer truncate text-xs text-accent transition-colors hover:underline"
+                    className="min-w-0 flex cursor-pointer items-center gap-1.5 text-xs transition-colors"
                   >
-                    {other?.title ?? otherId.slice(0, 8)}
+                    <span className="shrink-0 font-mono text-[10px] text-text-muted tabular-nums">
+                      {other?.taskRef ?? otherId.slice(0, 8)}
+                    </span>
+                    <span className="truncate text-accent hover:underline">{other?.title ?? ''}</span>
                   </button>
                   {other && (
                     <Badge status={other.status} className="ml-auto shrink-0 scale-90 opacity-60" />

@@ -15,6 +15,7 @@ import Markdown from 'react-markdown';
 import { getSettings } from '@/lib/settings';
 import { getMessageText, convertPersistedToUIMessages } from '@/lib/chat-helpers';
 import { isPlannable, isReady, buildStatusMap } from '@/lib/ui/taskState';
+import { dedupedFetch } from '@/lib/fetch-dedupe';
 import type { Task, TaskEdge } from '@/lib/db/schema';
 import type { Message as DbMessage } from '@/lib/types';
 
@@ -54,9 +55,10 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
 
   const fetchGraph = useCallback(async () => {
     try {
-      const res = await fetch(`/api/project/${projectId}/graph`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await dedupedFetch<ProjectGraph | null>(`graph:${projectId}`, () =>
+        fetch(`/api/project/${projectId}/graph`).then((r) => (r.ok ? r.json() : null)),
+      );
+      if (data) {
         setGraph(data);
         setGraphError(false);
       }
@@ -68,21 +70,19 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
 
   // Recover persisted conversation on mount
   useEffect(() => {
-    async function loadPersistedMessages() {
-      try {
-        const res = await fetch(`/api/project/${projectId}/conversations?taskId=${DECOMPOSE_CONVO_ID}`);
-        if (res.ok) {
-          const { messages: dbMessages } = await res.json() as { messages: DbMessage[] };
-          if (dbMessages?.length) {
-            setRecoveredMessages(convertPersistedToUIMessages(dbMessages));
-          }
-        }
-      } catch (err) {
-        console.warn("[decompose] conversation recovery failed:", err);
-      }
-      setReady(true);
-    }
-    loadPersistedMessages();
+    let cancelled = false;
+    dedupedFetch<DbMessage[] | null>(`task-history:${projectId}:${DECOMPOSE_CONVO_ID}`, () =>
+      fetch(`/api/project/${projectId}/conversations?taskId=${DECOMPOSE_CONVO_ID}`).then((r) =>
+        r.ok ? r.json().then((d: { messages: DbMessage[] }) => d.messages ?? []) : null,
+      ),
+    )
+      .then((dbMessages) => {
+        if (cancelled) return;
+        if (dbMessages && dbMessages.length) setRecoveredMessages(convertPersistedToUIMessages(dbMessages));
+      })
+      .catch((err) => { if (!cancelled) console.warn("[decompose] conversation recovery failed:", err); })
+      .finally(() => { if (!cancelled) setReady(true); });
+    return () => { cancelled = true; };
   }, [projectId]);
 
   const hasRecoveredMessages = recoveredMessages && recoveredMessages.length > 0;
@@ -120,21 +120,19 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
   // Initial graph fetch
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/project/${projectId}/graph`);
-        if (cancelled) return;
-        if (res.ok) {
-          const data = await res.json();
-          setGraph(data);
-          setGraphError(false);
-        }
-      } catch (err) {
+    dedupedFetch<ProjectGraph | null>(`graph:${projectId}`, () =>
+      fetch(`/api/project/${projectId}/graph`).then((r) => (r.ok ? r.json() : null)),
+    )
+      .then((data) => {
+        if (cancelled || !data) return;
+        setGraph(data);
+        setGraphError(false);
+      })
+      .catch((err) => {
         if (cancelled) return;
         console.error('[decompose] graph fetch failed:', err);
         setGraphError(true);
-      }
-    })();
+      });
     return () => { cancelled = true; };
   }, [projectId]);
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { TopBar } from '@/components/layout/TopBar';
 import { PageShell } from '@/components/layout/PageShell';
 import { Button } from '@/components/shared/Button';
+import { dedupedFetch } from '@/lib/fetch-dedupe';
 
 const PROVIDERS = [
   { id: 'google', label: 'Gemini (Google)', needsKey: true },
@@ -61,15 +62,16 @@ export default function SettingsPage() {
   const fetchModels = useCallback(async (prov: string, key?: string) => {
     setLoadingModels(true);
     try {
-      const res = await fetch('/api/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: prov, ...(key && { apiKey: key }) }),
-      });
-      const data = await res.json();
-      if (data.models?.length > 0) {
+      const data = await dedupedFetch(`models:${prov}:${key ?? ''}`, () =>
+        fetch('/api/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: prov, ...(key && { apiKey: key }) }),
+        }).then((r) => r.json() as Promise<{ models?: string[] }>),
+      );
+      if (data.models && data.models.length > 0) {
         setModels(data.models);
-        return data.models as string[];
+        return data.models;
       }
     } catch (err) {
       console.warn("[settings] model fetch failed:", err);

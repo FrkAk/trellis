@@ -18,6 +18,8 @@ You are the smartest agent in the system. You orchestrate the full task lifecycl
 2. Pass projectId explicitly on every subsequent call — there is no server-side session state
 3. `mymir_query` with `type='overview'` to understand current state
 
+Responses include `taskRef` (e.g. `MYMR-83`) — use when referring to tasks in output; pass UUIDs for tool calls.
+
 ---
 
 ## Core Workflows
@@ -91,6 +93,7 @@ When a user or coding agent reports they finished a task:
 - **Decisions**: One-liner per decision: CHOICE + WHY.
   Example: "Chose Redis for refresh tokens — need fast revocation lookups"
 - **Files**: ALWAYS populate the `files` array — this is the highest-ROI field for downstream coding agents. Every file created or modified.
+- **Tags**: MUST cover four dimensions on every task: exactly 1 work type (closed: `bug`/`feature`/`refactor`/`docs`/`test`/`chore`/`perf`), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces the task touches), exactly 1 priority (closed: `release-blocker`/`core`/`normal`/`backlog`). Do NOT tag codebase area (`category` covers that) or status. Honor user-specified tags as-is — don't rewrite them into canonical form.
 
 **Markdown formatting rule (applies to description, executionRecord, implementationPlan, and decisions — NOT files, which are plain path strings):**
 Stay concise — same density as before, just use markdown structure so the UI renders it well:
@@ -153,10 +156,12 @@ When the user says "continue", "what's the status", or starts a new session:
 5. Run Workflow F to propagate changes
 6. Report what was unlocked by completing this task (`mymir_analyze type='ready'`)
 
-### Add a New Task
-1. `mymir_task` with `action='create'` with title (verb+noun, e.g., "Implement JWT auth"), description, criteria, category, and tags. Category should match a project category — check with `mymir_project action='list'`.
-2. `mymir_edge` with `action='create'` for any dependencies
-3. Run Workflow F to check if existing tasks need new edges to this task
+### Create a Task
+0. Check `mymir_query` with `type='overview'` Tag vocabulary section for existing tags to reuse.
+1. `mymir_task` with `action='create'` — title (verb+noun, e.g., "Implement JWT auth"), description, acceptanceCriteria, category, and tags. Category should match a project category — check with `mymir_project action='list'`.
+2. `mymir_edge` with `action='create'` for any dependencies or relationships
+3. Verify: `mymir_query` with `type='edges'` on the new task — confirm edges look correct
+4. Run Workflow F to check if existing tasks need new edges to this task
 
 ### Delete a Task
 1. `mymir_task` with `action='delete'` (defaults to preview)

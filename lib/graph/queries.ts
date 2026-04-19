@@ -9,6 +9,7 @@ import {
   conversations,
 } from "@/lib/db/schema";
 import type { EdgeType } from "@/lib/types";
+import { asIdentifier, composeTaskRef, enrichWithTaskRef } from "./identifier";
 
 // ---------------------------------------------------------------------------
 // Task helpers
@@ -122,6 +123,7 @@ export async function getProjectTasks(projectId: string) {
 /** Slim task representation for project listings. */
 export type TaskSlim = {
   id: string;
+  taskRef: string;
   title: string;
   status: string;
   tags: string[];
@@ -133,10 +135,16 @@ export type TaskSlim = {
  * Fetch slim task list for a project (id, title, status, tags, order only).
  * Used by mymir_query type='list' to keep MCP responses small.
  * @param projectId - UUID of the project.
- * @returns Ordered array of slim tasks.
+ * @returns Ordered array of slim tasks with composed taskRef.
  */
 export async function getProjectTasksSlim(projectId: string): Promise<TaskSlim[]> {
-  return db
+  const [proj] = await db
+    .select({ identifier: projects.identifier })
+    .from(projects)
+    .where(eq(projects.id, projectId));
+  if (!proj) return [];
+
+  const rows = await db
     .select({
       id: tasks.id,
       title: tasks.title,
@@ -144,10 +152,47 @@ export async function getProjectTasksSlim(projectId: string): Promise<TaskSlim[]
       tags: tasks.tags,
       category: tasks.category,
       order: tasks.order,
+      sequenceNumber: tasks.sequenceNumber,
     })
     .from(tasks)
     .where(eq(tasks.projectId, projectId))
     .orderBy(asc(tasks.order));
+
+  return enrichWithTaskRef(rows, asIdentifier(proj.identifier)).map((t) => ({
+    id: t.id,
+    taskRef: t.taskRef,
+    title: t.title,
+    status: t.status,
+    tags: t.tags,
+    category: t.category,
+    order: t.order,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Tag aggregation
+// ---------------------------------------------------------------------------
+
+/** Project tag with usage count. */
+export type ProjectTag = { tag: string; count: number };
+
+/**
+ * Aggregate distinct tags for a project with usage counts.
+ * @param projectId - UUID of the project.
+ * @returns Tags sorted by count desc, tie-broken alphabetically.
+ */
+export async function getProjectTags(projectId: string): Promise<ProjectTag[]> {
+  const rows = await db.execute(sql`
+    SELECT tag, COUNT(*)::int AS count
+    FROM ${tasks}, LATERAL jsonb_array_elements_text(${tasks.tags}) AS tag
+    WHERE ${tasks.projectId} = ${projectId}
+    GROUP BY tag
+    ORDER BY count DESC, tag ASC
+  `);
+  return (rows as unknown as { tag: string; count: number }[]).map((r) => ({
+    tag: r.tag,
+    count: Number(r.count),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +388,7 @@ export async function deriveTaskStates(
 /** A search result task. */
 export type SearchResult = {
   id: string;
+  taskRef: string;
   title: string;
   status: string;
   state: TaskState;
@@ -350,20 +396,41 @@ export type SearchResult = {
   category: string | null;
 };
 
+/** Match a full taskRef like "MYMR-83" (case-insensitive). */
+const TASK_REF_PATTERN = /^([A-Z0-9]+)-(\d+)$/i;
+
 /**
- * Search tasks by title or tags (case-insensitive) within a project.
+ * Search tasks by taskRef, title, or tags (case-insensitive) within a project.
+ *
+ * When the query is a full taskRef (`<identifier>-<sequenceNumber>`) and the
+ * prefix matches the project's identifier, returns the task with that sequence
+ * number. Otherwise falls back to title + tag search.
+ *
  * @param projectId - UUID of the project.
- * @param query - Search string matched against title and tag values.
+ * @param query - Search string. Accepts taskRef, title fragment, or tag value.
  * @returns Up to 20 matching tasks with derived state, title matches ranked first.
  */
 export async function searchTasks(
   projectId: string,
   query: string,
 ): Promise<SearchResult[]> {
+  const [proj] = await db
+    .select({ identifier: projects.identifier })
+    .from(projects)
+    .where(eq(projects.id, projectId));
+  if (!proj) return [];
+
+  const trimmedQuery = query.trim();
+  const refMatch = trimmedQuery.match(TASK_REF_PATTERN);
+  const seqClause =
+    refMatch && refMatch[1].toUpperCase() === proj.identifier
+      ? eq(tasks.sequenceNumber, Number(refMatch[2]))
+      : null;
+
   const pattern = `%${query}%`;
   const lower = query.toLowerCase();
-
   const tagMatch = sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${tasks.tags}) AS t WHERE t ILIKE ${pattern})`;
+  const searchClause = seqClause ?? or(ilike(tasks.title, pattern), tagMatch);
 
   const matchingTasks = await db
     .select({
@@ -374,9 +441,10 @@ export async function searchTasks(
       category: tasks.category,
       description: tasks.description,
       acceptanceCriteria: tasks.acceptanceCriteria,
+      sequenceNumber: tasks.sequenceNumber,
     })
     .from(tasks)
-    .where(and(eq(tasks.projectId, projectId), or(ilike(tasks.title, pattern), tagMatch)));
+    .where(and(eq(tasks.projectId, projectId), searchClause));
 
   matchingTasks.sort((a, b) => {
     const aLower = a.title.toLowerCase();
@@ -389,8 +457,10 @@ export async function searchTasks(
   const trimmed = matchingTasks.slice(0, 20);
   const stateMap = await deriveTaskStates(projectId, trimmed);
 
-  return trimmed.map((t) => ({
+  const identifier = asIdentifier(proj.identifier);
+  return enrichWithTaskRef(trimmed, identifier).map((t) => ({
     id: t.id,
+    taskRef: t.taskRef,
     title: t.title,
     status: t.status,
     state: stateMap.get(t.id) ?? "draft",
@@ -409,7 +479,7 @@ export type DetailedEdge = {
   edgeType: EdgeType;
   direction: "outgoing" | "incoming";
   note: string;
-  connectedTask: { id: string; title: string; status: string };
+  connectedTask: { id: string; taskRef: string; title: string; status: string };
 };
 
 /**
@@ -436,15 +506,28 @@ export async function getTaskEdgesDetailed(
     idsToFetch.add(isOutgoing ? edge.targetTaskId : edge.sourceTaskId);
   }
 
-  const taskInfoMap = new Map<string, { title: string; status: string }>();
+  const taskInfoMap = new Map<string, { taskRef: string; title: string; status: string }>();
 
   if (idsToFetch.size > 0) {
     const ids = [...idsToFetch];
     const taskRows = await db
-      .select({ id: tasks.id, title: tasks.title, status: tasks.status })
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        sequenceNumber: tasks.sequenceNumber,
+        identifier: projects.identifier,
+      })
       .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(sql`${tasks.id} IN ${ids}`);
-    for (const t of taskRows) taskInfoMap.set(t.id, { title: t.title, status: t.status });
+    for (const t of taskRows) {
+      taskInfoMap.set(t.id, {
+        taskRef: composeTaskRef(asIdentifier(t.identifier), t.sequenceNumber),
+        title: t.title,
+        status: t.status,
+      });
+    }
   }
 
   return edges
@@ -517,14 +600,30 @@ export async function fetchEdgeNotesByTarget(taskId: string): Promise<Map<string
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch title, status, and description for multiple tasks by ID.
+ * Fetch taskRef, title, status, and description for multiple tasks by ID.
+ * Joins projects to compose taskRef per row.
  * @param taskIds - Array of task UUIDs.
- * @returns Array of task summaries.
+ * @returns Array of task summaries with composed taskRef.
  */
 export async function fetchTaskSummaries(taskIds: string[]) {
   if (taskIds.length === 0) return [];
-  return db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status, description: tasks.description })
+  const rows = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      description: tasks.description,
+      sequenceNumber: tasks.sequenceNumber,
+      identifier: projects.identifier,
+    })
     .from(tasks)
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
     .where(sql`${tasks.id} IN ${taskIds}`);
+  return rows.map((r) => ({
+    id: r.id,
+    taskRef: composeTaskRef(asIdentifier(r.identifier), r.sequenceNumber),
+    title: r.title,
+    status: r.status,
+    description: r.description,
+  }));
 }

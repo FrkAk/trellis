@@ -9,6 +9,7 @@ import type { SimulationLinkDatum } from "d3-force";
 export interface GraphNode {
   id: string;
   title: string;
+  taskRef: string;
   status: string;
   tags: string[];
   x?: number;

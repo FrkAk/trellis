@@ -16,6 +16,7 @@ import {
   handleAnalyze,
   type ToolResult,
 } from "./tool-handlers";
+import { identifierSchema } from "@/lib/graph/identifier";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -43,7 +44,7 @@ const taskFields = {
   status: z.enum(["draft", "planned", "in_progress", "done"]).optional().describe("Task lifecycle status"),
   acceptanceCriteria: z.array(z.string()).optional().describe("2-4 testable done conditions"),
   decisions: z.array(z.string()).optional().describe("Key technical decisions and constraints"),
-  tags: z.array(z.string()).optional().describe("Tags for filtering (e.g. ['auth', 'backend'])"),
+  tags: z.array(z.string()).optional().describe("Kebab-case. Every task carries exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), >=1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces the task touches), and exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Check mymir_query type='overview' before coining new."),
   category: z.string().optional().describe("Drawer group for this task. Should match a project category."),
   files: z.array(z.string()).optional().describe("File paths this task touches"),
   implementationPlan: z.string().optional().describe("Implementation plan written during planning phase"),
@@ -82,6 +83,7 @@ export function brainstormTools(projectId: string) {
         description: z.string().optional().describe("3-5 sentence comprehensive brief"),
         status: z.enum(["brainstorming", "decomposing", "active", "archived"]).optional().describe("Project lifecycle status"),
         categories: z.array(z.string()).optional().describe("Task categories for drawer grouping (e.g. ['backend', 'frontend'])"),
+        identifier: identifierSchema.optional().describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, ...). 2-12 chars, uppercase alphanumeric, unique. Renames all existing task refs — external references (PR titles, docs) no longer resolve."),
       }),
       execute: async (params) =>
         unwrap(await handleProject({ ...params, projectId })),
@@ -243,6 +245,7 @@ export function allTools(projectId: string) {
         description: z.string().optional().describe("3-5 sentence brief"),
         status: z.enum(["brainstorming", "decomposing", "active", "archived"]).optional().describe("Project lifecycle status"),
         categories: z.array(z.string()).optional().describe("Task categories for drawer grouping (e.g. ['backend', 'frontend'])"),
+        identifier: identifierSchema.optional().describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, ...). 2-12 chars, uppercase alphanumeric, unique. Renames all existing task refs — external references (PR titles, docs) no longer resolve."),
       }),
       execute: async (params) =>
         unwrap(await handleProject({ ...params, projectId })),

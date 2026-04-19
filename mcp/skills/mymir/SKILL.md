@@ -31,7 +31,11 @@ Edges connect tasks: `depends_on` (source needs target done first), `relates_to`
 
 Tasks have: title, description, status, category, acceptanceCriteria, decisions, tags, files, implementationPlan, executionRecord
 
-`category` determines drawer grouping (one per task, defined at project level). `tags` are freeform for filtering.
+Responses include `taskRef` (e.g. `MYMR-83`) — use when referring to tasks in output; pass UUIDs for tool calls.
+
+`category` determines drawer grouping (one per task, defined at project level).
+
+`tags` MUST cover four dimensions on every task: exactly 1 work type (closed: `bug`/`feature`/`refactor`/`docs`/`test`/`chore`/`perf`), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces the task touches), exactly 1 priority (closed: `release-blocker`/`core`/`normal`/`backlog`). Do NOT tag codebase area (`category` covers that) or status. Honor user-specified tags as-is.
 
 Task titles: verb+noun format (e.g., "Implement JWT auth", "Fix login redirect").
 
@@ -165,6 +169,7 @@ Stay concise — same density as before, just use markdown structure so the UI r
 3. `mymir_task` `action='update'` → save changes
 
 ### Create a task
+0. Check `mymir_query type='overview'` Tag vocabulary section for existing tags to reuse.
 1. `mymir_task` `action='create'` with title (verb+noun), description, acceptanceCriteria, category, and tags
 2. `mymir_edge` `action='create'` for any dependencies or relationships
 3. Verify: `mymir_query` `type='edges'` on the new task — confirm edges look correct

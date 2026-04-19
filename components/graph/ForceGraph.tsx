@@ -26,8 +26,8 @@ import {
 
 /** Props for the ForceGraph component. */
 interface ForceGraphProps {
-  /** @param tasks - Task records to visualize. */
-  tasks: Task[];
+  /** @param tasks - Task records (augmented with taskRef) to visualize. */
+  tasks: (Task & { taskRef: string })[];
   /** @param edges - TaskEdge records defining relationships. */
   edges: TaskEdge[];
   /** @param selectedNodeId - Currently selected node ID, or null. */
@@ -767,9 +767,13 @@ export function ForceGraph({
           if (hoveredEdgeRef.current) { hoveredEdgeRef.current = null; needsRedrawRef.current = true; }
         }
 
-        const isPinned = hit && hit.fx != null && hit.fy != null;
-        const tooltipText = hit ? (isPinned ? `${hit.title} (dbl-click to unpin)` : hit.title) : "";
-        tooltipRef.current = hit ? { text: tooltipText, x: sx, y: sy } : null;
+        if (hit) {
+          const isPinned = hit.fx != null && hit.fy != null;
+          const suffix = isPinned ? " (dbl-click to unpin)" : "";
+          tooltipRef.current = { text: `${hit.taskRef} · ${hit.title}${suffix}`, x: sx, y: sy };
+        } else {
+          tooltipRef.current = null;
+        }
         if (hit) needsRedrawRef.current = true;
       });
     }

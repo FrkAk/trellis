@@ -47,6 +47,7 @@ export default async function HomePage() {
             <ProjectCard
               key={project.id}
               id={project.id}
+              identifier={project.identifier}
               title={project.title}
               description={project.description}
               status={project.status}

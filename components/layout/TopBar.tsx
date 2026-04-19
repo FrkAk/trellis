@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTheme } from '@/components/layout/ThemeProvider';
+import { ProjectBreadcrumb } from '@/components/layout/ProjectBreadcrumb';
 import { signOut } from '@/lib/auth-client';
 
 interface TopBarProps {
@@ -12,6 +13,12 @@ interface TopBarProps {
   stageLabel?: string;
   /** @param taskStats - Optional center task completion stats. */
   taskStats?: string;
+  /** @param projectId - Optional project UUID. Required alongside onOpenProjectSettings for the settings trigger. */
+  projectId?: string;
+  /** @param projectStatus - Optional project lifecycle status for the inline chip. */
+  projectStatus?: string;
+  /** @param onOpenProjectSettings - Called when the project breadcrumb button is clicked. */
+  onOpenProjectSettings?: () => void;
 }
 
 /**
@@ -19,7 +26,7 @@ interface TopBarProps {
  * @param props - TopBar configuration.
  * @returns A fixed-position navigation bar element.
  */
-export function TopBar({ projectName, stageLabel, taskStats }: TopBarProps) {
+export function TopBar({ projectName, stageLabel, taskStats, projectId, projectStatus, onOpenProjectSettings }: TopBarProps) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
 
@@ -43,10 +50,18 @@ export function TopBar({ projectName, stageLabel, taskStats }: TopBarProps) {
             Mymir
           </Link>
           {projectName && (
-            <>
-              <span className="hidden sm:inline text-text-muted">/</span>
-              <span className="hidden sm:inline truncate max-w-[200px] text-sm text-text-secondary">{projectName}</span>
-            </>
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-text-muted">/</span>
+              {projectId && onOpenProjectSettings ? (
+                <ProjectBreadcrumb
+                  projectName={projectName}
+                  projectStatus={projectStatus}
+                  onOpenSettings={onOpenProjectSettings}
+                />
+              ) : (
+                <span className="text-sm text-text-secondary">{projectName}</span>
+              )}
+            </div>
           )}
         </div>
 

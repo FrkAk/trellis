@@ -9,6 +9,7 @@ import { Button } from '@/components/shared/Button';
 import { updateProjectStatus } from '@/lib/actions/project';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import { usePhaseGuard } from '@/hooks/usePhaseGuard';
+import { dedupedFetch } from '@/lib/fetch-dedupe';
 import type { Task, TaskEdge } from '@/lib/db/schema';
 
 interface ProjectGraph {
@@ -37,9 +38,12 @@ function ReviewContent() {
     if (!projectId) return;
     try {
       setFetchError(false);
-      const res = await fetch(`/api/project/${projectId}/graph`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await dedupedFetch(`graph:${projectId}`, () =>
+        fetch(`/api/project/${projectId}/graph`).then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json() as Promise<ProjectGraph>;
+        }),
+      );
       setGraph(data);
     } catch (err) {
       console.error('[review] graph fetch failed:', err);
@@ -104,7 +108,8 @@ function ReviewContent() {
     try {
       setTransitionError(null);
       setIsTransitioning(true);
-      await updateProjectStatus(projectId, 'active');
+      const result = await updateProjectStatus(projectId, 'active');
+      if (!result.ok) throw new Error(result.message);
       router.push(`/project/${projectId}`);
     } catch (err) {
       console.error('[review] failed to activate project:', err);

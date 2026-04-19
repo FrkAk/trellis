@@ -82,7 +82,8 @@ export function ConversationView({ initialIdea, projectId, onStartOver, initialM
     try {
       setTransitionError(null);
       setIsTransitioning(true);
-      await updateProjectStatus(projectId, 'decomposing');
+      const result = await updateProjectStatus(projectId, 'decomposing');
+      if (!result.ok) throw new Error(result.message);
       router.push(`/new/decompose?projectId=${projectId}`);
     } catch (err) {
       console.error('[brainstorm] failed to advance phase:', err);

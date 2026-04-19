@@ -12,6 +12,9 @@ import type { Task, TaskEdge } from "@/lib/db/schema";
 import type { GraphNode, GraphLink } from "./graphConstants";
 import { getNodeSize, buildLinkCounts } from "./graphConstants";
 
+/** Task record augmented with its composed taskRef for graph rendering. */
+type GraphTask = Task & { taskRef: string };
+
 // ---------------------------------------------------------------------------
 // Link distance per edge type
 // ---------------------------------------------------------------------------
@@ -35,7 +38,7 @@ const LINK_DISTANCE: Record<string, number> = {
  * @returns nodes and links.
  */
 function buildGraph(
-  taskList: Task[],
+  taskList: GraphTask[],
   edges: TaskEdge[],
   cx: number,
   cy: number,
@@ -52,6 +55,7 @@ function buildGraph(
     nodes.push({
       id: t.id,
       title: t.title,
+      taskRef: t.taskRef,
       status: t.status,
       tags: t.tags ?? [],
       x: saved?.x ?? cx + Math.cos(angle) * radius,
@@ -99,7 +103,7 @@ interface UseForceSimulationReturn {
  * @returns Simulation state.
  */
 export function useForceSimulation(
-  taskList: Task[],
+  taskList: GraphTask[],
   edges: TaskEdge[],
   width: number,
   height: number,

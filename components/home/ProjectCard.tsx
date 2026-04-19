@@ -10,6 +10,8 @@ import { deleteProject } from '@/lib/graph/mutations';
 interface ProjectCardProps {
   /** @param id - Project ID. */
   id: string;
+  /** @param identifier - Human-readable project identifier (handle). */
+  identifier: string;
   /** @param title - Project title. */
   title: string;
   /** @param description - Short project description. */
@@ -33,6 +35,7 @@ interface ProjectCardProps {
  */
 export function ProjectCard({
   id,
+  identifier,
   title,
   description,
   status,
@@ -111,11 +114,11 @@ export function ProjectCard({
 
         <ProgressBar value={progress} status={progress === 100 ? 'done' : 'in-progress'} className="mb-3" />
 
-        <div className="flex items-center justify-between">
-          <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-            status === 'active' ? 'bg-done/10 text-done'
-            : status === 'decomposing' ? 'bg-progress/10 text-progress'
-            : status === 'brainstorming' ? 'bg-accent/10 text-accent'
+        <div className="flex flex-col gap-2">
+          <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
+            status === 'active' ? 'bg-done/15 text-done'
+            : status === 'decomposing' ? 'bg-progress/15 text-progress'
+            : status === 'brainstorming' ? 'bg-accent/15 text-accent'
             : 'bg-draft/10 text-draft'
           }`}>
             <span className={`h-1.5 w-1.5 rounded-full ${
@@ -126,9 +129,19 @@ export function ProjectCard({
             }`} />
             {status === 'brainstorming' ? 'Idea' : status === 'decomposing' ? 'Building' : status === 'active' ? 'Active' : status}
           </span>
-          <span className="font-mono text-[10px] tabular-nums text-text-muted">
-            {tasksDone}/{totalTasks} tasks{tasksInProgress > 0 ? ` · ${tasksInProgress} active` : ''} · {lastActive}
-          </span>
+          <div className="flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-text-muted">
+            <span className="text-text-secondary">{identifier}</span>
+            <span className="text-text-muted/40">·</span>
+            <span>{tasksDone}/{totalTasks} tasks</span>
+            {tasksInProgress > 0 && (
+              <>
+                <span className="text-text-muted/40">·</span>
+                <span>{tasksInProgress} active</span>
+              </>
+            )}
+            <span className="text-text-muted/40">·</span>
+            <span>{lastActive}</span>
+          </div>
         </div>
       </motion.div>
     </Link>

@@ -8,6 +8,20 @@ import { ChatPanel } from '@/components/chat/ChatPanel';
 import { getSettings } from '@/lib/settings';
 import { getMessageText, convertPersistedToUIMessages } from '@/lib/chat-helpers';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { dedupedFetch } from '@/lib/fetch-dedupe';
+
+/**
+ * Fetches persisted project chat history, deduped across concurrent callers.
+ * @param projectId - Project UUID.
+ * @returns Resolved chat messages.
+ */
+function loadHistory(projectId: string): Promise<UIMessage[]> {
+  return dedupedFetch(`project-history:${projectId}`, () =>
+    fetch(`/api/project/${projectId}/conversations`)
+      .then((r) => r.json())
+      .then((data) => convertPersistedToUIMessages(data.messages ?? [])),
+  );
+}
 
 interface ProjectChatProps {
   /** @param projectId - UUID of the project. */
@@ -37,19 +51,22 @@ export function ProjectChat({ projectId, onGraphChange, className = '' }: Projec
   // Load persisted chat history
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/project/${projectId}/conversations`)
-      .then((r) => r.json())
-      .then((data) => { if (!cancelled) setLoadedHistory(convertPersistedToUIMessages(data.messages ?? [])); })
-      .catch((err) => { if (!cancelled) { console.error('[chat] history fetch failed:', err); setHistoryError(true); setLoadedHistory([]); } });
+    loadHistory(projectId)
+      .then((messages) => { if (!cancelled) setLoadedHistory(messages); })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('[chat] history fetch failed:', err);
+        setHistoryError(true);
+        setLoadedHistory([]);
+      });
     return () => { cancelled = true; };
   }, [projectId]);
 
   const retryHistory = useCallback(() => {
     setHistoryError(false);
     setLoadedHistory(null);
-    fetch(`/api/project/${projectId}/conversations`)
-      .then((r) => r.json())
-      .then((data) => setLoadedHistory(convertPersistedToUIMessages(data.messages ?? [])))
+    loadHistory(projectId)
+      .then((messages) => setLoadedHistory(messages))
       .catch((err) => { console.error('[chat] history fetch failed:', err); setHistoryError(true); setLoadedHistory([]); });
   }, [projectId]);
 

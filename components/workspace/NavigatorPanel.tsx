@@ -14,8 +14,8 @@ const TABS = [
 ];
 
 interface NavigatorPanelProps {
-  /** @param tasks - All project tasks. */
-  tasks: Task[];
+  /** @param tasks - All project tasks (augmented with taskRef). */
+  tasks: (Task & { taskRef: string })[];
   /** @param edges - All project task edges. */
   edges: TaskEdge[];
   /** @param categories - Project-level categories for drawer grouping. */

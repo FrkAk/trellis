@@ -4,11 +4,14 @@ import { eq, asc, sql, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
 import type { EdgeType } from "@/lib/types";
+import { asIdentifier, composeTaskRef, enrichWithTaskRef } from "@/lib/graph/identifier";
+import { getProjectTags } from "@/lib/graph/queries";
 import { compress } from "./format";
 
 /** Task summary within a project overview. */
 type TaskSummary = {
   id: string;
+  taskRef: string;
   title: string;
   status: string;
   description: string;
@@ -19,7 +22,9 @@ type TaskSummary = {
 
 /** Edge summary for project overview. */
 type OverviewEdge = {
+  sourceTaskRef: string;
   sourceTitle: string;
+  targetTaskRef: string;
   targetTitle: string;
   edgeType: EdgeType;
   note: string;
@@ -28,10 +33,12 @@ type OverviewEdge = {
 /** Full project overview with progress stats. */
 export type ProjectOverview = {
   id: string;
+  identifier: string;
   title: string;
   description: string;
   status: string;
   categories: string[];
+  tagVocabulary: string[];
   tasks: TaskSummary[];
   edges: OverviewEdge[];
   totalTasks: number;
@@ -60,8 +67,12 @@ export async function buildProjectOverview(
     .where(eq(tasks.projectId, projectId))
     .orderBy(asc(tasks.order));
 
-  const taskSummaries: TaskSummary[] = allTasks.map((t) => ({
+  const projectTags = await getProjectTags(projectId);
+
+  const identifier = asIdentifier(project.identifier);
+  const taskSummaries: TaskSummary[] = enrichWithTaskRef(allTasks, identifier).map((t) => ({
     id: t.id,
+    taskRef: t.taskRef,
     title: t.title,
     status: t.status,
     description: compress(t.description, 100),
@@ -78,8 +89,13 @@ export async function buildProjectOverview(
   let edges: OverviewEdge[] = [];
 
   if (taskIds.length > 0) {
-    const titleMap = new Map<string, string>();
-    for (const t of allTasks) titleMap.set(t.id, t.title);
+    const infoMap = new Map<string, { taskRef: string; title: string }>();
+    for (const t of allTasks) {
+      infoMap.set(t.id, {
+        taskRef: composeTaskRef(identifier, t.sequenceNumber),
+        title: t.title,
+      });
+    }
 
     const rawEdges = await db
       .select()
@@ -91,20 +107,28 @@ export async function buildProjectOverview(
         ),
       );
 
-    edges = rawEdges.map((e) => ({
-      sourceTitle: titleMap.get(e.sourceTaskId) ?? "Unknown",
-      targetTitle: titleMap.get(e.targetTaskId) ?? "Unknown",
-      edgeType: e.edgeType,
-      note: e.note,
-    }));
+    edges = rawEdges.map((e) => {
+      const source = infoMap.get(e.sourceTaskId);
+      const target = infoMap.get(e.targetTaskId);
+      return {
+        sourceTaskRef: source?.taskRef ?? "",
+        sourceTitle: source?.title ?? "Unknown",
+        targetTaskRef: target?.taskRef ?? "",
+        targetTitle: target?.title ?? "Unknown",
+        edgeType: e.edgeType,
+        note: e.note,
+      };
+    });
   }
 
   return {
     id: project.id,
+    identifier: project.identifier,
     title: project.title,
     description: project.description,
     status: project.status,
     categories: project.categories,
+    tagVocabulary: projectTags.map((t) => t.tag),
     tasks: taskSummaries,
     edges,
     totalTasks,

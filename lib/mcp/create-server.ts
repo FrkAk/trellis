@@ -10,6 +10,7 @@ import {
   handleAnalyze,
 } from "@/lib/ai/tool-handlers";
 import type { ToolResult } from "@/lib/ai/tool-handlers";
+import { identifierSchema } from "@/lib/graph/identifier";
 
 /**
  * Format a successful tool result as MCP content.
@@ -118,6 +119,8 @@ export function registerAllTools(server: McpServer): void {
           .describe("Lifecycle: brainstorming → decomposing → active → archived"),
         categories: z.array(z.string()).optional()
           .describe("Task categories for this project (e.g. ['backend', 'frontend', 'mcp']). Determines drawer grouping in the UI."),
+        identifier: identifierSchema.optional()
+          .describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, ...). 2-12 chars, uppercase alphanumeric, unique. Auto-derived from title on create if omitted. On update: renames all existing task refs — external references (PR titles, docs) no longer resolve."),
       }),
       annotations: {
         title: "Manage Project",
@@ -165,7 +168,7 @@ export function registerAllTools(server: McpServer): void {
         decisions: z.array(z.string()).optional()
           .describe("Key technical decisions and constraints"),
         tags: z.array(z.string()).optional()
-          .describe("Tags for grouping (e.g. ['auth', 'backend'])"),
+          .describe("Kebab-case. Every task carries exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), >=1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces the task touches), and exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Check mymir_query type='overview' before coining new."),
         category: z.string().optional()
           .describe("Drawer group for this task. Should match a project category. Run mymir_project to see available categories."),
         files: z.array(z.string()).optional()
@@ -335,7 +338,7 @@ export function registerAllTools(server: McpServer): void {
  */
 export function createMcpServer(): McpServer {
   const server = new McpServer(
-    { name: "mymir", version: "1.0.0" },
+    { name: "mymir", version: "1.1.2" },
     { instructions: INSTRUCTIONS },
   );
   registerAllTools(server);

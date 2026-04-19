@@ -192,20 +192,20 @@ Categories are broad domains that determine drawer grouping in the UI. Define th
 
 ### Tags
 
-Tags are freeform labels for filtering. Use priority tags to help the manage agent prioritize:
+Kebab-case, singular. Four dimensions, each with a required count. Reuse existing values from the project overview before coining new.
 
-| Tag | Meaning |
-|-----|---------|
-| `core` | Must be built first — foundational or critical path |
-| `feature` | Main product features — the bulk of the work |
-| `enhancement` | Improvements, polish, nice-to-haves |
-| `future` | Planned but not urgent — can wait for later phases |
+| Dimension | Count | Vocabulary |
+|-----------|-------|------------|
+| Work type | exactly 1 | `bug`, `feature`, `refactor`, `docs`, `test`, `chore`, `perf` |
+| Cross-cutting concern | ≥1 | quality attribute (`security`, `a11y`, `dx`, …) or feature cluster spanning multiple categories |
+| Tech | at most 2 | most important stack pieces the task touches (check overview for project tech vocab) |
+| Priority | exactly 1 | `release-blocker`, `core`, `normal`, `backlog` |
 
-Example: a task might have `category: "auth"` and `tags: ["core"]`.
+Do NOT tag codebase area (use `category`) or status.
 
 ## Rules
 
-- **Plan the FULL project** — do not artificially limit scope. The user's complete vision should be represented in the task graph. Priority tags let the manage agent decide build order.
+- **Plan the FULL project** — do not artificially limit scope. The user's complete vision should be represented in the task graph. Priority tags (`release-blocker`, `core`, `normal`, `backlog`) let the manage agent decide build order.
 - All tasks start as `draft` — the manage agent promotes to `planned` after review
 - Task count should match project complexity: simple app = 10-20, medium = 20-40, complex = 40-60+
 - Every task MUST have description AND acceptance criteria — no exceptions

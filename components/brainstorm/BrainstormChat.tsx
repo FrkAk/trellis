@@ -11,6 +11,7 @@ import { ConversationView } from './ConversationView';
 import { createProject } from '@/lib/graph/mutations';
 import { convertPersistedToUIMessages } from '@/lib/chat-helpers';
 import { usePhaseGuard } from '@/hooks/usePhaseGuard';
+import { dedupedFetch } from '@/lib/fetch-dedupe';
 import type { Message } from '@/lib/types';
 
 /**
@@ -33,38 +34,39 @@ export function BrainstormChat() {
   useEffect(() => {
     if (!projectIdParam) return;
 
+    let cancelled = false;
     async function recover() {
       try {
-        const [graphRes, convoRes] = await Promise.all([
-          fetch(`/api/project/${projectIdParam}/graph`),
-          fetch(`/api/project/${projectIdParam}/conversations`),
+        const [graph, convoMessages] = await Promise.all([
+          dedupedFetch<{ description?: string } | null>(`graph:${projectIdParam}`, () =>
+            fetch(`/api/project/${projectIdParam}/graph`).then((r) => (r.ok ? r.json() : null)),
+          ),
+          dedupedFetch<Message[] | null>(`project-history:${projectIdParam}`, () =>
+            fetch(`/api/project/${projectIdParam}/conversations`).then((r) =>
+              r.ok ? r.json().then((d: { messages: Message[] }) => d.messages ?? []) : null,
+            ),
+          ),
         ]);
+        if (cancelled) return;
 
-        if (graphRes.ok) {
-          const graph = await graphRes.json();
+        if (graph) {
           setIdea(graph.description || 'Recovered project');
           setProjectId(projectIdParam);
         }
 
-        if (convoRes.ok) {
-          const { messages } = await convoRes.json() as { messages: Message[] };
-          if (messages?.length) {
-            setRecoveredMessages(convertPersistedToUIMessages(messages));
-          } else {
-            setRecoveredMessages([]);
-          }
-        } else {
+        setRecoveredMessages(convoMessages && convoMessages.length ? convertPersistedToUIMessages(convoMessages) : []);
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("[brainstorm] conversation recovery failed:", err);
           setRecoveredMessages([]);
         }
-      } catch (err) {
-        console.warn("[brainstorm] conversation recovery failed:", err);
-        setRecoveredMessages([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     recover();
+    return () => { cancelled = true; };
   }, [projectIdParam]);
 
   const handleSubmit = useCallback(async (text: string) => {

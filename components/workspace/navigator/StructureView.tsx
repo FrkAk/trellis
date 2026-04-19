@@ -8,14 +8,16 @@ import { statusDot, statusChipText, statusLabel } from '@/lib/ui/status';
 import { isPlannable, isReady, buildStatusMap } from '@/lib/ui/taskState';
 import type { Task, TaskEdge } from '@/lib/db/schema';
 
+type TaskWithRef = Task & { taskRef: string };
+
 type DeletedTask = {
   title: string;
   taskData: Task;
 };
 
 interface StructureViewProps {
-  /** @param tasks - All project tasks. */
-  tasks: Task[];
+  /** @param tasks - All project tasks (augmented with taskRef). */
+  tasks: (Task & { taskRef: string })[];
   /** @param edges - All project task edges. */
   edges?: TaskEdge[];
   /** @param categories - Project-level categories for drawer grouping. */
@@ -81,8 +83,8 @@ export function StructureView({
 
   // Group tasks by category
   const categoryGroups = useMemo(() => {
-    const groups = new Map<string, Task[]>();
-    const ungrouped: Task[] = [];
+    const groups = new Map<string, TaskWithRef[]>();
+    const ungrouped: TaskWithRef[] = [];
 
     for (const task of tasks) {
       if (!task.category) {
@@ -148,14 +150,14 @@ export function StructureView({
           if (activeStatusFilters.has('plannable') && isPlannable(t, statusMap, edges)) return true;
           if (activeStatusFilters.has('ready') && isReady(t, statusMap, edges)) return true;
           return false;
-        })] as [string, Task[]])
+        })] as [string, TaskWithRef[]])
         .filter(([, groupTasks]) => groupTasks.length > 0);
     }
 
     // Tag filter: within remaining drawers, show only tasks matching tags
     if (hasTagFilter) {
       filtered = filtered
-        .map(([cat, groupTasks]) => [cat, groupTasks.filter((t) => t.tags?.some((tg) => activeTagFilters.has(tg)))] as [string, Task[]])
+        .map(([cat, groupTasks]) => [cat, groupTasks.filter((t) => t.tags?.some((tg) => activeTagFilters.has(tg)))] as [string, TaskWithRef[]])
         .filter(([, groupTasks]) => groupTasks.length > 0);
     }
 
@@ -163,7 +165,7 @@ export function StructureView({
     if (hasSearch) {
       const q = searchQuery.trim().toLowerCase();
       filtered = filtered
-        .map(([cat, groupTasks]) => [cat, groupTasks.filter((t) => t.title.toLowerCase().includes(q))] as [string, Task[]])
+        .map(([cat, groupTasks]) => [cat, groupTasks.filter((t) => t.title.toLowerCase().includes(q) || t.taskRef.toLowerCase().includes(q))] as [string, TaskWithRef[]])
         .filter(([, groupTasks]) => groupTasks.length > 0);
     }
 
@@ -276,7 +278,7 @@ export function StructureView({
   }, [projectId, onGraphChange]);
 
   // Compute drawer-level stats
-  const drawerStats = useCallback((groupTasks: Task[]) => {
+  const drawerStats = useCallback((groupTasks: TaskWithRef[]) => {
     const done = groupTasks.filter((t) => t.status === 'done').length;
     const total = groupTasks.length;
     return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
@@ -824,14 +826,19 @@ export function StructureView({
                       <div key={task.id} className="group/task flex items-center">
                         <button
                           onClick={() => onSelectNode(task.id)}
-                          className={`flex flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-all duration-150 hover:bg-surface-hover ${
+                          className={`flex flex-1 cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors duration-150 hover:bg-surface-hover ${
                             selectedNodeId === task.id
-                              ? 'bg-accent/8 border border-accent/15'
-                              : ''
+                              ? 'bg-accent/8 border-accent/15'
+                              : 'border-transparent'
                           }`}
                         >
                           {/* Status dot */}
                           <span className={`h-2 w-2 shrink-0 rounded-full transition-colors ${statusDot(task.status)} ${task.status === 'in_progress' ? 'status-pulse' : ''}`} />
+                          <span className={`shrink-0 min-w-14 font-mono text-[10px] font-medium tabular-nums ${
+                            selectedNodeId === task.id ? 'text-accent/70' : 'text-text-muted'
+                          }`}>
+                            {task.taskRef}
+                          </span>
                           <span className={`flex-1 text-sm transition-colors duration-150 ${
                             selectedNodeId === task.id
                               ? 'text-accent font-medium'

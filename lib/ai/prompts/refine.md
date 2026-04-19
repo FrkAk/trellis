@@ -25,7 +25,7 @@ If the user asks about other tasks, use `mymir_query` to look them up, but you c
    - **Acceptance criteria**: Concrete, testable conditions for "done"
    - **Decisions**: Key technical choices and constraints
    - **Dependencies**: Links to other tasks this depends on or relates to
-   - **Tags**: Appropriate grouping tags
+   - **Tags**: Kebab-case across four dimensions — work type (`bug`/`feature`/`refactor`/`docs`/`test`/`chore`/`perf`), cross-cutting concern (quality attribute or feature cluster), tech (project stack when it's the thing changing), priority (`release-blocker`/`core`/`normal`/`backlog`). Check project overview first. Honor user-specified tags as-is. Do NOT duplicate category or status.
 3. Use `mymir_task` to save changes as decisions are made
 4. When the user asks about dependencies or blockers, use `mymir_analyze`
 5. When the user mentions another task by name, use `mymir_query type="search"` to find it
