@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
 import type { EdgeType } from "@/lib/types";
 import { asIdentifier, composeTaskRef, enrichWithTaskRef } from "@/lib/graph/identifier";
+import { getProjectTags } from "@/lib/graph/queries";
 import { compress } from "./format";
 
 /** Task summary within a project overview. */
@@ -37,6 +38,7 @@ export type ProjectOverview = {
   description: string;
   status: string;
   categories: string[];
+  tagVocabulary: string[];
   tasks: TaskSummary[];
   edges: OverviewEdge[];
   totalTasks: number;
@@ -64,6 +66,8 @@ export async function buildProjectOverview(
     .from(tasks)
     .where(eq(tasks.projectId, projectId))
     .orderBy(asc(tasks.order));
+
+  const projectTags = await getProjectTags(projectId);
 
   const identifier = asIdentifier(project.identifier);
   const taskSummaries: TaskSummary[] = enrichWithTaskRef(allTasks, identifier).map((t) => ({
@@ -124,6 +128,7 @@ export async function buildProjectOverview(
     description: project.description,
     status: project.status,
     categories: project.categories,
+    tagVocabulary: projectTags.map((t) => t.tag),
     tasks: taskSummaries,
     edges,
     totalTasks,

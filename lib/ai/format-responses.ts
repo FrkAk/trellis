@@ -144,6 +144,7 @@ export function formatOverview(overview: ProjectOverview): string {
     `Progress: ${overview.doneTasks}/${overview.totalTasks} done (${overview.progress}%) | ${overview.inProgressTasks} in_progress`,
   ];
   if (overview.categories.length > 0) parts.push(`Categories: ${overview.categories.join(", ")}`);
+  if (overview.tagVocabulary.length > 0) parts.push(`Tags: ${overview.tagVocabulary.join(", ")}`);
   if (overview.description) parts.push(`\n${overview.description}`);
 
   if (overview.tasks.length > 0) {

@@ -22,6 +22,8 @@ import {
   searchTasks,
   getProjectTasksSlim,
   getTaskEdgesDetailed,
+  getProjectTags,
+  fetchTask,
   projectExists,
   taskExists,
   edgeExists,
@@ -57,6 +59,22 @@ import {
   formatCriticalPath,
   formatPlannableTasks,
 } from "./format-responses";
+import { findVariant } from "./tag-similarity";
+
+/**
+ * Build variant-warning hints for proposed tags against existing project tags.
+ * @param proposed - Proposed tag strings.
+ * @param existing - Current project tag list.
+ * @returns Hint strings for tags that look like variants of existing ones.
+ */
+function tagVariantHints(proposed: string[], existing: string[]): string[] {
+  const hints: string[] = [];
+  for (const tag of proposed) {
+    const variant = findVariant(tag, existing);
+    if (variant) hints.push(`Tag "${tag}" looks like a variant of existing "${variant}" — reuse or confirm.`);
+  }
+  return hints;
+}
 
 // ---------------------------------------------------------------------------
 // Result type
@@ -316,6 +334,10 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         if (notFound) return notFound;
         if (!p.title) return fail("title required for create");
         if (!p.description) return fail("description required for create (2-4 sentences: what, why, how)");
+        const preExistingTags =
+          p.tags && p.tags.length > 0
+            ? (await getProjectTags(p.projectId)).map((t) => t.tag)
+            : [];
         const task = await createTask({
           projectId: p.projectId,
           title: p.title,
@@ -338,12 +360,20 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         if (!p.acceptanceCriteria || p.acceptanceCriteria.length === 0) {
           createHints.push("No acceptance criteria. Add testable done conditions with mymir_task action='update'.");
         }
+        if (p.tags && p.tags.length > 0) {
+          createHints.push(...tagVariantHints(p.tags, preExistingTags));
+        }
         return ok({ ...task, _hints: createHints });
       }
       case "update": {
         if (!p.taskId) return fail("taskId required for update. Use mymir_query type='search' to find it.");
         const notFound = await requireTask(p.taskId);
         if (notFound) return notFound;
+        let preExistingTags: string[] = [];
+        if (p.tags && p.tags.length > 0) {
+          const existing = await fetchTask(p.taskId);
+          if (existing) preExistingTags = (await getProjectTags(existing.projectId)).map((t) => t.tag);
+        }
         const changes: Record<string, unknown> = {};
         if (p.title !== undefined) changes.title = p.title;
         if (p.description !== undefined) changes.description = p.description;
@@ -357,6 +387,9 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         if (p.executionRecord !== undefined) changes.executionRecord = p.executionRecord;
         const result = await updateTask(p.taskId, changes, !!p.overwriteArrays);
         const updateHints: string[] = [];
+        if (p.tags && p.tags.length > 0) {
+          updateHints.push(...tagVariantHints(p.tags, preExistingTags));
+        }
         if (p.status === "in_progress") {
           updateHints.push("Run mymir_context depth='agent' to get implementation context before starting.");
         }

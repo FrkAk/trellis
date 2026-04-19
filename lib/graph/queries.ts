@@ -170,6 +170,32 @@ export async function getProjectTasksSlim(projectId: string): Promise<TaskSlim[]
 }
 
 // ---------------------------------------------------------------------------
+// Tag aggregation
+// ---------------------------------------------------------------------------
+
+/** Project tag with usage count. */
+export type ProjectTag = { tag: string; count: number };
+
+/**
+ * Aggregate distinct tags for a project with usage counts.
+ * @param projectId - UUID of the project.
+ * @returns Tags sorted by count desc, tie-broken alphabetically.
+ */
+export async function getProjectTags(projectId: string): Promise<ProjectTag[]> {
+  const rows = await db.execute(sql`
+    SELECT tag, COUNT(*)::int AS count
+    FROM ${tasks}, LATERAL jsonb_array_elements_text(${tasks.tags}) AS tag
+    WHERE ${tasks.projectId} = ${projectId}
+    GROUP BY tag
+    ORDER BY count DESC, tag ASC
+  `);
+  return (rows as unknown as { tag: string; count: number }[]).map((r) => ({
+    tag: r.tag,
+    count: Number(r.count),
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Edge queries
 // ---------------------------------------------------------------------------
 
