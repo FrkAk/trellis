@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const MCP_AGENTS_DIR = resolve(__dirname, "../../mcp/agents");
+const MCP_AGENTS_DIR = resolve(__dirname, "../../plugins/claude-code/agents");
 const ADDENDUMS_DIR = resolve(__dirname, "prompts");
 
 /**
@@ -30,7 +30,7 @@ function readAddendum(name: string, vars: Record<string, string>): string {
 
 /**
  * Build system prompt for brainstorming scope.
- * Base: mcp/agents/brainstorm.md. Addendum: web app tools + UI rules.
+ * Base: plugins/claude-code/agents/brainstorm.md. Addendum: web app tools + UI rules.
  * @param projectId - UUID of the project being brainstormed.
  * @returns Complete system prompt string.
  */
@@ -42,7 +42,7 @@ export function brainstorm(projectId: string): string {
 
 /**
  * Build system prompt for decomposition scope.
- * Base: mcp/agents/decompose.md. Addendum: web app tools + context injection.
+ * Base: plugins/claude-code/agents/decompose.md. Addendum: web app tools + context injection.
  * @param projectId - UUID of the project to decompose.
  * @param context - Optional project overview context.
  * @param brainstormConversation - Optional brainstorm conversation text.
@@ -77,7 +77,7 @@ export function refine(projectId: string, taskId: string, context?: string): str
 
 /**
  * Build system prompt for project-level chat.
- * Base: mcp/agents/manage.md. Addendum: web app tools + context injection.
+ * Base: plugins/claude-code/agents/manage.md. Addendum: web app tools + context injection.
  * @param projectId - UUID of the project.
  * @param context - Project overview context.
  * @returns Complete system prompt string.
