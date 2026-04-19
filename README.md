@@ -115,26 +115,24 @@ Start the dev server and open [localhost:3000](http://localhost:3000):
 bun run dev
 ```
 
+Mymir ships as three standalone plugin/extension dirs — one per supported CLI under `plugins/<cli>/`. Each is vendor-native; pick the one that matches your tool.
+
+> **Migrating from an earlier install?** The plugin layout changed to `./plugins/<cli>`. In Claude Code run `claude plugin marketplace remove mymir-local` once before the new install below.
+
 ### Claude Code plugin
 
-Make sure the dev server is running, then install the plugin globally:
+Make sure the dev server is running, then:
 
 ```bash
-claude plugin marketplace add ./mcp
+claude plugin marketplace add ./plugins/claude-code
 claude plugin install mymir@mymir-local
 ```
 
-This is a one-time setup. Mymir will be available in every Claude Code session.
+One-time setup. Mymir is available in every Claude Code session.
 
-To update the plugin after pulling changes:
+To update after pulling changes: `claude plugin update mymir@mymir-local`, then restart Claude Code. MCP server changes (`lib/mcp/`) take effect immediately — no update needed.
 
-```bash
-claude plugin update mymir@mymir-local
-```
-
-Then restart Claude Code. MCP server changes (`lib/mcp/`) take effect immediately, no update needed.
-
-Once installed, Claude has access to:
+Installed components:
 
 | Component | What it does |
 | --- | --- |
@@ -144,9 +142,37 @@ Once installed, Claude has access to:
 | **Manage agent** | Navigate, refine, track progress, restructure |
 | **Mymir skill** | Auto-invokes when conversation matches project planning |
 
+### Codex CLI
+
+Wire the MCP server and trigger OAuth:
+
+```bash
+codex mcp add mymir --url http://localhost:3000/api/mcp
+```
+
+A browser window opens for sign-in. Tokens are cached for future sessions.
+
+Then symlink the Codex plugin dir so the `mymir`, `brainstorm`, and `decompose` skills auto-activate:
+
+```bash
+mkdir -p ~/.codex/plugins
+ln -s $(pwd)/plugins/codex ~/.codex/plugins/mymir
+```
+
+Restart Codex. Skills match by description when you mention tasks, projects, new ideas, or "break this down."
+
 ### Gemini CLI
 
-Make sure the dev server is running, then add Mymir to `~/.gemini/settings.json` (user-scope) or `.gemini/settings.json` (project-scope):
+Install Mymir as a Gemini extension:
+
+```bash
+mkdir -p ~/.gemini/extensions
+ln -s $(pwd)/plugins/gemini ~/.gemini/extensions/mymir
+```
+
+Start Gemini and run `/mcp auth mymir` to complete the OAuth flow. The extension loads the MCP server, the `mymir` skill as context, a `/mymir` slash command, and the three sub-agents (brainstorm / decompose / manage).
+
+**Minimal setup (MCP server only, no skill, commands, or sub-agents):** add Mymir to `~/.gemini/settings.json`:
 
 ```json
 {
@@ -158,30 +184,13 @@ Make sure the dev server is running, then add Mymir to `~/.gemini/settings.json`
 }
 ```
 
-Then start Gemini and run `/mcp auth mymir` to complete the OAuth flow. A browser window will open for sign-in. Tokens are stored automatically for future sessions.
-
-### Codex CLI
-
-Make sure the dev server is running, then run:
-
-```bash
-codex mcp add mymir --url http://localhost:3000/api/mcp
-```
-
-This automatically detects the OAuth flow and opens a browser for sign-in. After authorization, Mymir is available the next time you open Codex. Tokens are stored automatically for future sessions.
-
-To install the `/mymir` slash command, install the plugin (one-time, same as Claude Code):
-
-```bash
-claude plugin marketplace add ./mcp
-claude plugin install mymir@mymir-local
-```
+Then run `/mcp auth mymir` inside Gemini.
 
 ---
 
 ## How is it going
 
-49 of 70 tasks done. We are almost there.
+69 of 106 tasks done. We are almost there.
 
 ![Progress](assets/progress.png)
 

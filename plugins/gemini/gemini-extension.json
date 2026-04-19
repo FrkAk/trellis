@@ -1,0 +1,11 @@
+{
+  "name": "mymir",
+  "version": "1.2.0",
+  "description": "Persistent context network for coding projects. Tracks tasks, dependencies, and decisions across sessions.",
+  "mcpServers": {
+    "mymir": {
+      "url": "${MYMIR_URL:-http://localhost:3000}/api/mcp"
+    }
+  },
+  "contextFileName": "skills/mymir/SKILL.md"
+}

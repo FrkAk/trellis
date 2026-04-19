@@ -33,17 +33,5 @@ jobs:
         run: bun run lint
       - name: Typecheck
         run: bun run typecheck
-      - name: Install MCP dependencies
-        run: bun install --frozen-lockfile
-        working-directory: mcp
-        if: github.actor != 'dependabot[bot]'
-      - name: Install MCP dependencies (Dependabot)
-        run: bun install
-        working-directory: mcp
-        if: github.actor == 'dependabot[bot]'
-      - name: Lint MCP
-        run: bun run lint
-        working-directory: mcp
-      - name: Typecheck MCP
-        run: bun run typecheck
-        working-directory: mcp
+      - name: Check plugin drift
+        run: bun run check:plugins

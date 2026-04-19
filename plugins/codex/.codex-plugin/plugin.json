@@ -1,0 +1,16 @@
+{
+  "name": "mymir",
+  "version": "1.2.0",
+  "description": "Persistent context network for coding projects. Tracks tasks, dependencies, and decisions across sessions.",
+  "author": {
+    "name": "Mymir"
+  },
+  "keywords": [
+    "project-management",
+    "task-tracking",
+    "dependencies",
+    "context-network"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}
