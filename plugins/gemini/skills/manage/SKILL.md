@@ -151,10 +151,11 @@ When the user says "continue", "what's the status", or starts a new session:
    - **If the user described what they did**: extract executionRecord, decisions, and files from the conversation — don't re-ask what's already been said
    - **If the user just said "done" with no details**: ask what was built, key decisions made, and files touched
    - **If a coding agent reported back**: summarize the agent's work into executionRecord yourself
-4. `mymir_task` with `action='update'`: `status='done'`, `executionRecord`, `decisions`, `files`
-   - **All three fields (executionRecord, decisions, files) are required** — do not mark done without them.
-5. Run Workflow F to propagate changes
-6. Report what was unlocked by completing this task (`mymir_analyze type='ready'`)
+4. **Confirm before transitioning** (single-agent mode): show the user the proposed executionRecord + decisions + files and wait for confirmation. If you were dispatched by another agent, skip this step — the orchestrator reviews after.
+5. `mymir_task` with `action='update'`: `status='done'`, `executionRecord`, `decisions`, `files`
+   - **All three fields (executionRecord, decisions, files) are expected** — tool responses include `_hints` when any are missing. Empty `files` is fine only when the task genuinely touched no files.
+6. Run Workflow F to propagate changes
+7. Report what was unlocked by completing this task (`mymir_analyze type='ready'`)
 
 ### Create a Task
 0. Check `mymir_query` with `type='overview'` Tag vocabulary section for existing tags to reuse.

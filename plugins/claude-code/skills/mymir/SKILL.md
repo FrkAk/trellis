@@ -65,6 +65,17 @@ Task titles: verb+noun format (e.g., "Implement JWT auth", "Fix login redirect")
 
 Tool responses may include a `_hints` array with contextual guidance (missing fields, next steps, warnings). **Always read and follow these hints.**
 
+## Completion Protocol
+
+Before transitioning a task to `status='done'`, confirm based on invoker:
+
+- **Direct user invocation** (no parent agent): ask the user "Ready to mark this done?" with a one-sentence executionRecord preview. Wait for explicit confirmation.
+- **Dispatched sub-agent** (parent agent is reviewer): skip the ask. Mark done directly with the full payload. Return to the parent with the task ref and a one-sentence summary.
+
+The update call should populate `executionRecord`, `decisions`, and `files` — tool responses include hints when any are missing. Empty `files` is acceptable only if the task genuinely touched no files (e.g., a decision or research task).
+
+If uncertain which mode you're in: default to asking.
+
 ## Agent Delegation
 
 Two agents require dedicated delegation — **do not handle these yourself:**
@@ -99,6 +110,7 @@ All other project management (status, next task, refine, continue, mark done) is
    a. Recommend N tasks for N agents, ranked by critical path
    b. Each agent claims: `mymir_task` `action='update'` `status='in_progress'`
    c. Each gets context: `mymir_context` `depth='agent'`
+   d. Each sub-agent marks done **directly** with the full payload when complete — they do NOT ask for confirmation. Orchestrator reviews executionRecords after parallel work finishes.
 3. If NO ready tasks (or fewer ready than agents):
    a. `mymir_analyze` `type='plannable'` → draft tasks ready for planning
    b. Assign remaining agents to plan draft tasks in parallel
@@ -113,10 +125,13 @@ All other project management (status, next task, refine, continue, mark done) is
    - `executionRecord`: 3-5 sentences — what was built, approach, concrete details (function names, file paths, endpoints). No debugging stories.
    - `decisions`: one-liner per key technical choice (CHOICE + WHY)
    - `files`: every file created or modified
-5. `mymir_task` `action='update'` `status='done'` `executionRecord='...'` `decisions=[...]` `files=[...]`
-6. Run **Propagate Changes** on the completed task
+5. **Confirm before marking done** — protocol depends on invoker (see Completion Protocol):
+   - **Direct user invocation**: ask "Ready to mark done?" with a one-sentence executionRecord preview. Wait for confirmation.
+   - **Dispatched sub-agent**: skip the ask — orchestrator reviews after. Return the task ref to the parent.
+6. `mymir_task` `action='update'` `status='done'` `executionRecord='...'` `decisions=[...]` `files=[...]` — read and follow any `_hints` returned about missing fields.
+7. Run **Propagate Changes** on the completed task
 
-**REQUIRED**: Steps 4-6 are NOT optional. Execution records feed downstream tasks via `mymir_context depth='agent'`. Skipping them breaks the context chain.
+**REQUIRED**: Steps 4-7 are NOT optional. Execution records feed downstream tasks via `mymir_context depth='agent'`. Skipping them breaks the context chain.
 
 **Markdown formatting rule (applies to description, executionRecord, implementationPlan, and decisions — NOT files, which are plain path strings):**
 Stay concise — same density as before, just use markdown structure so the UI renders it well:
@@ -141,9 +156,10 @@ Stay concise — same density as before, just use markdown structure so the UI r
    - **User described what they did**: extract executionRecord, decisions, files from conversation
    - **User just said "done"**: ask what was built, key decisions, files touched
    - **Coding agent reported back**: summarize the agent's work into executionRecord
-4. `mymir_task` `action='update'` with `status='done'`, `executionRecord`, `decisions`, `files` — **all three required, all in markdown format**
-5. Run **Propagate Changes** on the completed task
-6. Report what was unlocked: `mymir_analyze type='ready'`
+4. **Confirm before transitioning** (single-agent mode): show the user the proposed executionRecord + decisions + files and wait for confirmation. In multi-agent mode, skip this step.
+5. `mymir_task` `action='update'` with `status='done'`, `executionRecord`, `decisions`, `files` — **all three expected, all in markdown format**. Read and follow any `_hints` returned about missing fields.
+6. Run **Propagate Changes** on the completed task
+7. Report what was unlocked: `mymir_analyze type='ready'`
 
 ### Continue / Resume
 1. `mymir_project` `action='list'` + `action='select'` → note projectId for all subsequent calls
