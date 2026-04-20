@@ -163,8 +163,13 @@ export function registerAllTools(server: McpServer): void {
           .describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create"),
         status: z.enum(["draft", "planned", "in_progress", "done"]).optional()
           .describe("Task lifecycle status"),
-        acceptanceCriteria: z.array(z.string()).optional()
-          .describe("2-4 testable done conditions"),
+        acceptanceCriteria: z.array(
+          z.union([
+            z.string(),
+            z.object({ id: z.string().optional(), text: z.string(), checked: z.boolean().optional() }),
+          ]),
+        ).optional()
+          .describe("2-4 testable done conditions. Pass strings for new criteria, or objects with {text, checked} to set check state."),
         decisions: z.array(z.string()).optional()
           .describe("Key technical decisions and constraints"),
         tags: z.array(z.string()).optional()

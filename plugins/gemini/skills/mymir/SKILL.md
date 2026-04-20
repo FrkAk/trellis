@@ -113,7 +113,8 @@ All other project management (status, next task, refine, continue, mark done) is
    - `executionRecord`: 3-5 sentences — what was built, approach, concrete details (function names, file paths, endpoints). No debugging stories.
    - `decisions`: one-liner per key technical choice (CHOICE + WHY)
    - `files`: every file created or modified
-5. `mymir_task` `action='update'` `status='done'` `executionRecord='...'` `decisions=[...]` `files=[...]`
+   - `acceptanceCriteria`: the task's existing criteria array with `checked` updated — set `checked: true` for each criterion clearly satisfied by your work, `false` otherwise
+5. `mymir_task` `action='update'` `status='done'` `executionRecord='...'` `decisions=[...]` `files=[...]` `acceptanceCriteria=[...]`
 6. Run **Propagate Changes** on the completed task
 
 **REQUIRED**: Steps 4-6 are NOT optional. Execution records feed downstream tasks via `mymir_context depth='agent'`. Skipping them breaks the context chain.
@@ -141,9 +142,10 @@ Stay concise — same density as before, just use markdown structure so the UI r
    - **User described what they did**: extract executionRecord, decisions, files from conversation
    - **User just said "done"**: ask what was built, key decisions, files touched
    - **Coding agent reported back**: summarize the agent's work into executionRecord
-4. `mymir_task` `action='update'` with `status='done'`, `executionRecord`, `decisions`, `files` — **all three required, all in markdown format**
-5. Run **Propagate Changes** on the completed task
-6. Report what was unlocked: `mymir_analyze type='ready'`
+4. Evaluate acceptance criteria: for each criterion on the task, determine if it was met based on what was built. Set `checked: true` if clearly satisfied, `false` otherwise.
+5. `mymir_task` `action='update'` with `status='done'`, `executionRecord`, `decisions`, `files`, `acceptanceCriteria` — **all five required, all in markdown format**
+6. Run **Propagate Changes** on the completed task
+7. Report what was unlocked: `mymir_analyze type='ready'`
 
 ### Continue / Resume
 1. `mymir_project` `action='list'` + `action='select'` → note projectId for all subsequent calls

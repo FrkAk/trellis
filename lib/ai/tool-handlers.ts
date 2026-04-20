@@ -403,6 +403,17 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
           if (!p.files && (!result.files || result.files.length === 0)) {
             updateHints.push("Missing files. Record all file paths touched during implementation.");
           }
+          const criteria = result.acceptanceCriteria as { checked: boolean }[] | null;
+          if (
+            result.executionRecord &&
+            criteria &&
+            criteria.length > 0 &&
+            criteria.every((c) => !c.checked)
+          ) {
+            updateHints.push(
+              "Acceptance criteria are all unchecked. Evaluate each against your executionRecord and re-submit with acceptanceCriteria updated (checked: true/false).",
+            );
+          }
         }
         return ok(updateHints.length > 0 ? { ...result, _hints: updateHints } : result);
       }

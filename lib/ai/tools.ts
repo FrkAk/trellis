@@ -42,7 +42,12 @@ const taskFields = {
   title: z.string().optional().describe("Short task name. Required for create"),
   description: z.string().optional().describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create"),
   status: z.enum(["draft", "planned", "in_progress", "done"]).optional().describe("Task lifecycle status"),
-  acceptanceCriteria: z.array(z.string()).optional().describe("2-4 testable done conditions"),
+  acceptanceCriteria: z.array(
+    z.union([
+      z.string(),
+      z.object({ id: z.string().optional(), text: z.string(), checked: z.boolean().optional() }),
+    ]),
+  ).optional().describe("2-4 testable done conditions. Pass strings for new criteria, or objects with {text, checked} to set check state."),
   decisions: z.array(z.string()).optional().describe("Key technical decisions and constraints"),
   tags: z.array(z.string()).optional().describe("Kebab-case. Every task carries exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), >=1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces the task touches), and exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Check mymir_query type='overview' before coining new."),
   category: z.string().optional().describe("Drawer group for this task. Should match a project category."),
