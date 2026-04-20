@@ -159,7 +159,8 @@ export const DESCRIPTIONS = {
     "Always 'list' then 'select' at session start. Always pass projectId explicitly on every call.",
   mymir_task:
     "Create, update, delete, or reorder tasks. " +
-    "Tasks are concrete work items with status lifecycle: draft → planned → in_progress → done. " +
+    "Status lifecycle: draft → planned → in_progress → done (see `status` field for per-state expectations). " +
+    "Before marking done, follow the skill's Completion Protocol. " +
     "For delete: preview defaults to true (shows impact without deleting). Set preview=false to execute. " +
     "Update accepts any combination of fields — pass only what changed. " +
     "Array fields (decisions, acceptanceCriteria, files) APPEND by default. Set overwriteArrays=true to replace entirely.",
@@ -390,8 +391,12 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         if (p.tags && p.tags.length > 0) {
           updateHints.push(...tagVariantHints(p.tags, preExistingTags));
         }
+        if (p.status === "planned") {
+          updateHints.push("Task planned. Claim with status='in_progress' when ready to implement.");
+        }
         if (p.status === "in_progress") {
           updateHints.push("Run mymir_context depth='agent' to get implementation context before starting.");
+          updateHints.push("Before marking done: confirm with the user (single-agent mode) or return to the orchestrator (dispatched mode). See Completion Protocol in the skill.");
         }
         if (p.status === "done") {
           if (!p.executionRecord && !result.executionRecord) {
@@ -401,8 +406,9 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
             updateHints.push("Missing decisions. Record technical choices (CHOICE + WHY) — downstream tasks need them.");
           }
           if (!p.files && (!result.files || result.files.length === 0)) {
-            updateHints.push("Missing files. Record all file paths touched during implementation.");
+            updateHints.push("Missing files. Record every path touched during implementation (empty only if the task genuinely touched no files).");
           }
+          updateHints.push("Run mymir_analyze type='downstream' to propagate changes and update any edges made stale by this completion.");
         }
         return ok(updateHints.length > 0 ? { ...result, _hints: updateHints } : result);
       }

@@ -22,6 +22,19 @@ Responses include `taskRef` (e.g. `MYMR-83`) — use when referring to tasks in 
 
 ---
 
+## Completion Protocol
+
+Before transitioning a task to `status='done'`, confirm based on invoker:
+
+- **Direct user invocation** (no parent agent): ask the user "Ready to mark this done?" with a one-sentence executionRecord preview. Wait for explicit confirmation.
+- **Dispatched sub-agent** (parent agent is reviewer): skip the ask. Mark done directly with the full payload. Return to the parent with the task ref and a one-sentence summary.
+
+The update call should populate `executionRecord`, `decisions`, and `files` — tool responses include hints when any are missing. Empty `files` is acceptable only if the task genuinely touched no files (e.g., a decision or research task).
+
+If uncertain which mode you're in: default to asking.
+
+---
+
 ## Core Workflows
 
 ### A. Pick Next Task (Single Agent)
@@ -54,6 +67,7 @@ When multiple agents or workers are available:
    - For each: `mymir_task` with `action='update'`, `status='in_progress'`
    - For each: `mymir_context` with `depth='agent'` → hand off context
    - Once in_progress, tasks disappear from 'ready' results — no double-assignment
+   - Each sub-agent marks done **directly** with the full payload when complete — they do NOT ask for confirmation. Orchestrator reviews executionRecords after parallel work finishes.
 3. If NO ready tasks (or fewer ready than agents):
    - `mymir_analyze` with `type='plannable'` → draft tasks ready for planning
    - Assign remaining agents to plan draft tasks in parallel
@@ -77,13 +91,14 @@ When a task is `draft` and needs an implementation plan:
 When a user or coding agent reports they finished a task:
 
 1. If the task is not already `in_progress`, set it first: `mymir_task` with `action='update'`, `status='in_progress'` — this ensures the full lifecycle is recorded in history.
-2. `mymir_task` with `action='update'` — **all text fields in markdown format**:
+2. **Confirm before marking done** — follow the Completion Protocol (single-agent asks; dispatched skips).
+3. `mymir_task` with `action='update'` — **all text fields in markdown format**:
    - `status` = `'done'`
    - `executionRecord` = summary of what was built, approach taken, anything surprising
    - `decisions` = key technical choices made (these inform downstream tasks)
    - `files` = file paths touched during implementation
-3. These records feed into `mymir_context depth='agent'` for downstream tasks
-4. **ALWAYS run Workflow F after marking done** — propagate the change through the graph
+4. These records feed into `mymir_context depth='agent'` for downstream tasks
+5. **ALWAYS run Workflow F after marking done** — propagate the change through the graph
 
 **Format guidelines for high-quality records:**
 
@@ -151,10 +166,11 @@ When the user says "continue", "what's the status", or starts a new session:
    - **If the user described what they did**: extract executionRecord, decisions, and files from the conversation — don't re-ask what's already been said
    - **If the user just said "done" with no details**: ask what was built, key decisions made, and files touched
    - **If a coding agent reported back**: summarize the agent's work into executionRecord yourself
-4. `mymir_task` with `action='update'`: `status='done'`, `executionRecord`, `decisions`, `files`
-   - **All three fields (executionRecord, decisions, files) are required** — do not mark done without them.
-5. Run Workflow F to propagate changes
-6. Report what was unlocked by completing this task (`mymir_analyze type='ready'`)
+4. **Confirm before transitioning** — follow the Completion Protocol.
+5. `mymir_task` with `action='update'`: `status='done'`, `executionRecord`, `decisions`, `files`
+   - **All three fields (executionRecord, decisions, files) are expected** — tool responses include `_hints` when any are missing. Empty `files` is fine only when the task genuinely touched no files.
+6. Run Workflow F to propagate changes
+7. Report what was unlocked by completing this task (`mymir_analyze type='ready'`)
 
 ### Create a Task
 0. Check `mymir_query` with `type='overview'` Tag vocabulary section for existing tags to reuse.
