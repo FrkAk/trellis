@@ -409,6 +409,17 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
             updateHints.push("Missing files. Record every path touched during implementation (empty only if the task genuinely touched no files).");
           }
           updateHints.push("Run mymir_analyze type='downstream' to propagate changes and update any edges made stale by this completion.");
+          const criteria = result.acceptanceCriteria as { checked: boolean }[] | null;
+          if (
+            result.executionRecord &&
+            criteria &&
+            criteria.length > 0 &&
+            criteria.every((c) => !c.checked)
+          ) {
+            updateHints.push(
+              "Acceptance criteria are all unchecked. Evaluate each against your executionRecord and re-submit with acceptanceCriteria updated (checked: true/false).",
+            );
+          }
         }
         return ok(updateHints.length > 0 ? { ...result, _hints: updateHints } : result);
       }

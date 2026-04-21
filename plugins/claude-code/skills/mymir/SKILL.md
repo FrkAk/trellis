@@ -125,8 +125,9 @@ All other project management (status, next task, refine, continue, mark done) is
    - `executionRecord`: 3-5 sentences — what was built, approach, concrete details (function names, file paths, endpoints). No debugging stories.
    - `decisions`: one-liner per key technical choice (CHOICE + WHY)
    - `files`: every file created or modified
+   - `acceptanceCriteria`: the task's existing criteria array with `checked` updated — set `checked: true` for each criterion clearly satisfied by your work, `false` otherwise
 5. **Confirm before marking done** — follow the Completion Protocol (single-agent asks; dispatched skips).
-6. `mymir_task` `action='update'` `status='done'` `executionRecord='...'` `decisions=[...]` `files=[...]` — read and follow any `_hints` returned about missing fields.
+6. `mymir_task` `action='update'` `status='done'` `executionRecord='...'` `decisions=[...]` `files=[...]` `acceptanceCriteria=[...]` — read and follow any `_hints` returned about missing fields.
 7. Run **Propagate Changes** on the completed task
 
 **REQUIRED**: Steps 4-7 are NOT optional. Execution records feed downstream tasks via `mymir_context depth='agent'`. Skipping them breaks the context chain.
@@ -155,9 +156,10 @@ Stay concise — same density as before, just use markdown structure so the UI r
    - **User just said "done"**: ask what was built, key decisions, files touched
    - **Coding agent reported back**: summarize the agent's work into executionRecord
 4. **Confirm before transitioning** — follow the Completion Protocol.
-5. `mymir_task` `action='update'` with `status='done'`, `executionRecord`, `decisions`, `files` — **all three expected, all in markdown format**. Read and follow any `_hints` returned about missing fields.
-6. Run **Propagate Changes** on the completed task
-7. Report what was unlocked: `mymir_analyze type='ready'`
+5. Evaluate acceptance criteria: for each criterion on the task, determine if it was met based on what was built. Set `checked: true` if clearly satisfied, `false` otherwise.
+6. `mymir_task` `action='update'` with `status='done'`, `executionRecord`, `decisions`, `files`, `acceptanceCriteria` — **all five required, all in markdown format**
+7. Run **Propagate Changes** on the completed task
+8. Report what was unlocked: `mymir_analyze type='ready'`
 
 ### Continue / Resume
 1. `mymir_project` `action='list'` + `action='select'` → note projectId for all subsequent calls

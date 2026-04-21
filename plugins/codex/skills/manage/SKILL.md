@@ -97,6 +97,7 @@ When a user or coding agent reports they finished a task:
    - `executionRecord` = summary of what was built, approach taken, anything surprising
    - `decisions` = key technical choices made (these inform downstream tasks)
    - `files` = file paths touched during implementation
+   - `acceptanceCriteria` = the task's existing criteria with `checked` updated — set `checked: true` for each criterion clearly satisfied by the work, `false` otherwise
 4. These records feed into `mymir_context depth='agent'` for downstream tasks
 5. **ALWAYS run Workflow F after marking done** — propagate the change through the graph
 
@@ -118,7 +119,7 @@ Stay concise — same density as before, just use markdown structure so the UI r
 - Use headings (`##`, `###`) only in longer fields like implementationPlan
 - Do NOT pad text to fill space or add filler — brevity is the goal, markdown is just for structure
 
-**WARNING**: executionRecord and files are NOT optional. They feed downstream tasks via `mymir_context depth='agent'`. Skipping them breaks the context chain for every task that depends on this one.
+**WARNING**: executionRecord, files, and acceptanceCriteria are NOT optional. Execution records and files feed downstream tasks via `mymir_context depth='agent'`. Skipping them breaks the context chain for every task that depends on this one.
 
 ### E. Resume / Continue Session
 
@@ -167,10 +168,11 @@ When the user says "continue", "what's the status", or starts a new session:
    - **If the user just said "done" with no details**: ask what was built, key decisions made, and files touched
    - **If a coding agent reported back**: summarize the agent's work into executionRecord yourself
 4. **Confirm before transitioning** — follow the Completion Protocol.
-5. `mymir_task` with `action='update'`: `status='done'`, `executionRecord`, `decisions`, `files`
-   - **All three fields (executionRecord, decisions, files) are expected** — tool responses include `_hints` when any are missing. Empty `files` is fine only when the task genuinely touched no files.
-6. Run Workflow F to propagate changes
-7. Report what was unlocked by completing this task (`mymir_analyze type='ready'`)
+5. Evaluate acceptance criteria: for each criterion on the task, determine if it was met based on what was built. Set `checked: true` if clearly satisfied, `false` otherwise.
+6. `mymir_task` with `action='update'`: `status='done'`, `executionRecord`, `decisions`, `files`, `acceptanceCriteria`
+   - **All five fields are required** — do not mark done without them.
+7. Run Workflow F to propagate changes
+8. Report what was unlocked by completing this task (`mymir_analyze type='ready'`)
 
 ### Create a Task
 0. Check `mymir_query` with `type='overview'` Tag vocabulary section for existing tags to reuse.

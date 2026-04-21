@@ -163,8 +163,13 @@ export function registerAllTools(server: McpServer): void {
           .describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create"),
         status: z.enum(["draft", "planned", "in_progress", "done"]).optional()
           .describe("Task lifecycle: draft (unplanned) → planned (has implementationPlan) → in_progress (actively worked on) → done (executionRecord + decisions + files recorded so downstream tasks get context)."),
-        acceptanceCriteria: z.array(z.string()).optional()
-          .describe("2-4 testable done conditions"),
+        acceptanceCriteria: z.array(
+          z.union([
+            z.string(),
+            z.object({ id: z.string().optional(), text: z.string(), checked: z.boolean().optional() }),
+          ]),
+        ).optional()
+          .describe("2-4 testable done conditions. Pass strings for new criteria, or objects with {text, checked} to set check state."),
         decisions: z.array(z.string()).optional()
           .describe("Key technical decisions and constraints"),
         tags: z.array(z.string()).optional()
@@ -338,7 +343,7 @@ export function registerAllTools(server: McpServer): void {
  */
 export function createMcpServer(): McpServer {
   const server = new McpServer(
-    { name: "mymir", version: "1.2.1" },
+    { name: "mymir", version: "1.2.2" },
     { instructions: INSTRUCTIONS },
   );
   registerAllTools(server);
