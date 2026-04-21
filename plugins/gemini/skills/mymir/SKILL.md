@@ -78,16 +78,30 @@ If uncertain which mode you're in: default to asking.
 
 ## Agent Delegation
 
-Two agents require dedicated delegation — **do not handle these yourself:**
+Three agents require dedicated delegation — **do not handle these yourself:**
 
 | User intent | Agent | When |
 |-------------|-------|------|
-| New idea, "I want to build...", app concept | `mymir:brainstorm` | No project exists yet, or exploring a new idea |
-| "Break this down", "decompose", "create tasks" | `mymir:decompose` | Project exists with description but few/no tasks |
+| Current repo has existing code but no matching Mymir project | `mymir:onboarding` | Non-empty repo, no project in `mymir_project list` matches it |
+| New idea, "I want to build...", app concept | `mymir:brainstorm` | Empty directory, not in a repo, or exploring a concept before code exists |
+| "Break this down", "decompose", "create tasks" | `mymir:decompose` | Mymir project exists with description but few/no tasks |
 
 All other project management (status, next task, refine, continue, mark done) is handled directly by this skill. The `mymir:manage` agent exists for explicit delegation only.
 
-**If unsure:** `mymir_query type='overview'`. No tasks → decompose. Has tasks → use workflows below.
+### Detection (run on first skill activation of the session)
+
+1. `mymir_project action='list'` → full list
+2. Derive current repo identity:
+   - Git remote URL: `git config --get remote.origin.url`
+   - Package name from `package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod`
+   - pwd basename as last-resort fallback
+3. Match against project titles and descriptions
+4. Route:
+   - Match found → `mymir_project action='select'` and use workflows below
+   - No match AND repo has commits or source files → delegate to `mymir:onboarding`
+   - No match AND empty dir / not in a repo → delegate to `mymir:brainstorm`
+
+**If unsure:** check project count. Zero projects → brainstorm (net-new) or onboarding (existing code). Projects exist but none match this repo → onboarding. Project matches but no tasks → decompose. Project matches with tasks → use workflows below.
 
 ## Workflows
 

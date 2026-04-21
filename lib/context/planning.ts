@@ -14,9 +14,9 @@ import { section, formatCriteria, formatDecisions } from "./format";
 
 /**
  * Build planning-optimized context for a task.
- * Planners can't read the codebase — they depend on project description, execution records,
- * and downstream task specs for breadth. Sections ordered by U-shaped attention.
- * No token budget — all content included as-is.
+ * Supplies the project-level breadth a planner can't derive from reading code alone:
+ * project description, upstream execution records, and downstream task specs.
+ * Sections ordered by U-shaped attention. No token budget — all content included as-is.
  * @param taskId - UUID of the task.
  * @returns Formatted planning context string.
  */

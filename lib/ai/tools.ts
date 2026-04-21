@@ -41,7 +41,7 @@ const taskFields = {
   taskId: z.string().uuid().optional().describe("Task UUID. Required for update/delete/reorder"),
   title: z.string().optional().describe("Short task name. Required for create"),
   description: z.string().optional().describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create"),
-  status: z.enum(["draft", "planned", "in_progress", "done"]).optional().describe("Task lifecycle status"),
+  status: z.enum(["draft", "planned", "in_progress", "done"]).optional().describe("Task lifecycle: draft (unplanned) → planned (has implementationPlan) → in_progress (actively worked on) → done (executionRecord + decisions + files recorded so downstream tasks get context)."),
   acceptanceCriteria: z.array(
     z.union([
       z.string(),

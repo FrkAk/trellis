@@ -1,6 +1,18 @@
 ![Mymir](assets/mymir-logo.png)
 > Context management for the agent-native engineering era.
 
+<p align="center">
+  <a href="#claude-code"><img alt="Claude Code" src="https://img.shields.io/badge/Claude_Code-D97757?style=flat-square&logo=anthropic&logoColor=white" /></a>
+  &nbsp;&nbsp;
+  <a href="#codex"><img alt="Codex" src="https://img.shields.io/badge/Codex-000000?style=flat-square&logo=openai&logoColor=white" /></a>
+  &nbsp;&nbsp;
+  <a href="#gemini"><img alt="Gemini CLI" src="https://img.shields.io/badge/Gemini_CLI-4285F4?style=flat-square&logo=googlegemini&logoColor=white" /></a>
+</p>
+
+<p align="center">
+  <img src="assets/mymir-demo.gif" alt="Mymir demo" width="900" />
+</p>
+
 Most of us aren't really writing code anymore, we're directing agents that do. But those agents have no memory. Every session starts from zero, and engineers end up spending their time re-explaining what was built, why decisions were made, and what still needs to happen. That's not engineering, that's babysitting.
 
 Mymir replaces that cycle. It's not just a context layer your agents read from, it's an end-to-end project management tool that agents operate natively. Mymir creates tasks, refines them, plans implementations, provides the right context at the right stage, and tracks everything that happens. Your agent harness doesn't need a briefing. It walks into every session knowing exactly what to do next and why.
@@ -13,9 +25,16 @@ Instead of docs, wikis, or messy markdown files, Mymir treats project context as
 
 We built Mymir around two core concepts:
 
-**Context network** - a living map of your project that captures not just what was built, but why decisions were made, what was tried and abandoned, and how different parts of the codebase relate to each other.
+**Context network.** A living map of your project that captures not just what was built, but why decisions were made, what was tried and abandoned, and how different parts of the codebase relate to each other.
 
-**Context retrieval interface** - the layer that lets agents query and use that knowledge at the right moment, so they walk into every session already knowing the story so far.
+**Context retrieval interface.** Four context shapes, one per job. Each is arranged by U-shaped attention (highest-recall content at the start and end) so what matters most lands where LLMs read best:
+
+| Shape | For | What's in it |
+| --- | --- | --- |
+| `summary` | Quick lookup | Title, status, edge counts |
+| `working` | Refining or reviewing a task | Criteria, decisions, 1-hop neighbors, conversation history |
+| `planning` | Writing an implementation plan | Project brief, prerequisites, upstream execution records, downstream specs |
+| `agent` | Coding the task | Implementation plan, multi-hop upstream execution records, file paths, acceptance criteria |
 
 Together, they don't just inform your agent, they drive it. Mymir manages the full lifecycle: **Brainstorm > Decompose > Refine > Plan > Execute > Track**.
 
@@ -47,37 +66,46 @@ Zoom out and the full graph renders your entire context network. Clusters, bottl
 
 ## How it runs
 
-Mymir ships as a Claude Code plugin that bundles an MCP server (6 tools), specialized agents (brainstorm, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
+Mymir ships as a Next.js web app plus vendor-native plugins for Claude Code, Codex, and Gemini. Each plugin bundles 6 MCP tools, four agents (brainstorm, onboarding, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
 
-**Start a new project from scratch.** The brainstorm agent shapes the idea with you, then the decompose agent breaks it into tasks with dependency edges:
+**Three entry paths, one graph.**
 
-```text
-I want to build a real-time dashboard for server metrics
-```
-
-**Ask what's next.** Mymir finds unblocked tasks on the critical path, determines whether they need planning or implementation, and hands your agent the right context for that stage:
+*No project yet.* The brainstorm agent shapes the idea with you, then decompose breaks it into a task graph:
 
 ```text
-What should I work on next?
+❯ I want to build a real-time dashboard for server metrics
 ```
 
-Your agent gets stage-appropriate context automatically and acts accordingly.
-
-**Record what happened.** When work is done, Mymir captures execution records, decisions, and file changes so downstream tasks get that context automatically:
+*Existing codebase, no tracking yet.* Onboarding reverse-engineers a graph from the code and git history, gated on your approval before anything is written:
 
 ```text
-Done with "Add hide chat toggle to TaskTab", added a collapse toggle to the chat panel using the same pattern as the spec section.
+❯ Onboard this existing codebase
 ```
 
-**Check status or steer.** The skill auto-invokes when it detects project intent, but you can also call it explicitly:
+*Ongoing project.* The `/mymir` skill detects the repo and picks up where you left off:
 
 ```text
-/mymir what's the status of the project?
-/mymir plan the "Migrate to pub/sub" task
-/mymir show me what's blocked and why
+❯ What's the status of the project?
 ```
 
-Your agent moves through the full lifecycle with the right context at every step.
+**Skip the context briefing.** Name a task or ask what's next. Mymir delivers the right bundle for that task's state, so you don't write "here's what you need to know" prompts yourself:
+
+```text
+❯ What should I work on next?
+❯ Plan and implement MYMR-101
+```
+
+**Add and refine mid-flow.** Spot something missing, describe it, and push back until it's right:
+
+```text
+❯ Add a task for an onboarding agent that records shipped work as done tasks. Relate it to the codex/gemini support task.
+```
+
+```text
+❯ Priority is release-blocker, draft ACs are enough, and monorepo detection should ask the user.
+```
+
+**Tune in the UI.** Inspect edges, read execution records, and edit descriptions, ACs, tags, or dependencies directly. The agent loop and the UI write to the same store, so edits land by the next tool call.
 
 ---
 
@@ -94,14 +122,24 @@ bun install
 cp .env.local.example .env.local
 ```
 
-Add your credentials to `.env.local`:
+Add your credentials to `.env.local` (see `.env.local.example` for the full list):
 
 ```bash
+# Postgres: local Docker default; works with any connection string (Neon, Supabase, RDS)
 DATABASE_URL=postgresql://mymir:mymir@localhost:5432/mymir
+
+# Better Auth: session secret (openssl rand -base64 32) and callback origin
 BETTER_AUTH_SECRET=generate-a-random-secret-at-least-32-chars
 BETTER_AUTH_URL=http://localhost:3000
-GOOGLE_GENERATIVE_AI_API_KEY=your-key
+
+# LLM provider: configure at least one
+GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
+# ANTHROPIC_API_KEY=your-anthropic-key
+# OPENAI_API_KEY=your-openai-key
+# OLLAMA_BASE_URL=http://localhost:11434
 ```
+
+**Bring your own AI.** Use Mymir from whichever coding agent you already reach for (Claude Code, Codex, Gemini CLI); those CLIs use their own auth, so no keys here are required for the CLI flow. Adding a provider key to `.env.local` enables the same AI capabilities inside the web app, so you can work from the browser too. Try it free with a Gemini 3.1 Flash (preview) key (Google's generous free tier); for heavier project work, Claude Opus, GPT, or Gemini Pro give the best results.
 
 Spin up Postgres and push the schema:
 
@@ -115,82 +153,49 @@ Start the dev server and open [localhost:3000](http://localhost:3000):
 bun run dev
 ```
 
-Mymir ships as three standalone plugin/extension dirs — one per supported CLI under `plugins/<cli>/`. Each is vendor-native; pick the one that matches your tool.
+Mymir ships as three standalone plugin/extension dirs, one per supported CLI under `plugins/<cli>/`. With the dev server running, install the one that matches your tool.
 
-### Claude Code plugin
-
-Make sure the dev server is running, then:
+### Claude Code
 
 ```bash
 claude plugin marketplace add ./plugins/claude-code
 claude plugin install mymir@mymir-local
 ```
 
-Then authenticate the MCP server — Claude Code does not trigger OAuth automatically:
+Authenticate with `/mcp`, select **mymir**, and complete the browser sign-in (once per machine).
 
-```text
-/mcp
-```
+Update with `claude plugin update mymir@mymir-local` and restart Claude Code. MCP server changes (`lib/mcp/`) apply immediately without an update.
 
-Select **mymir** and complete the browser sign-in. You only need to do this once per machine; the token is cached.
-
-One-time setup. Mymir is available in every Claude Code session.
-
-To update after pulling changes: `claude plugin update mymir@mymir-local`, then restart Claude Code. MCP server changes (`lib/mcp/`) take effect immediately — no update needed.
-
-Installed components:
-
-| Component | What it does |
-| --- | --- |
-| **6 MCP tools** | `mymir_project`, `mymir_task`, `mymir_edge`, `mymir_query`, `mymir_context`, `mymir_analyze` |
-| **Brainstorm agent** | Explore and shape a project idea through structured conversation |
-| **Decompose agent** | Break a project into tasks with dependency edges |
-| **Manage agent** | Navigate, refine, track progress, restructure |
-| **Mymir skill** | Auto-invokes when conversation matches project planning |
-
-### Codex CLI
-
-Make sure the dev server is running, then add the local Codex marketplace:
+### Codex
 
 ```bash
 codex marketplace add ./plugins
 ```
 
-Open Codex, run `/plugin`, search for **Mymir**, select it, install it, then restart Codex.
+Open Codex, run `/plugin`, search for **Mymir**, install, then restart. Invoke the main skill explicitly with `$mymir` when needed.
 
-The plugin loads the Mymir MCP server and the `mymir`, `brainstorm`, `decompose`, and `manage` skills. Skills match by description when you mention tasks, projects, new ideas, or "break this down." You can also invoke the main skill explicitly with `$mymir`.
-
-### Gemini CLI
-
-Make sure the dev server is running, then install Mymir as a Gemini extension:
+### Gemini
 
 ```bash
 gemini extensions install ./plugins/gemini
 ```
 
-This copies the extension into `~/.gemini/extensions/mymir`. Start Gemini and complete the OAuth flow:
+Authenticate with `/mcp auth mymir` and complete the browser sign-in.
 
-```text
-/mcp auth mymir
-```
+Update with `gemini extensions update mymir`; remove with `gemini extensions uninstall mymir`.
 
-A browser window opens for sign-in. After authorization, the extension loads the MCP server, the `/mymir` slash command, and the `mymir`, `brainstorm`, `decompose`, and `manage` skills (auto-activate by description).
+### What gets installed
 
-To update after pulling changes: `gemini extensions update mymir`. To remove: `gemini extensions uninstall mymir`.
+All three plugins bundle the same components:
 
-**Minimal setup (MCP server only, no commands or skills):** add Mymir to `~/.gemini/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "mymir": {
-      "httpUrl": "http://localhost:3000/api/mcp"
-    }
-  }
-}
-```
-
-Then run `/mcp auth mymir` inside Gemini.
+| Component | What it does |
+| --- | --- |
+| **6 MCP tools** | `mymir_project`, `mymir_task`, `mymir_edge`, `mymir_query`, `mymir_context`, `mymir_analyze` |
+| **Brainstorm agent** | Explore and shape a project idea through structured conversation |
+| **Onboarding agent** | Reverse-engineer an existing codebase into a task graph with shipped work recorded as `done` |
+| **Decompose agent** | Break a project into tasks with dependency edges |
+| **Manage agent** | Navigate, refine, track progress, restructure |
+| **Mymir skill** | Auto-invokes when conversation matches project planning |
 
 ---
 

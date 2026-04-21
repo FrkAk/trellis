@@ -233,7 +233,12 @@ export async function createTask(data: CreateTaskInput) {
       ...data,
       acceptanceCriteria: (data.acceptanceCriteria as unknown[]).map((c) => {
         if (typeof c === "string") return { id: crypto.randomUUID(), text: c, checked: false };
-        return c as { id: string; text: string; checked: boolean };
+        const obj = c as Record<string, unknown>;
+        return {
+          id: (obj.id as string) ?? crypto.randomUUID(),
+          text: (obj.text as string) ?? (obj.description as string) ?? String(c),
+          checked: (obj.checked as boolean) ?? false,
+        };
       }),
     };
   }
@@ -245,7 +250,13 @@ export async function createTask(data: CreateTaskInput) {
         if (typeof d === "string") {
           return { id: crypto.randomUUID(), text: d, date: new Date().toISOString().slice(0, 10), source: "refinement" as const };
         }
-        return d as Decision;
+        const obj = d as Record<string, unknown>;
+        return {
+          id: (obj.id as string) ?? crypto.randomUUID(),
+          text: (obj.text as string) ?? String(d),
+          date: (obj.date as string) ?? new Date().toISOString().slice(0, 10),
+          source: (obj.source as Decision["source"]) ?? "refinement",
+        } as Decision;
       }),
     };
   }

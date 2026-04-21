@@ -53,6 +53,14 @@ const shared: SharedGroup[] = [
       "plugins/gemini/skills/manage/SKILL.md",
     ],
   },
+  {
+    name: "onboarding (agent + skill)",
+    canonical: "plugins/claude-code/agents/onboarding.md",
+    copies: [
+      "plugins/codex/skills/onboarding/SKILL.md",
+      "plugins/gemini/skills/onboarding/SKILL.md",
+    ],
+  },
 ];
 
 const fieldSyncs: FieldSync[] = [
