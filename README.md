@@ -47,12 +47,18 @@ Zoom out and the full graph renders your entire context network. Clusters, bottl
 
 ## How it runs
 
-Mymir ships as a Claude Code plugin that bundles an MCP server (6 tools), specialized agents (brainstorm, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
+Mymir ships as a Claude Code plugin that bundles an MCP server (6 tools), specialized agents (brainstorm, onboarding, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
 
 **Start a new project from scratch.** The brainstorm agent shapes the idea with you, then the decompose agent breaks it into tasks with dependency edges:
 
 ```text
 I want to build a real-time dashboard for server metrics
+```
+
+**Adopt Mymir on an existing codebase.** The onboarding agent reads the repo, proposes a task graph that records shipped work as `done` (with execution records, decisions, and files grounded in the code) and visible unfinished work as `draft`, and asks for your approval before writing anything:
+
+```text
+Onboard this existing codebase
 ```
 
 **Ask what's next.** Mymir finds unblocked tasks on the critical path, determines whether they need planning or implementation, and hands your agent the right context for that stage:
@@ -144,6 +150,7 @@ Installed components:
 | --- | --- |
 | **6 MCP tools** | `mymir_project`, `mymir_task`, `mymir_edge`, `mymir_query`, `mymir_context`, `mymir_analyze` |
 | **Brainstorm agent** | Explore and shape a project idea through structured conversation |
+| **Onboarding agent** | Reverse-engineer an existing codebase into a task graph with shipped work recorded as `done` |
 | **Decompose agent** | Break a project into tasks with dependency edges |
 | **Manage agent** | Navigate, refine, track progress, restructure |
 | **Mymir skill** | Auto-invokes when conversation matches project planning |
@@ -158,7 +165,7 @@ codex marketplace add ./plugins
 
 Open Codex, run `/plugin`, search for **Mymir**, select it, install it, then restart Codex.
 
-The plugin loads the Mymir MCP server and the `mymir`, `brainstorm`, `decompose`, and `manage` skills. Skills match by description when you mention tasks, projects, new ideas, or "break this down." You can also invoke the main skill explicitly with `$mymir`.
+The plugin loads the Mymir MCP server and the `mymir`, `brainstorm`, `onboarding`, `decompose`, and `manage` skills. Skills match by description when you mention tasks, projects, new ideas, or "break this down." You can also invoke the main skill explicitly with `$mymir`.
 
 ### Gemini CLI
 
@@ -174,7 +181,7 @@ This copies the extension into `~/.gemini/extensions/mymir`. Start Gemini and co
 /mcp auth mymir
 ```
 
-A browser window opens for sign-in. After authorization, the extension loads the MCP server, the `/mymir` slash command, and the `mymir`, `brainstorm`, `decompose`, and `manage` skills (auto-activate by description).
+A browser window opens for sign-in. After authorization, the extension loads the MCP server, the `/mymir` slash command, and the `mymir`, `brainstorm`, `onboarding`, `decompose`, and `manage` skills (auto-activate by description).
 
 To update after pulling changes: `gemini extensions update mymir`. To remove: `gemini extensions uninstall mymir`.
 
