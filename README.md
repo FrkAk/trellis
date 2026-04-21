@@ -127,7 +127,7 @@ GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
 # OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-**Bring your own AI.** Use whichever coding agent you already reach for (Claude Code, Codex, Gemini CLI) and drop a provider key here to unlock the same Mymir capabilities in the web UI. The CLI plugins and the web app have parity. To try it free, a Gemini 3.1 Flash (preview) key gets you Google's generous free tier. For heavier project work, Claude Opus, GPT, or Gemini Pro give the best results.
+**Bring your own AI.** Use Mymir from whichever coding agent you already reach for (Claude Code, Codex, Gemini CLI); those CLIs use their own auth, so no keys here are required for the CLI flow. Adding a provider key to `.env.local` enables the same AI capabilities inside the web app, so you can work from the browser too. Try it free with a Gemini 3.1 Flash (preview) key (Google's generous free tier); for heavier project work, Claude Opus, GPT, or Gemini Pro give the best results.
 
 Spin up Postgres and push the schema:
 
