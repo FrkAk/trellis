@@ -23,15 +23,29 @@ export function formatDecisions(decisions: Decision[]): string {
 }
 
 /**
- * Format acceptance criteria as a checklist.
+ * Format acceptance criteria as a checklist, grouped by checked state.
+ *
+ * Output shape depends on the criteria's state so agents can immediately see
+ * what's left to do:
+ * - empty: "None"
+ * - all unchecked: flat "- [ ] ..." list, no labels
+ * - all checked: "All criteria met:" label followed by the checked list
+ * - mixed: "Remaining:" section first (primacy for pending work), then "Done:"
+ *
  * @param criteria - Array of acceptance criteria.
- * @returns Formatted checklist string.
+ * @returns Formatted checklist string, possibly grouped by checked state.
  */
 export function formatCriteria(criteria: AcceptanceCriterion[]): string {
   if (criteria.length === 0) return "None";
-  return criteria
-    .map((c) => `- [${c.checked ? "x" : " "}] ${c.text}`)
-    .join("\n");
+
+  const remaining = criteria.filter((c) => !c.checked);
+  const done = criteria.filter((c) => c.checked);
+  const renderRemaining = () => remaining.map((c) => `- [ ] ${c.text}`).join("\n");
+  const renderDone = () => done.map((c) => `- [x] ${c.text}`).join("\n");
+
+  if (done.length === 0) return renderRemaining();
+  if (remaining.length === 0) return `All criteria met:\n${renderDone()}`;
+  return `Remaining:\n${renderRemaining()}\n\nDone:\n${renderDone()}`;
 }
 
 /**

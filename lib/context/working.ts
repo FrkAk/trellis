@@ -3,10 +3,11 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects, conversations } from "@/lib/db/schema";
-import type { Message } from "@/lib/types";
+import type { AcceptanceCriterion, Message } from "@/lib/types";
 import { getAncestors } from "@/lib/graph/traversal";
 import { fetchTask, getTaskEdgesDetailed } from "@/lib/graph/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
+import { section, formatCriteria } from "./format";
 
 /** Full working context for AI assistant (1-hop). */
 type WorkingContext = {
@@ -138,18 +139,14 @@ function formatTagsSection(node: Record<string, unknown>): string {
 }
 
 /**
- * Format acceptance criteria section.
+ * Format acceptance criteria section using the shared grouped-by-state helper.
  * @param node - Raw node data.
  * @returns Formatted criteria section or empty string.
  */
 function formatCriteriaSection(node: Record<string, unknown>): string {
-  const criteria = (node.acceptanceCriteria as { id: string; text: string; checked: boolean }[]) ?? [];
+  const criteria = (node.acceptanceCriteria as AcceptanceCriterion[]) ?? [];
   if (criteria.length === 0) return "";
-  const lines = ["\n## Acceptance Criteria"];
-  for (const c of criteria) {
-    lines.push(`- [${c.checked ? "x" : " "}] ${c.text}`);
-  }
-  return lines.join("\n");
+  return section("Acceptance Criteria") + "\n" + formatCriteria(criteria);
 }
 
 /**
