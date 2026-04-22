@@ -122,7 +122,7 @@ bun install
 cp .env.local.example .env.local
 ```
 
-**Bring your own AI.** Mymir is a context and project management tool, so no API key is required to use it. For the best experience, however, drive Mymir from whichever coding agent you already reach for (Claude Code, Codex, Gemini CLI). The web app is complementary for anyone who wants to refine a ticket from the browser. Drop a provider key into `.env.local` to enable that chat. The web chat shares the same Mymir tool set as the CLI agents but runs in the browser with no access to your local files, so it cannot run or explore your source, which makes it less powerful than a CLI agent. Still you can use a Gemini 3.1 Flash (preview) key from [Google AI Studio](https://aistudio.google.com/), they provide generous usage limits for free. For heavier project work, Claude Opus, GPT, or Gemini Pro give the best results.
+**Bring your own AI.** Mymir is a context and project management tool, so no API key is required to use it. For the best experience, however, drive Mymir from whichever coding agent you already reach for (Claude Code, Codex, Gemini CLI). The web app is complementary for anyone who wants to refine a ticket from the browser. Drop a provider key into `.env.local` to enable that chat. The web chat shares the same Mymir tool set as the CLI agents but runs in the browser with no access to your local files, so it cannot run or explore your source, which makes it less powerful than a CLI agent. Still, you can use a Gemini 3.1 Flash (preview) key from [Google AI Studio](https://aistudio.google.com/), which offers generous usage limits for free. For heavier project work, Claude Opus, GPT, or Gemini Pro give the best results.
 
 Add your credentials to `.env.local` (see `.env.local.example` for the full list):
 
@@ -134,7 +134,7 @@ DATABASE_URL=postgresql://mymir:mymir@localhost:5432/mymir
 BETTER_AUTH_SECRET=generate-a-random-secret-at-least-32-chars
 BETTER_AUTH_URL=http://localhost:3000
 
-# LLM provider: configure at least one for web app chat acces
+# LLM provider: configure at least one for web app chat access
 GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
 # ANTHROPIC_API_KEY=your-anthropic-key
 # OPENAI_API_KEY=your-openai-key
