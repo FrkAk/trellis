@@ -160,5 +160,5 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
     }
   }
 
-  return parts.join("\n");
+  return parts.join("\n\n");
 }

@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { Button } from '@/components/shared/Button';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { updateTask } from '@/lib/graph/mutations';
-import Markdown from 'react-markdown';
+import { Markdown } from '@/components/shared/Markdown';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
 import type { TaskEdge } from '@/lib/db/schema';
 
@@ -126,7 +126,7 @@ export function PlanTab({
   // Phase A: No plan yet -- show context + upload
   if (!plan) {
     return (
-      <div className={`overflow-y-auto p-5 space-y-5 ${className}`}>
+      <div className={`h-full overflow-y-auto p-5 space-y-5 ${className}`}>
         <div>
           <h4 className="mb-1 text-sm font-semibold text-text-primary">Plan This Task</h4>
           <p className="text-xs text-text-secondary">
@@ -164,9 +164,7 @@ export function PlanTab({
             </h4>
             <CopyButton text={planningContext} label="Copy" />
           </div>
-          <pre className="max-h-48 overflow-auto rounded-lg border border-border bg-surface-raised p-3 font-mono text-xs text-text-secondary leading-relaxed">
-            {planningContext}
-          </pre>
+          <Markdown variant="spec" className="rounded-lg border border-border bg-surface-raised p-3 text-sm text-text-secondary leading-relaxed">{planningContext}</Markdown>
         </section>
 
         {/* Step 2: Paste plan */}
@@ -197,7 +195,7 @@ export function PlanTab({
 
   // Phase B: Plan saved -- show plan + execution tracking
   return (
-    <div className={`overflow-y-auto p-5 space-y-5 ${className}`}>
+    <div className={`h-full overflow-y-auto p-5 space-y-5 ${className}`}>
       {/* Saved plan display */}
       <section>
         <div className="mb-2 flex items-center justify-between">
@@ -212,11 +210,10 @@ export function PlanTab({
                 Re-plan
               </button>
             )}
+            <CopyButton text={plan} />
           </div>
         </div>
-        <div className="prose-spec max-h-60 overflow-auto rounded-lg border border-border bg-surface-raised p-3 text-sm text-text-secondary leading-relaxed">
-          <Markdown>{plan}</Markdown>
-        </div>
+        <Markdown variant="spec" className="rounded-lg border border-border bg-surface-raised p-3 text-sm text-text-secondary leading-relaxed">{plan}</Markdown>
       </section>
 
       {/* Lifecycle phases */}
@@ -230,9 +227,7 @@ export function PlanTab({
             </h4>
             <UndoButton canUndo={canUndoPlan} onUndo={undoPlan} />
           </div>
-          <div className="prose-spec mt-1 max-h-40 overflow-auto rounded bg-surface-raised p-2 text-sm text-text-secondary">
-            <Markdown>{execution}</Markdown>
-          </div>
+          <Markdown variant="spec" className="mt-1 rounded bg-surface-raised p-2 text-sm text-text-secondary">{execution}</Markdown>
         </section>
       ) : !started ? (
         /* Phase B: Planned — start implementation */

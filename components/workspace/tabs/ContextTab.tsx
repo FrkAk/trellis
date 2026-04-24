@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { CopyButton } from '@/components/shared/CopyButton';
+import { Markdown } from '@/components/shared/Markdown';
 
 interface ContextTabProps {
   /** @param contextText - Pre-built context string from CRI. */
@@ -34,25 +35,23 @@ export function ContextTab({
 
   return (
     <div className={`h-full overflow-y-auto p-5 space-y-4 ${className}`}>
-      <div>
-        <h4 className="mb-1 text-sm font-semibold text-text-primary">
-          Execution Context
-        </h4>
-        <p className="text-xs text-text-secondary">
-          Token-dense context package for your coding agent. The implementation plan is the primary payload.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="mb-1 text-sm font-semibold text-text-primary">
+            Execution Context
+          </h4>
+          <p className="text-xs text-text-secondary">
+            Token-dense context package for your coding agent. The implementation plan is the primary payload.
+          </p>
+        </div>
+        <CopyButton text={contextText} />
       </div>
 
-      <pre className="max-h-[50vh] overflow-auto rounded-lg border border-border bg-surface-raised p-4 font-mono text-xs text-text-secondary leading-relaxed">
-        {contextText}
-      </pre>
+      <Markdown variant="spec" className="rounded-lg border border-border bg-surface-raised p-4 text-sm text-text-secondary leading-relaxed">{contextText}</Markdown>
 
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] text-text-muted">
-          ~{tokenEstimate.toLocaleString()} tokens
-        </span>
-        <CopyButton text={contextText} label="Copy to clipboard" />
-      </div>
+      <span className="block font-mono text-[10px] text-text-muted">
+        ~{tokenEstimate.toLocaleString()} tokens
+      </span>
     </div>
   );
 }

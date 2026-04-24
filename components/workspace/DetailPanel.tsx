@@ -452,6 +452,7 @@ export function DetailPanel({
             )}
             {activeTab === 'plan' && (
               <PlanTab
+                key={taskId}
                 taskId={taskId}
                 projectId={projectId}
                 status={task.status}
