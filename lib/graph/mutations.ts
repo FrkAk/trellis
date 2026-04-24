@@ -20,6 +20,7 @@ import {
   type Identifier,
 } from "./identifier";
 import { IdentifierAllocationError, ProjectNotFoundError } from "./errors";
+import { formatMarkdown, formatTaskMarkdownFields } from "@/lib/markdown/format";
 
 /** Emit a change event to all connected SSE clients via the in-memory event bus. */
 function notifyChange() {
@@ -114,6 +115,9 @@ async function pickAvailableIdentifier(
  * @returns The created project row.
  */
 export async function createProject(data: CreateProjectInput) {
+  if (typeof data.description === "string" && data.description.trim()) {
+    data = { ...data, description: (await formatMarkdown(data.description)) ?? data.description };
+  }
   const project = await db.transaction(async (tx) => {
     let identifier = data.identifier;
     if (identifier === undefined) {
@@ -160,6 +164,9 @@ export async function updateProject(
   projectId: string,
   changes: ProjectUpdate,
 ) {
+  if (typeof changes.description === "string" && changes.description.trim()) {
+    changes = { ...changes, description: (await formatMarkdown(changes.description)) ?? changes.description };
+  }
   const [updated] = await db
     .update(projects)
     .set({ ...changes, updatedAt: new Date() })
@@ -261,6 +268,8 @@ export async function createTask(data: CreateTaskInput) {
     };
   }
 
+  data = await formatTaskMarkdownFields(data);
+
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${data.projectId}))`);
 
@@ -359,6 +368,8 @@ export async function updateTask(
       };
     });
   }
+
+  changes = await formatTaskMarkdownFields(changes);
 
   const [current] = await db
     .select({
@@ -493,6 +504,10 @@ export async function createEdge(data: Omit<NewTaskEdge, "id">) {
     throw new Error("Cannot create self-edge: source and target are the same task.");
   }
 
+  if (typeof data.note === "string" && data.note.trim()) {
+    data = { ...data, note: (await formatMarkdown(data.note)) ?? data.note };
+  }
+
   const [sourceTask, targetTask] = await Promise.all([
     db.select({ projectId: tasks.projectId }).from(tasks).where(eq(tasks.id, data.sourceTaskId)).then(r => r[0]),
     db.select({ projectId: tasks.projectId }).from(tasks).where(eq(tasks.id, data.targetTaskId)).then(r => r[0]),
@@ -555,6 +570,10 @@ export async function updateEdge(
   edgeId: string,
   updates: { edgeType?: EdgeType; note?: string },
 ) {
+  if (typeof updates.note === "string" && updates.note.trim()) {
+    updates = { ...updates, note: (await formatMarkdown(updates.note)) ?? updates.note };
+  }
+
   const [existing] = await db
     .select()
     .from(taskEdges)

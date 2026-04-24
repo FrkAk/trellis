@@ -11,6 +11,7 @@ import {
 } from "@/lib/graph/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
 import { section, formatCriteria, formatDecisions } from "./format";
+import { formatMarkdown } from "@/lib/markdown/format";
 
 /**
  * Build planning-optimized context for a task.
@@ -160,5 +161,6 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
     }
   }
 
-  return parts.join("\n");
+  const assembled = parts.join("\n\n");
+  return (await formatMarkdown(assembled)) ?? assembled;
 }
