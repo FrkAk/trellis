@@ -11,7 +11,7 @@ import { ChatInput } from '@/components/shared/ChatInput';
 import { CooldownBanner } from '@/components/shared/CooldownBanner';
 import { Button } from '@/components/shared/Button';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
-import Markdown from 'react-markdown';
+import { Markdown } from '@/components/shared/Markdown';
 import { getSettings } from '@/lib/settings';
 import { getMessageText, convertPersistedToUIMessages } from '@/lib/chat-helpers';
 import { isPlannable, isReady, buildStatusMap } from '@/lib/ui/taskState';
@@ -243,9 +243,7 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
                 </svg>
               </div>
               <div className="min-w-0 flex-1 rounded-lg border border-accent/10 bg-accent/[0.03] px-4 py-3">
-                <div className="prose-chat text-xs leading-relaxed text-text-secondary">
-                  <Markdown>{lastAssistantMessage}</Markdown>
-                </div>
+                <Markdown variant="chat" className="text-xs leading-relaxed text-text-secondary">{lastAssistantMessage}</Markdown>
               </div>
             </motion.div>
           )}
@@ -331,9 +329,7 @@ export function DecomposeView({ projectId, initialTaskCount }: DecomposeViewProp
                   animate={{ opacity: 1 }}
                   className="rounded-xl border border-border bg-surface/40 px-5 py-4 shadow-[var(--shadow-card)]"
                 >
-                  <div className="prose-chat text-sm text-text-secondary">
-                    <Markdown>{text}</Markdown>
-                  </div>
+                  <Markdown variant="chat" className="text-sm text-text-secondary">{text}</Markdown>
                 </motion.div>
               );
             })}

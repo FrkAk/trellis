@@ -1,6 +1,6 @@
 'use client';
 
-import Markdown from 'react-markdown';
+import { Markdown } from '@/components/shared/Markdown';
 import { ToolCallDisplay } from './ToolCallDisplay';
 
 interface ChatBubbleProps {
@@ -46,9 +46,7 @@ export function ChatBubble({ role, content, toolCalls, isFirstInGroup = true, is
         {isUser ? (
           <p className="m-0 whitespace-pre-wrap">{content}</p>
         ) : (
-          <div className="prose-chat">
-            <Markdown>{content}</Markdown>
-          </div>
+          <Markdown variant="chat">{content}</Markdown>
         )}
         {toolCalls && toolCalls.length > 0 && (
           <div className="mt-2 flex flex-col gap-1">

@@ -479,6 +479,50 @@ html.light .prose-spec pre {
 .prose-spec a:hover {
   text-decoration-color: rgba(129, 140, 248, 0.8);
 }
+
+/* Tables (GFM) — shared across prose-chat and prose-spec */
+.prose-chat table,
+.prose-spec table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.95em;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.prose-chat th,
+.prose-spec th,
+.prose-chat td,
+.prose-spec td {
+  padding: 0.4em 0.7em;
+  text-align: left;
+  vertical-align: top;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+.prose-chat th:last-child,
+.prose-spec th:last-child,
+.prose-chat td:last-child,
+.prose-spec td:last-child {
+  border-right: 0;
+}
+.prose-chat tr:last-child td,
+.prose-spec tr:last-child td {
+  border-bottom: 0;
+}
+.prose-chat th,
+.prose-spec th {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  background: var(--color-surface-raised);
+  border-bottom: 1px solid var(--color-border-strong);
+}
+.prose-chat td,
+.prose-spec td {
+  color: var(--color-text-secondary);
+}
+
 /* Mute all prose-spec children when parent has line-through (checked criteria) */
 .line-through .prose-spec strong,
 .line-through .prose-spec em,
