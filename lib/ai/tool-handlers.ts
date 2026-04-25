@@ -624,6 +624,13 @@ export async function handleContext(p: ContextParams): Promise<ToolResult> {
         if (!p.projectId) return fail("projectId required for working depth");
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
+        const task = await fetchTask(p.taskId);
+        if (task && task.projectId !== p.projectId) {
+          return fail(
+            `Task '${p.taskId}' belongs to project '${task.projectId}', not '${p.projectId}'. ` +
+              `Run mymir_query type='search' to find the correct projectId.`,
+          );
+        }
         const ctx = await buildWorkingContext(p.taskId, p.projectId);
         return ok(await formatWorkingContext(ctx));
       }
