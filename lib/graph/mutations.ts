@@ -654,48 +654,6 @@ export async function removeEdge(edgeId: string) {
   notifyChange();
 }
 
-/**
- * Find and remove an edge matching source, target, and type. Appends history to both tasks.
- * @param sourceTaskId - UUID of the source task.
- * @param targetTaskId - UUID of the target task.
- * @param edgeType - The edge relationship type.
- * @returns The removed edge, or null if not found.
- */
-export async function removeEdgeByNodes(
-  sourceTaskId: string,
-  targetTaskId: string,
-  edgeType: EdgeType,
-) {
-  const [edge] = await db
-    .select()
-    .from(taskEdges)
-    .where(
-      and(
-        eq(taskEdges.sourceTaskId, sourceTaskId),
-        eq(taskEdges.targetTaskId, targetTaskId),
-        eq(taskEdges.edgeType, edgeType),
-      ),
-    );
-  if (!edge) return null;
-
-  await db.delete(taskEdges).where(eq(taskEdges.id, edge.id));
-
-  const historyEntry = makeHistoryEntry({
-    type: "edge_removed",
-    label: `Edge removed: ${edgeType}`,
-    description: `${edgeType} edge removed.`,
-    actor: "user",
-  });
-
-  await Promise.all([
-    appendTaskHistory(sourceTaskId, historyEntry),
-    appendTaskHistory(targetTaskId, historyEntry),
-  ]);
-
-  notifyChange();
-  return edge;
-}
-
 // ---------------------------------------------------------------------------
 // Reorder task
 // ---------------------------------------------------------------------------

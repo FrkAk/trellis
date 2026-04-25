@@ -68,6 +68,32 @@ export async function edgeExists(edgeId: string): Promise<boolean> {
   return !!row;
 }
 
+/**
+ * Look up an edge by its (source, target, type) triple.
+ * @param sourceTaskId - UUID of the source task.
+ * @param targetTaskId - UUID of the target task.
+ * @param edgeType - Edge relationship type.
+ * @returns The matching edge row, or null when none exists.
+ */
+export async function findEdgeByNodes(
+  sourceTaskId: string,
+  targetTaskId: string,
+  edgeType: EdgeType,
+) {
+  const [row] = await db
+    .select()
+    .from(taskEdges)
+    .where(
+      and(
+        eq(taskEdges.sourceTaskId, sourceTaskId),
+        eq(taskEdges.targetTaskId, targetTaskId),
+        eq(taskEdges.edgeType, edgeType),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Single-entity queries
 // ---------------------------------------------------------------------------
