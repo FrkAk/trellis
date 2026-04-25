@@ -153,7 +153,7 @@ export const DESCRIPTIONS = {
   mymir_project:
     "Manage projects. " +
     "'list': all projects with task counts and progress. " +
-    "'create': new project. " +
+    "'create': new project (status defaults to 'brainstorming'; pass status to override). " +
     "'select': confirm which project to work on (returns projectId — pass it explicitly on all subsequent calls). " +
     "'update': change title, description, status, or categories. " +
     "Always 'list' then 'select' at session start. Always pass projectId explicitly on every call.",
@@ -286,6 +286,7 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
         const project = await createProject({
           title: p.title,
           description: p.description ?? "",
+          ...(p.status !== undefined && { status: p.status }),
           categories: p.categories,
           identifier: parsedIdentifier,
         });

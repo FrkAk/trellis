@@ -116,7 +116,7 @@ export function registerAllTools(server: McpServer): void {
         description: z.string().optional()
           .describe("3-5 sentence brief: problem, user, features, tech direction, constraints"),
         status: z.enum(["brainstorming", "decomposing", "active", "archived"]).optional()
-          .describe("Lifecycle: brainstorming → decomposing → active → archived"),
+          .describe("Lifecycle: brainstorming → decomposing → active → archived. Settable on create (defaults to 'brainstorming') and on update."),
         categories: z.array(z.string()).optional()
           .describe("Task categories for this project (e.g. ['backend', 'frontend', 'mcp']). Determines drawer grouping in the UI."),
         identifier: identifierSchema.optional()
