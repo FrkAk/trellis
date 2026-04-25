@@ -4,6 +4,15 @@
  */
 
 /**
+ * Trim each tag and drop empty entries.
+ * @param tags - Raw tag strings (may be undefined).
+ * @returns Trimmed, non-empty tag list.
+ */
+export function normalizeTags(tags?: string[]): string[] {
+  return tags?.map((t) => t.trim()).filter((t) => t.length > 0) ?? [];
+}
+
+/**
  * Normalize a tag for comparison: lowercase, strip non-alphanumeric,
  * trim trailing 's' on words longer than 3 chars.
  * @param tag - Raw tag string.

@@ -27,7 +27,6 @@ import {
   projectExists,
   taskExists,
   edgeExists,
-  normalizeTags,
 } from "@/lib/graph/queries";
 import type { TaskState } from "@/lib/graph/queries";
 import { buildProjectOverview } from "@/lib/context/overview";
@@ -60,7 +59,7 @@ import {
   formatCriticalPath,
   formatPlannableTasks,
 } from "./format-responses";
-import { findVariant } from "./tag-similarity";
+import { findVariant, normalizeTags } from "./tag-similarity";
 
 /**
  * Build variant-warning hints for proposed tags against existing project tags.

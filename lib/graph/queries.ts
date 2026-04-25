@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import type { EdgeType } from "@/lib/types";
 import { asIdentifier, composeTaskRef, enrichWithTaskRef } from "./identifier";
+import { normalizeTags } from "@/lib/ai/tag-similarity";
 
 // ---------------------------------------------------------------------------
 // Task helpers
@@ -398,15 +399,6 @@ export type SearchResult = {
 
 /** Match a full taskRef like "MYMR-83" (case-insensitive). */
 const TASK_REF_PATTERN = /^([A-Z0-9]+)-(\d+)$/i;
-
-/**
- * Trim each tag and drop empty entries.
- * @param tags - Raw tag strings (may be undefined).
- * @returns Normalized non-empty tag list.
- */
-export function normalizeTags(tags?: string[]): string[] {
-  return tags?.map((t) => t.trim()).filter((t) => t.length > 0) ?? [];
-}
 
 /**
  * Search tasks by taskRef, title, or tags within a project.
