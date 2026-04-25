@@ -298,6 +298,17 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
       }
       case "update": {
         if (!p.projectId) return fail("projectId required for update");
+        if (
+          p.title === undefined &&
+          p.description === undefined &&
+          p.status === undefined &&
+          p.categories === undefined &&
+          p.identifier === undefined
+        ) {
+          return fail(
+            "update requires at least one of: title, description, status, categories, identifier.",
+          );
+        }
         const notFound = await requireProject(p.projectId);
         if (notFound) return notFound;
         const changes: ProjectUpdate = {};
@@ -370,6 +381,22 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
       }
       case "update": {
         if (!p.taskId) return fail("taskId required for update. Use mymir_query type='search' to find it.");
+        if (
+          p.title === undefined &&
+          p.description === undefined &&
+          p.status === undefined &&
+          p.acceptanceCriteria === undefined &&
+          p.decisions === undefined &&
+          p.tags === undefined &&
+          p.category === undefined &&
+          p.files === undefined &&
+          p.implementationPlan === undefined &&
+          p.executionRecord === undefined
+        ) {
+          return fail(
+            "update requires at least one of: title, description, status, acceptanceCriteria, decisions, tags, category, files, implementationPlan, executionRecord.",
+          );
+        }
         const notFound = await requireTask(p.taskId);
         if (notFound) return notFound;
         let preExistingTags: string[] = [];
