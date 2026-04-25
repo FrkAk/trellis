@@ -15,7 +15,6 @@ import {
   createEdge,
   updateEdge,
   removeEdge,
-  removeEdgeByNodes,
 } from "@/lib/graph/mutations";
 import {
   getProjectList,
@@ -24,6 +23,7 @@ import {
   getTaskEdgesDetailed,
   getProjectTags,
   fetchTask,
+  findEdgeByNodes,
   projectExists,
   taskExists,
   edgeExists,
@@ -431,7 +431,7 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         if (notFound) return notFound;
         if (p.preview !== false) {
           const result = await deleteTaskPreview(p.taskId);
-          return ok({ ...result, _hint: "Preview only. Run again with preview=false to delete." });
+          return ok({ ...result, _hints: ["Preview only. Run again with preview=false to delete."] });
         }
         return ok(await deleteTask(p.taskId));
       }
@@ -461,6 +461,10 @@ export async function handleEdge(p: EdgeParams): Promise<ToolResult> {
           return fail("sourceTaskId and targetTaskId required for create");
         if (!p.edgeType)
           return fail("edgeType required for create (depends_on or relates_to)");
+        const sourceMissing = await requireTask(p.sourceTaskId);
+        if (sourceMissing) return sourceMissing;
+        const targetMissing = await requireTask(p.targetTaskId);
+        if (targetMissing) return targetMissing;
         const edge = await createEdge({
           sourceTaskId: p.sourceTaskId,
           targetTaskId: p.targetTaskId,
@@ -476,6 +480,11 @@ export async function handleEdge(p: EdgeParams): Promise<ToolResult> {
       case "update": {
         if (!p.edgeId)
           return fail("edgeId required for update. Use mymir_query type='edges' to find edge IDs.");
+        if (p.edgeType === undefined && p.note === undefined)
+          return fail(
+            "update requires at least one of: edgeType, note. " +
+            "To remove the edge, use action='remove'.",
+          );
         const notFound = await requireEdge(p.edgeId);
         if (notFound) return notFound;
         return ok(await updateEdge(p.edgeId, {
@@ -491,12 +500,19 @@ export async function handleEdge(p: EdgeParams): Promise<ToolResult> {
           return ok({ removed: p.edgeId });
         }
         if (p.sourceTaskId && p.targetTaskId && p.edgeType) {
-          const removed = await removeEdgeByNodes(
+          const edge = await findEdgeByNodes(
             p.sourceTaskId,
             p.targetTaskId,
             p.edgeType as EdgeType,
           );
-          return ok(removed ? { removed: removed.id } : { removed: null, _hint: "No matching edge found" });
+          if (!edge) {
+            return fail(
+              `No matching edge for ${p.sourceTaskId} -[${p.edgeType}]-> ${p.targetTaskId}. ` +
+              `Use mymir_query type='edges' to list current edges.`,
+            );
+          }
+          await removeEdge(edge.id);
+          return ok({ removed: edge.id });
         }
         return fail(
           "Provide edgeId OR sourceTaskId+targetTaskId+edgeType. " +
