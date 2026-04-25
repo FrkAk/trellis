@@ -76,6 +76,52 @@ function tagVariantHints(proposed: string[], existing: string[]): string[] {
   return hints;
 }
 
+/**
+ * Build completion-protocol hints when a task transitions to or is created in
+ * the `done` state. Mirrors the same wording across create and update branches
+ * so agents see consistent guidance.
+ * @param payload - Fields supplied by the caller in this request.
+ * @param persisted - Row state after the mutation (createTask/updateTask result).
+ * @returns Hint strings for missing execution metadata and unchecked criteria.
+ */
+function doneStatusHints(
+  payload: {
+    executionRecord?: string;
+    decisions?: Decision[];
+    files?: string[];
+  },
+  persisted: {
+    executionRecord?: string | null;
+    decisions?: Decision[] | null;
+    files?: string[] | null;
+    acceptanceCriteria?: { checked: boolean }[] | null;
+  },
+): string[] {
+  const hints: string[] = [];
+  if (!payload.executionRecord && !persisted.executionRecord) {
+    hints.push("Missing executionRecord. Add it — downstream tasks depend on this for context.");
+  }
+  if (!payload.decisions && (!persisted.decisions || persisted.decisions.length === 0)) {
+    hints.push("Missing decisions. Record technical choices (CHOICE + WHY) — downstream tasks need them.");
+  }
+  if (!payload.files && (!persisted.files || persisted.files.length === 0)) {
+    hints.push("Missing files. Record every path touched during implementation (empty only if the task genuinely touched no files).");
+  }
+  hints.push("Run mymir_analyze type='downstream' to propagate changes and update any edges made stale by this completion.");
+  const criteria = persisted.acceptanceCriteria;
+  if (
+    persisted.executionRecord &&
+    criteria &&
+    criteria.length > 0 &&
+    criteria.every((c) => !c.checked)
+  ) {
+    hints.push(
+      "Acceptance criteria are all unchecked. Evaluate each against your executionRecord and re-submit with acceptanceCriteria updated (checked: true/false).",
+    );
+  }
+  return hints;
+}
+
 // ---------------------------------------------------------------------------
 // Result type
 // ---------------------------------------------------------------------------
@@ -377,6 +423,26 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         if (p.tags && p.tags.length > 0) {
           createHints.push(...tagVariantHints(p.tags, preExistingTags));
         }
+        if (p.status === "done") {
+          const persisted = await fetchTask(task.id);
+          if (persisted) {
+            createHints.push(
+              ...doneStatusHints(
+                {
+                  executionRecord: p.executionRecord,
+                  decisions: p.decisions as Decision[] | undefined,
+                  files: p.files,
+                },
+                {
+                  executionRecord: persisted.executionRecord,
+                  decisions: persisted.decisions as Decision[] | null,
+                  files: persisted.files,
+                  acceptanceCriteria: persisted.acceptanceCriteria as { checked: boolean }[] | null,
+                },
+              ),
+            );
+          }
+        }
         return ok({ ...task, _hints: createHints });
       }
       case "update": {
@@ -428,27 +494,21 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
           updateHints.push("Before marking done: confirm with the user (single-agent mode) or return to the orchestrator (dispatched mode). See Completion Protocol in the skill.");
         }
         if (p.status === "done") {
-          if (!p.executionRecord && !result.executionRecord) {
-            updateHints.push("Missing executionRecord. Add it — downstream tasks depend on this for context.");
-          }
-          if (!p.decisions && (!result.decisions || result.decisions.length === 0)) {
-            updateHints.push("Missing decisions. Record technical choices (CHOICE + WHY) — downstream tasks need them.");
-          }
-          if (!p.files && (!result.files || result.files.length === 0)) {
-            updateHints.push("Missing files. Record every path touched during implementation (empty only if the task genuinely touched no files).");
-          }
-          updateHints.push("Run mymir_analyze type='downstream' to propagate changes and update any edges made stale by this completion.");
-          const criteria = result.acceptanceCriteria as { checked: boolean }[] | null;
-          if (
-            result.executionRecord &&
-            criteria &&
-            criteria.length > 0 &&
-            criteria.every((c) => !c.checked)
-          ) {
-            updateHints.push(
-              "Acceptance criteria are all unchecked. Evaluate each against your executionRecord and re-submit with acceptanceCriteria updated (checked: true/false).",
-            );
-          }
+          updateHints.push(
+            ...doneStatusHints(
+              {
+                executionRecord: p.executionRecord,
+                decisions: p.decisions as Decision[] | undefined,
+                files: p.files,
+              },
+              {
+                executionRecord: result.executionRecord,
+                decisions: result.decisions as Decision[] | null,
+                files: result.files,
+                acceptanceCriteria: result.acceptanceCriteria as { checked: boolean }[] | null,
+              },
+            ),
+          );
         }
         return ok(updateHints.length > 0 ? { ...result, _hints: updateHints } : result);
       }
