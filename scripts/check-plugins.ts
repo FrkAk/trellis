@@ -27,6 +27,7 @@ const shared: SharedGroup[] = [
     copies: [
       "plugins/codex/skills/mymir/SKILL.md",
       "plugins/gemini/skills/mymir/SKILL.md",
+      "plugins/cursor/skills/mymir/SKILL.md",
     ],
   },
   {
@@ -35,6 +36,7 @@ const shared: SharedGroup[] = [
     copies: [
       "plugins/codex/skills/brainstorm/SKILL.md",
       "plugins/gemini/skills/brainstorm/SKILL.md",
+      "plugins/cursor/skills/brainstorm/SKILL.md",
     ],
   },
   {
@@ -43,6 +45,7 @@ const shared: SharedGroup[] = [
     copies: [
       "plugins/codex/skills/decompose/SKILL.md",
       "plugins/gemini/skills/decompose/SKILL.md",
+      "plugins/cursor/skills/decompose/SKILL.md",
     ],
   },
   {
@@ -51,6 +54,7 @@ const shared: SharedGroup[] = [
     copies: [
       "plugins/codex/skills/manage/SKILL.md",
       "plugins/gemini/skills/manage/SKILL.md",
+      "plugins/cursor/skills/manage/SKILL.md",
     ],
   },
   {
@@ -59,6 +63,7 @@ const shared: SharedGroup[] = [
     copies: [
       "plugins/codex/skills/onboarding/SKILL.md",
       "plugins/gemini/skills/onboarding/SKILL.md",
+      "plugins/cursor/skills/onboarding/SKILL.md",
     ],
   },
 ];
@@ -71,6 +76,7 @@ const fieldSyncs: FieldSync[] = [
     copies: [
       { path: "plugins/codex/.codex-plugin/plugin.json", jsonPath: ["version"] },
       { path: "plugins/gemini/gemini-extension.json", jsonPath: ["version"] },
+      { path: "plugins/cursor/.cursor-plugin/plugin.json", jsonPath: ["version"] },
     ],
   },
   {
@@ -80,6 +86,7 @@ const fieldSyncs: FieldSync[] = [
     copies: [
       { path: "plugins/codex/.codex-plugin/plugin.json", jsonPath: ["description"] },
       { path: "plugins/gemini/gemini-extension.json", jsonPath: ["description"] },
+      { path: "plugins/cursor/.cursor-plugin/plugin.json", jsonPath: ["description"] },
     ],
   },
 ];

@@ -6,6 +6,8 @@
   &nbsp;&nbsp;
   <a href="#codex"><img alt="Codex" src="https://img.shields.io/badge/Codex-000000?style=flat-square&logo=openai&logoColor=white" /></a>
   &nbsp;&nbsp;
+  <a href="#cursor"><img alt="Cursor" src="https://img.shields.io/badge/Cursor-000000?style=flat-square&logo=cursor&logoColor=white" /></a>
+  &nbsp;&nbsp;
   <a href="#gemini"><img alt="Gemini CLI" src="https://img.shields.io/badge/Gemini_CLI-4285F4?style=flat-square&logo=googlegemini&logoColor=white" /></a>
 </p>
 
@@ -153,7 +155,7 @@ Start the dev server and open [localhost:3000](http://localhost:3000):
 bun run dev
 ```
 
-Mymir ships as three standalone plugin/extension dirs, one per supported CLI under `plugins/<cli>/`. With the dev server running, install the one that matches your tool.
+Mymir ships as four standalone plugin/extension dirs, one per supported CLI under `plugins/<cli>/`. With the dev server running, install the one that matches your tool.
 
 ### Claude Code
 
@@ -184,9 +186,19 @@ Authenticate with `/mcp auth mymir` and complete the browser sign-in.
 
 Update with `gemini extensions update mymir`; remove with `gemini extensions uninstall mymir`.
 
+### Cursor
+
+```bash
+ln -s "$(pwd)/plugins/cursor" ~/.cursor/plugins/local/mymir
+```
+
+Restart Cursor (or run **Developer: Reload Window**). The MCP server and five skills (`mymir`, `brainstorm`, `decompose`, `manage`, `onboarding`) load automatically. First MCP tool call triggers OAuth in your browser. Trigger a skill with `/mymir`, `/brainstorm`, etc., or let the agent auto-invoke based on your prompt.
+
+Self-hosted: edit `plugins/cursor/mcp.json` to point at your deployment URL before symlinking.
+
 ### What gets installed
 
-All three plugins bundle the same components:
+All four plugins bundle the same components:
 
 | Component | What it does |
 | --- | --- |
