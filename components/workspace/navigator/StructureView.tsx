@@ -1,6 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'motion/react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { createTask, deleteTask, updateProject, renameCategory, deleteCategory } from '@/lib/graph/mutations';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
@@ -9,6 +10,44 @@ import { isPlannable, isReady, buildStatusMap } from '@/lib/ui/taskState';
 import type { Task, TaskEdge } from '@/lib/db/schema';
 
 type TaskWithRef = Task & { taskRef: string };
+
+const FILTER_PARAM_KEYS = { tags: 'tags', categories: 'cat', statuses: 'status' } as const;
+
+/**
+ * Parses a comma-separated filter param into a Set.
+ * @param value - Raw param value or null.
+ * @returns Set of non-empty values.
+ */
+function parseFilterParam(value: string | null): Set<string> {
+  if (!value) return new Set();
+  return new Set(value.split(',').filter(Boolean));
+}
+
+/**
+ * Serializes the three filter sets into a URL query string, preserving other params.
+ * @param tags - Active tag filters.
+ * @param categories - Active category filters.
+ * @param statuses - Active status filters.
+ * @param currentParams - Existing URL search params to preserve.
+ * @returns Query string starting with '?', or '' when no params remain.
+ */
+function serializeFilters(
+  tags: Set<string>,
+  categories: Set<string>,
+  statuses: Set<string>,
+  currentParams: URLSearchParams,
+): string {
+  const next = new URLSearchParams(currentParams);
+  const apply = (key: string, set: Set<string>) => {
+    if (set.size === 0) next.delete(key);
+    else next.set(key, [...set].join(','));
+  };
+  apply(FILTER_PARAM_KEYS.tags, tags);
+  apply(FILTER_PARAM_KEYS.categories, categories);
+  apply(FILTER_PARAM_KEYS.statuses, statuses);
+  const qs = next.toString();
+  return qs ? `?${qs}` : '';
+}
 
 type DeletedTask = {
   title: string;
@@ -51,10 +90,25 @@ export function StructureView({
   onGraphChange,
   className = '',
 }: StructureViewProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [expandedDrawers, setExpandedDrawers] = useState<Set<string>>(() => new Set(['__init__']));
-  const [activeTagFilters, setActiveTagFilters] = useState<Set<string>>(new Set());
-  const [activeCategoryFilters, setActiveCategoryFilters] = useState<Set<string>>(new Set());
-  const [activeStatusFilters, setActiveStatusFilters] = useState<Set<string>>(new Set());
+  const [activeTagFilters, setActiveTagFilters] = useState<Set<string>>(
+    () => parseFilterParam(searchParams.get(FILTER_PARAM_KEYS.tags)),
+  );
+  const [activeCategoryFilters, setActiveCategoryFilters] = useState<Set<string>>(
+    () => parseFilterParam(searchParams.get(FILTER_PARAM_KEYS.categories)),
+  );
+  const [activeStatusFilters, setActiveStatusFilters] = useState<Set<string>>(
+    () => parseFilterParam(searchParams.get(FILTER_PARAM_KEYS.statuses)),
+  );
+
+  useEffect(() => {
+    const qs = serializeFilters(activeTagFilters, activeCategoryFilters, activeStatusFilters, searchParams);
+    router.replace(`${pathname}${qs}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTagFilters, activeCategoryFilters, activeStatusFilters]);
   const [panelTab, setPanelTab] = useState<'filter' | 'categories'>('filter');
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [addingTaskTo, setAddingTaskTo] = useState<string | null>(null);
