@@ -50,6 +50,7 @@ const STATUS_LABELS: Record<string, string> = {
   planned: 'Planned',
   in_progress: 'In Progress',
   done: 'Done',
+  cancelled: 'Cancelled',
 };
 
 /** Status colors for the stepper. */
@@ -58,6 +59,7 @@ const STATUS_COLORS: Record<string, string> = {
   planned: 'text-planned',
   in_progress: 'text-progress',
   done: 'text-done',
+  cancelled: 'text-cancelled',
 };
 
 /** Header gradient keyed to task status. */
@@ -66,6 +68,7 @@ const STATUS_HEADER: Record<string, { gradient: string; border: string; badge: s
   planned: { gradient: 'from-planned/15 via-planned/4 to-transparent', border: 'border-planned/25', badge: 'bg-planned/15 text-planned' },
   in_progress: { gradient: 'from-progress/15 via-progress/4 to-transparent', border: 'border-progress/25', badge: 'bg-progress/15 text-progress' },
   done: { gradient: 'from-done/20 via-done/5 to-transparent', border: 'border-done/30', badge: 'bg-done/15 text-done' },
+  cancelled: { gradient: 'from-cancelled/10 via-cancelled/3 to-transparent', border: 'border-cancelled/20', badge: 'bg-cancelled/10 text-cancelled' },
 };
 
 /**
@@ -382,40 +385,65 @@ export function DetailPanel({
 
           {/* Status stepper */}
           <div className="flex items-center gap-0.5 mb-2 overflow-x-auto">
-            {STATUS_FLOW.map((status, i) => {
-              const isCurrent = status === task.status;
-              const isPast = i < currentIdx;
-              const color = STATUS_COLORS[status] ?? 'text-text-muted';
+            {task.status === 'cancelled' ? (
+              <div className="flex items-center gap-1">
+                <span className="inline-flex items-center rounded-md bg-cancelled/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-cancelled line-through">
+                  Cancelled
+                </span>
+                <button
+                  onClick={() => handleStatusChange('draft')}
+                  title="Reopen this task as draft"
+                  className="cursor-pointer min-h-9 inline-flex items-center rounded-md px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted hover:bg-surface-hover hover:text-text-secondary transition-colors"
+                >
+                  Reopen
+                </button>
+              </div>
+            ) : (
+              STATUS_FLOW.map((status, i) => {
+                const isCurrent = status === task.status;
+                const isPast = i < currentIdx;
+                const color = STATUS_COLORS[status] ?? 'text-text-muted';
 
-              return (
-                <div key={status} className="flex items-center">
-                  {i > 0 && (
-                    <div className={`mx-0.5 h-px w-3 ${isPast ? 'bg-done/40' : 'bg-border-strong'}`} />
-                  )}
-                  <button
-                    onClick={() => handleStatusChange(status)}
-                    className={`relative cursor-pointer rounded-md px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider transition-all ${
-                      isCurrent
-                        ? `${color} bg-surface-raised ring-1 ring-current/20`
-                        : isPast
-                          ? 'text-done/60 hover:bg-surface-hover'
-                          : 'text-text-muted/50 hover:bg-surface-hover hover:text-text-muted'
-                    }`}
-                    title={`Set to ${STATUS_LABELS[status]}`}
-                  >
-                    {STATUS_LABELS[status]}
-                    {isCurrent && (
-                      <motion.div
-                        layoutId={`status-indicator-${taskId}`}
-                        className="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-current"
-                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                      />
+                return (
+                  <div key={status} className="flex items-center">
+                    {i > 0 && (
+                      <div className={`mx-0.5 h-px w-3 ${isPast ? 'bg-done/40' : 'bg-border-strong'}`} />
                     )}
-                  </button>
-                </div>
-              );
-            })}
+                    <button
+                      onClick={() => handleStatusChange(status)}
+                      className={`relative cursor-pointer rounded-md px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider transition-all ${
+                        isCurrent
+                          ? `${color} bg-surface-raised ring-1 ring-current/20`
+                          : isPast
+                            ? 'text-done/60 hover:bg-surface-hover'
+                            : 'text-text-muted/50 hover:bg-surface-hover hover:text-text-muted'
+                      }`}
+                      title={`Set to ${STATUS_LABELS[status]}`}
+                    >
+                      {STATUS_LABELS[status]}
+                      {isCurrent && (
+                        <motion.div
+                          layoutId={`status-indicator-${taskId}`}
+                          className="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-current"
+                          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                        />
+                      )}
+                    </button>
+                  </div>
+                );
+              })
+            )}
             <UndoButton canUndo={canUndoStatus} onUndo={undoStatus} className="ml-auto" />
+            {task.status !== 'cancelled' && task.status !== 'done' && (
+              <button
+                onClick={() => handleStatusChange('cancelled')}
+                aria-label="Cancel task"
+                title="Cancel this task — preserves rationale (vs delete which removes it)"
+                className="cursor-pointer min-h-9 inline-flex items-center rounded-md px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted/50 hover:text-cancelled hover:bg-cancelled/10 transition-colors"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </div>
 

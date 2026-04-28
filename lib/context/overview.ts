@@ -44,6 +44,7 @@ export type ProjectOverview = {
   totalTasks: number;
   doneTasks: number;
   inProgressTasks: number;
+  cancelledTasks: number;
   progress: number;
 };
 
@@ -84,6 +85,7 @@ export async function buildProjectOverview(
   const totalTasks = allTasks.length;
   const doneTasks = allTasks.filter((t) => t.status === "done").length;
   const inProgressTasks = allTasks.filter((t) => t.status === "in_progress").length;
+  const cancelledTasks = allTasks.filter((t) => t.status === "cancelled").length;
 
   const taskIds = allTasks.map((t) => t.id);
   let edges: OverviewEdge[] = [];
@@ -121,6 +123,7 @@ export async function buildProjectOverview(
     });
   }
 
+  const denominator = totalTasks - cancelledTasks;
   return {
     id: project.id,
     identifier: project.identifier,
@@ -134,6 +137,7 @@ export async function buildProjectOverview(
     totalTasks,
     doneTasks,
     inProgressTasks,
-    progress: totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0,
+    cancelledTasks,
+    progress: denominator > 0 ? Math.round((doneTasks / denominator) * 100) : 0,
   };
 }

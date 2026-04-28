@@ -554,7 +554,7 @@ export function StructureView({
                     {/* Status filter chips */}
                     <span className="mb-1 block font-mono text-[9px] font-semibold uppercase tracking-wider text-text-muted/50">Status</span>
                     <div className="flex flex-wrap gap-1.5 mb-2.5">
-                      {(['draft', 'planned', 'in_progress', 'done', 'plannable', 'ready'] as const).map((status) => {
+                      {(['draft', 'planned', 'in_progress', 'done', 'cancelled', 'plannable', 'ready'] as const).map((status) => {
                         const isActive = activeStatusFilters.has(status);
                         const isDerived = status === 'plannable' || status === 'ready';
                         const count = isDerived
@@ -896,7 +896,7 @@ export function StructureView({
                           <span className={`flex-1 text-sm transition-colors duration-150 ${
                             selectedNodeId === task.id
                               ? 'text-accent font-medium'
-                              : task.status === 'done'
+                              : (task.status === 'done' || task.status === 'cancelled')
                                 ? 'text-text-muted line-through'
                                 : 'text-text-secondary'
                           }`}>

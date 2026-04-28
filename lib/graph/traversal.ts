@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   tasks,
@@ -8,6 +8,8 @@ import {
   taskEdges,
 } from "@/lib/db/schema";
 import { asIdentifier, composeTaskRef, type Identifier } from "./identifier";
+import { buildEffectiveDepGraph } from "./effective-deps";
+import { deriveTaskStates } from "./queries";
 
 /**
  * Fetch a project's identifier prefix for composing taskRefs.
@@ -258,8 +260,12 @@ export type ReadyTask = {
 
 /**
  * Find all tasks whose dependencies are fully satisfied.
- * A task is ready when its status is "planned" and all
- * `depends_on` targets have status "done".
+ *
+ * A task is ready when its status is "planned" and every active task in its
+ * effective dependency set is `done`. Cancelled tasks are transparent — they
+ * don't satisfy a dep on their own, but the walk continues through them to
+ * find the next active prerequisite (which is the actual wall).
+ *
  * @param projectId - UUID of the project.
  * @returns Array of ready tasks.
  */
@@ -269,59 +275,26 @@ export async function getReadyTasks(
   const identifier = await getProjectIdentifier(projectId);
   if (!identifier) return [];
 
-  const allTasks = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      tags: tasks.tags,
-      sequenceNumber: tasks.sequenceNumber,
-    })
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId));
-
-  if (allTasks.length === 0) return [];
-
-  const taskIds = allTasks.map((t) => t.id);
-
-  const dependsOnEdges = await db
-    .select({
-      sourceTaskId: taskEdges.sourceTaskId,
-      targetTaskId: taskEdges.targetTaskId,
-    })
-    .from(taskEdges)
-    .where(
-      and(
-        sql`${taskEdges.sourceTaskId} IN ${taskIds}`,
-        eq(taskEdges.edgeType, "depends_on"),
-      ),
-    );
-
-  const statusMap = new Map<string, string>();
-  for (const t of allTasks) statusMap.set(t.id, t.status);
-
-  const depsBySource = new Map<string, string[]>();
-  for (const edge of dependsOnEdges) {
-    const existing = depsBySource.get(edge.sourceTaskId) ?? [];
-    existing.push(edge.targetTaskId);
-    depsBySource.set(edge.sourceTaskId, existing);
-  }
-
-  const isReady = (id: string): boolean => {
-    const deps = depsBySource.get(id) ?? [];
-    return deps.every((depId) => statusMap.get(depId) === "done");
-  };
-
+  const graph = await buildEffectiveDepGraph(projectId);
   const ready: ReadyTask[] = [];
-  for (const task of allTasks) {
-    if (task.status !== "planned") continue;
-    if (!isReady(task.id)) continue;
+
+  for (const info of graph.activeTasks.values()) {
+    if (info.status !== "planned") continue;
+    const deps = graph.effectiveDeps.get(info.id) ?? new Set<string>();
+    let allDepsDone = true;
+    for (const depId of deps) {
+      if (graph.activeTasks.get(depId)?.status !== "done") {
+        allDepsDone = false;
+        break;
+      }
+    }
+    if (!allDepsDone) continue;
     ready.push({
-      id: task.id,
-      taskRef: composeTaskRef(identifier, task.sequenceNumber),
-      title: task.title,
-      status: task.status,
-      tags: task.tags,
+      id: info.id,
+      taskRef: composeTaskRef(identifier, info.sequenceNumber),
+      title: info.title,
+      status: info.status,
+      tags: info.tags,
     });
   }
 
@@ -342,10 +315,13 @@ export type PlannableTask = {
 };
 
 /**
- * Find draft tasks that have a description and at least one acceptance criterion.
- * These are ready for an agent to write an implementation plan.
+ * Find draft tasks that are actually plannable now: have a description, at
+ * least one acceptance criterion, AND every effective dep is done. Delegates
+ * the readiness logic to `deriveTaskStates` so this analyzer agrees with
+ * search-result `state` and `mymir_analyze type='blocked'`.
+ *
  * @param projectId - UUID of the project.
- * @returns Array of plannable tasks.
+ * @returns Array of plannable tasks (state === 'plannable' from deriveTaskStates).
  */
 export async function getPlannableTasks(
   projectId: string,
@@ -366,19 +342,19 @@ export async function getPlannableTasks(
     .from(tasks)
     .where(eq(tasks.projectId, projectId));
 
-  return allTasks.filter((task) => {
-    if (task.status !== "draft") return false;
-    if (!task.description || task.description.trim().length === 0) return false;
-    const criteria = task.acceptanceCriteria as { id: string; text: string; checked: boolean }[];
-    if (!criteria || criteria.length === 0) return false;
-    return true;
-  }).map((task) => ({
-    id: task.id,
-    taskRef: composeTaskRef(identifier, task.sequenceNumber),
-    title: task.title,
-    status: task.status,
-    tags: task.tags,
-  }));
+  if (allTasks.length === 0) return [];
+
+  const stateMap = await deriveTaskStates(projectId, allTasks);
+
+  return allTasks
+    .filter((task) => stateMap.get(task.id) === "plannable")
+    .map((task) => ({
+      id: task.id,
+      taskRef: composeTaskRef(identifier, task.sequenceNumber),
+      title: task.title,
+      status: task.status,
+      tags: task.tags,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -395,9 +371,15 @@ export type BlockedTask = {
 };
 
 /**
- * Find all tasks with at least one non-done dependency.
+ * Find all active tasks with at least one effective dependency that is not done.
+ *
+ * Blockers are reported at the *effective* level: if A depends on B and B is
+ * cancelled with an unsatisfied dep C, A is reported as blocked by C (not B).
+ * Cancelled tasks are transparent — they never appear as blockers and are
+ * never themselves listed as blocked.
+ *
  * @param projectId - UUID of the project.
- * @returns Array of blocked tasks with their blockers.
+ * @returns Array of blocked tasks with their effective blockers.
  */
 export async function getBlockedTasks(
   projectId: string,
@@ -405,66 +387,27 @@ export async function getBlockedTasks(
   const identifier = await getProjectIdentifier(projectId);
   if (!identifier) return [];
 
-  const allTasks = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      sequenceNumber: tasks.sequenceNumber,
-    })
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId));
-
-  if (allTasks.length === 0) return [];
-
-  const taskIds = allTasks.map((t) => t.id);
-
-  const dependsOnEdges = await db
-    .select({
-      sourceTaskId: taskEdges.sourceTaskId,
-      targetTaskId: taskEdges.targetTaskId,
-    })
-    .from(taskEdges)
-    .where(
-      and(
-        sql`${taskEdges.sourceTaskId} IN ${taskIds}`,
-        eq(taskEdges.edgeType, "depends_on"),
-      ),
-    );
-
-  const taskInfoMap = new Map<string, { taskRef: string; title: string; status: string }>();
-  for (const t of allTasks) {
-    taskInfoMap.set(t.id, {
-      taskRef: composeTaskRef(identifier, t.sequenceNumber),
-      title: t.title,
-      status: t.status,
-    });
-  }
-
-  const blockedMap = new Map<string, { id: string; taskRef: string; title: string; status: string }[]>();
-
-  for (const edge of dependsOnEdges) {
-    const targetInfo = taskInfoMap.get(edge.targetTaskId);
-    const targetStatus = targetInfo?.status ?? "draft";
-    if (targetStatus === "done") continue;
-
-    const existing = blockedMap.get(edge.sourceTaskId) ?? [];
-    existing.push({
-      id: edge.targetTaskId,
-      taskRef: targetInfo?.taskRef ?? "",
-      title: targetInfo?.title ?? "",
-      status: targetStatus,
-    });
-    blockedMap.set(edge.sourceTaskId, existing);
-  }
-
+  const graph = await buildEffectiveDepGraph(projectId);
   const blocked: BlockedTask[] = [];
-  for (const [taskId, blockers] of blockedMap) {
-    const info = taskInfoMap.get(taskId);
-    if (!info) continue;
+
+  for (const info of graph.activeTasks.values()) {
+    const deps = graph.effectiveDeps.get(info.id) ?? new Set<string>();
+    const blockers: { id: string; taskRef: string; title: string; status: string }[] = [];
+    for (const depId of deps) {
+      const depInfo = graph.activeTasks.get(depId);
+      if (!depInfo) continue;
+      if (depInfo.status === "done") continue;
+      blockers.push({
+        id: depInfo.id,
+        taskRef: composeTaskRef(identifier, depInfo.sequenceNumber),
+        title: depInfo.title,
+        status: depInfo.status,
+      });
+    }
+    if (blockers.length === 0) continue;
     blocked.push({
-      id: taskId,
-      taskRef: info.taskRef,
+      id: info.id,
+      taskRef: composeTaskRef(identifier, info.sequenceNumber),
       title: info.title,
       status: info.status,
       blockedBy: blockers,
@@ -487,9 +430,21 @@ export type CriticalPathTask = {
 };
 
 /**
- * Find the longest chain of `depends_on` edges across the project.
+ * Find the longest chain of effective `depends_on` edges across active tasks.
+ *
+ * Operates on the effective dependency graph — cancelled tasks are transparent,
+ * so a chain `A → B → C` where B is cancelled is treated as the active chain
+ * `A → C` (and contributes length 2, not 3). This avoids the orphan-bug where
+ * tasks above a cancelled middle would be excluded from the chain entirely.
+ *
+ * Algorithm: Kahn's topological sort over active tasks (deps first) followed
+ * by DP `longest[node] = 1 + max(longest[dep])`, then backtrack from the
+ * highest-`longest` node to recover the chain in root-first order.
+ *
  * @param projectId - UUID of the project.
- * @returns Ordered array of tasks forming the longest dependency chain.
+ * @returns Ordered array of active tasks forming the longest effective chain
+ *   (foundational task first, topmost dependent last). Empty when no active
+ *   tasks exist or a cycle is detected.
  */
 export async function getCriticalPath(
   projectId: string,
@@ -497,78 +452,74 @@ export async function getCriticalPath(
   const identifier = await getProjectIdentifier(projectId);
   if (!identifier) return [];
 
-  const rows = await db.execute<{
-    id: string;
-    title: string;
-    status: string;
-    depth: number;
-    path: string;
-  }>(sql`
-    WITH RECURSIVE project_tasks AS (
-      SELECT t.id, t.title, t.status
-      FROM ${tasks} t
-      WHERE t.project_id = ${projectId}
-    ),
-    roots AS (
-      SELECT pt.id, pt.title, pt.status
-      FROM project_tasks pt
-      WHERE NOT EXISTS (
-        SELECT 1 FROM ${taskEdges} e
-        WHERE e.source_task_id = pt.id AND e.edge_type = 'depends_on'
-      )
-    ),
-    chains AS (
-      SELECT
-        r.id, r.title, r.status,
-        1 AS depth,
-        CAST(r.id AS TEXT) AS path
-      FROM roots r
+  const graph = await buildEffectiveDepGraph(projectId);
+  if (graph.activeTasks.size === 0) return [];
 
-      UNION ALL
-
-      SELECT
-        pt.id, pt.title, pt.status,
-        c.depth + 1 AS depth,
-        c.path || ',' || CAST(pt.id AS TEXT) AS path
-      FROM chains c
-      INNER JOIN ${taskEdges} e
-        ON e.target_task_id = c.id AND e.edge_type = 'depends_on'
-      INNER JOIN project_tasks pt ON pt.id = e.source_task_id
-      WHERE c.depth < 100
-    )
-    SELECT id, title, status, depth, path
-    FROM chains
-    ORDER BY depth DESC
-    LIMIT 1
-  `);
-
-  const result = rows as unknown as { id: string; title: string; status: string; depth: number; path: string }[];
-  if (result.length === 0) return [];
-
-  const longestRow = result[0];
-  const pathIds = longestRow.path.split(",");
-
-  const allTasks = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      sequenceNumber: tasks.sequenceNumber,
-    })
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId));
-
-  const taskMap = new Map<string, CriticalPathTask>();
-  for (const t of allTasks) {
-    taskMap.set(t.id, {
-      id: t.id,
-      taskRef: composeTaskRef(identifier, t.sequenceNumber),
-      title: t.title,
-      status: t.status,
-    });
+  const remaining = new Map<string, number>();
+  for (const id of graph.activeTasks.keys()) {
+    remaining.set(id, graph.effectiveDeps.get(id)?.size ?? 0);
   }
 
-  return pathIds
-    .map((id) => taskMap.get(id))
-    .filter((n): n is CriticalPathTask => n !== undefined);
+  const topoOrder: string[] = [];
+  const queue: string[] = [];
+  for (const [id, count] of remaining) {
+    if (count === 0) queue.push(id);
+  }
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    topoOrder.push(cur);
+    const dependents = graph.effectiveDependents.get(cur) ?? new Set<string>();
+    for (const dependent of dependents) {
+      const newCount = (remaining.get(dependent) ?? 0) - 1;
+      remaining.set(dependent, newCount);
+      if (newCount === 0) queue.push(dependent);
+    }
+  }
+
+  if (topoOrder.length < graph.activeTasks.size) return [];
+
+  const longestTo = new Map<string, number>();
+  const parent = new Map<string, string | null>();
+  for (const node of topoOrder) {
+    const deps = graph.effectiveDeps.get(node) ?? new Set<string>();
+    let bestParent: string | null = null;
+    let bestParentLen = 0;
+    for (const dep of deps) {
+      const len = longestTo.get(dep) ?? 0;
+      if (len > bestParentLen) {
+        bestParentLen = len;
+        bestParent = dep;
+      }
+    }
+    longestTo.set(node, bestParentLen + 1);
+    parent.set(node, bestParent);
+  }
+
+  let endNode: string | null = null;
+  let maxLen = 0;
+  for (const [node, len] of longestTo) {
+    if (len > maxLen) {
+      maxLen = len;
+      endNode = node;
+    }
+  }
+  if (!endNode) return [];
+
+  const chain: string[] = [];
+  let cur: string | null = endNode;
+  while (cur !== null) {
+    chain.push(cur);
+    cur = parent.get(cur) ?? null;
+  }
+  chain.reverse();
+
+  return chain.map((id) => {
+    const info = graph.activeTasks.get(id)!;
+    return {
+      id: info.id,
+      taskRef: composeTaskRef(identifier, info.sequenceNumber),
+      title: info.title,
+      status: info.status,
+    };
+  });
 }

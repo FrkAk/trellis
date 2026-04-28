@@ -9,7 +9,7 @@ export type ProjectStatus =
   | "archived";
 
 /** Task lifecycle status. */
-export type TaskStatus = "draft" | "planned" | "in_progress" | "done";
+export type TaskStatus = "draft" | "planned" | "in_progress" | "done" | "cancelled";
 
 /** A single tool invocation within a chat message. */
 export type ToolCall = {

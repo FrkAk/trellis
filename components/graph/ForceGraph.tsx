@@ -580,6 +580,10 @@ export function ForceGraph({
         case "planned":
           ctx.setLineDash([3, 4]);
           break;
+        case "cancelled":
+          ctx.setLineDash([4, 3]);
+          ctx.globalAlpha = nodeAlpha * 0.45;
+          break;
         default: // draft
           ctx.setLineDash([1, 3]);
           ctx.globalAlpha = nodeAlpha * 0.6;
@@ -925,6 +929,7 @@ const STATUS_ITEMS: { status: string; label: string; color: string }[] = [
   { status: "in_progress", label: "Active", color: "#f59e0b" },
   { status: "planned", label: "Planned", color: "#22d3ee" },
   { status: "draft", label: "Draft", color: "#64748b" },
+  { status: "cancelled", label: "Cancelled", color: "#e57373" },
 ];
 
 /**

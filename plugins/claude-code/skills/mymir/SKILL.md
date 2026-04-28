@@ -74,6 +74,8 @@ Before transitioning a task to `status='done'`, confirm based on invoker:
 
 The update call should populate `executionRecord`, `decisions`, and `files` — tool responses include hints when any are missing. Empty `files` is acceptable only if the task genuinely touched no files (e.g., a decision or research task).
 
+When transitioning to `cancelled`, the same single-vs-dispatched rule applies. Populate `executionRecord` with the cancellation rationale (why abandoned, approaches already tried, optional PR link) and `decisions` with any technical choices made along the way — same expectation as done, just for non-shipping outcomes. Tool responses include `_hints` when these are missing.
+
 If uncertain which mode you're in: default to asking.
 
 ## Agent Delegation
@@ -193,6 +195,8 @@ Stay concise — same density as before, just use markdown structure so the UI r
    - Do downstream descriptions/criteria need updating?
 4. Create/update/remove edges as needed
 
+**For cancellations specifically**: edges to a cancelled task remain in place, and cancellation is transitive-aware (dependents stay blocked through the cancelled task's own unsatisfied deps). The question is mostly *"is there a replacement?"* — if a new task supersedes the cancelled one, rewire dependents to point at the replacement. If the cancelled scope is genuinely abandoned with no successor, dependents may need to be cancelled too (or re-scoped to no longer require it).
+
 ### Refine a task
 1. `mymir_context` `depth='working'` → understand current state
 2. Help improve description, acceptance criteria, decisions, dependencies
@@ -205,6 +209,11 @@ Stay concise — same density as before, just use markdown structure so the UI r
 3. Verify: `mymir_query` `type='edges'` on the new task — confirm edges look correct
 
 ### Delete a task
+First decide: cancel or delete?
+- **Cancel** when: the task represents a *decision* worth keeping (abandoned approach, deprioritized scope, superseded design, PR closed without merge). Preserves rationale, edges, and execution records for downstream context.
+- **Delete** when: the task is *noise* (accidental creation, wrong project, duplicate, never had any meaningful content). Permanent removal.
+
+When cancelling: `mymir_task action='update' status='cancelled' executionRecord='<rationale + approaches tried>' decisions=[...]`. The `executionRecord` should capture *why* this was abandoned and *what was tried already* — same shape as a done record, just describing a non-shipping outcome instead of a shipping one. Tool responses include hints when these fields are missing. When deleting:
 1. `mymir_task` `action='delete'` → preview mode (shows impact)
 2. Show user the impact, wait for confirmation
 3. `mymir_task` `action='delete'` `preview=false` → execute
@@ -243,7 +252,9 @@ When the user corrects task info (wrong status, bad description, missing edge):
 
 ## Status Values
 
-`draft` → `planned` → `in_progress` → `done`
+`draft` → `planned` → `in_progress` → `done` (productive completion)
+
+`cancelled` — parallel terminal state for explicitly abandoned work. Reachable from any non-terminal state. Cancelled tasks are **transparent** in the dependency graph — passable but never themselves satisfying. A dependent only becomes ready when every active task reachable through cancelled middles is `done`. So cancelling a task whose own deps weren't satisfied does NOT silently unblock dependents; they stay blocked through the transitive chain. Cancelled tasks are excluded from progress %, critical path, and blocked listings.
 
 ## Edge Types
 

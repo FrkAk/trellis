@@ -161,8 +161,8 @@ export function registerAllTools(server: McpServer): void {
           .describe("Short task name. Required for create"),
         description: z.string().optional()
           .describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create"),
-        status: z.enum(["draft", "planned", "in_progress", "done"]).optional()
-          .describe("Task lifecycle: draft (unplanned) → planned (has implementationPlan) → in_progress (actively worked on) → done (executionRecord + decisions + files recorded so downstream tasks get context)."),
+        status: z.enum(["draft", "planned", "in_progress", "done", "cancelled"]).optional()
+          .describe("Task lifecycle: draft → planned → in_progress → done. `cancelled` is a parallel terminal state for explicitly abandoned work — record rationale in executionRecord. Cancelled tasks unblock dependents (like done) but are excluded from progress and critical-path analysis."),
         acceptanceCriteria: z.array(
           z.union([
             z.string(),
@@ -345,7 +345,7 @@ export function registerAllTools(server: McpServer): void {
  */
 export function createMcpServer(): McpServer {
   const server = new McpServer(
-    { name: "mymir", version: "1.3.1" },
+    { name: "mymir", version: "1.3.2" },
     { instructions: INSTRUCTIONS },
   );
   registerAllTools(server);

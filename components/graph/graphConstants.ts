@@ -105,6 +105,7 @@ export interface ThemeColors {
   statusPlanned: string;
   statusInProgress: string;
   statusDone: string;
+  statusCancelled: string;
   surface: string;
 }
 
@@ -120,6 +121,7 @@ export const DARK_THEME: ThemeColors = {
   statusPlanned: "#55b3ff",
   statusInProgress: "#ffbc33",
   statusDone: "#5fc992",
+  statusCancelled: "#e57373",
   surface: "rgba(7,8,10,0.85)",
 };
 
@@ -135,6 +137,7 @@ export const LIGHT_THEME: ThemeColors = {
   statusPlanned: "#3b82f6",
   statusInProgress: "#d97706",
   statusDone: "#059669",
+  statusCancelled: "#c25454",
   surface: "rgba(255,255,255,0.85)",
 };
 
@@ -161,6 +164,7 @@ export function getCanvasTheme(): ThemeColors {
       tooltipText: textPrimary,
       statusDraft: read("--color-todo") || base.statusDraft,
       statusDone: read("--color-done") || base.statusDone,
+      statusCancelled: read("--color-cancelled") || base.statusCancelled,
     };
   } catch {
     return base;
@@ -178,6 +182,7 @@ export function statusColor(status: string, t: ThemeColors): string {
     case "done": return t.statusDone;
     case "planned": return t.statusPlanned;
     case "in_progress": return t.statusInProgress;
+    case "cancelled": return t.statusCancelled;
     default: return t.statusDraft;
   }
 }
