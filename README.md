@@ -19,96 +19,6 @@ Mymir replaces that cycle. It's not just a context layer your agents read from, 
 
 ---
 
-## How it works
-
-Instead of docs, wikis, or messy markdown files, Mymir treats project context as a live knowledge base agents can reason from.
-
-We built Mymir around two core concepts:
-
-**Context network.** A living map of your project that captures not just what was built, but why decisions were made, what was tried and abandoned, and how different parts of the codebase relate to each other.
-
-**Context retrieval interface.** Four context shapes, one per job. Each is arranged by U-shaped attention (highest-recall content at the start and end) so what matters most lands where LLMs read best:
-
-| Shape | For | What's in it |
-| --- | --- | --- |
-| `summary` | Quick lookup | Title, status, edge counts |
-| `working` | Refining or reviewing a task | Criteria, decisions, 1-hop neighbors, conversation history |
-| `planning` | Writing an implementation plan | Project brief, prerequisites, upstream execution records, downstream specs |
-| `agent` | Coding the task | Implementation plan, multi-hop upstream execution records, file paths, acceptance criteria |
-
-Together, they don't just inform your agent, they drive it. Mymir manages the full lifecycle: **Brainstorm > Decompose > Refine > Plan > Execute > Track**.
-
-Describe your idea and Mymir decomposes it into tasks with dependency edges, determines what's ready to plan or implement, and hands your agent the exact context it needs for that stage. When a task is plannable, your agent gets the spec, prerequisites, and related work. When it's ready to implement, your agent gets the full execution context: upstream decisions, file paths, and acceptance criteria.
-
-The agent moves from task to task with the right context at every step, no manual handoff required.
-
-*We're building Mymir using Mymir, so everything described here is something we're living in real time.*
-
----
-
-## How it looks
-
-The web UI has two modes: **Structure** and **Graph**.
-
-Structure mode puts your task list on the left and a detail panel on the right. You refine specs, track progress, and review execution records without switching views.
-
-![Structure view](assets/projectview.png)
-
-Graph mode overlays the context network so you can see how tasks, decisions, and dependencies connect while still working in the detail panel.
-
-![Graph view](assets/graphview.png)
-
-Zoom out and the full graph renders your entire context network. Clusters, bottlenecks, and orphaned work become obvious at a glance.
-
-![Full graph](assets/graphonlyview.png)
-
----
-
-## How it runs
-
-Mymir ships as a Next.js web app plus vendor-native plugins for Claude Code, Codex, and Gemini. Each plugin bundles 6 MCP tools, four agents (brainstorm, onboarding, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
-
-**Three entry paths, one graph.**
-
-*No project yet.* The brainstorm agent shapes the idea with you, then decompose breaks it into a task graph:
-
-```text
-❯ I want to build a real-time dashboard for server metrics
-```
-
-*Existing codebase, no tracking yet.* Onboarding reverse-engineers a graph from the code and git history, gated on your approval before anything is written:
-
-```text
-❯ Onboard this existing codebase
-```
-
-*Ongoing project.* The `/mymir` skill detects the repo and picks up where you left off:
-
-```text
-❯ What's the status of the project?
-```
-
-**Skip the context briefing.** Name a task or ask what's next. Mymir delivers the right bundle for that task's state, so you don't write "here's what you need to know" prompts yourself:
-
-```text
-❯ What should I work on next?
-❯ Plan and implement MYMR-101
-```
-
-**Add and refine mid-flow.** Spot something missing, describe it, and push back until it's right:
-
-```text
-❯ Add a task for an onboarding agent that records shipped work as done tasks. Relate it to the codex/gemini support task.
-```
-
-```text
-❯ Priority is release-blocker, draft ACs are enough, and monorepo detection should ask the user.
-```
-
-**Tune in the UI.** Inspect edges, read execution records, and edit descriptions, ACs, tags, or dependencies directly. The agent loop and the UI write to the same store, so edits land by the next tool call.
-
----
-
 ## How to set it up
 
 You need [Bun](https://bun.sh) (v1.0+) and [Docker](https://docs.docker.com/get-docker/) for PostgreSQL.
@@ -196,6 +106,96 @@ All three plugins bundle the same components:
 | **Decompose agent** | Break a project into tasks with dependency edges |
 | **Manage agent** | Navigate, refine, track progress, restructure |
 | **Mymir skill** | Auto-invokes when conversation matches project planning |
+
+---
+
+## How it runs
+
+Mymir ships as a Next.js web app plus vendor-native plugins for Claude Code, Codex, and Gemini. Each plugin bundles 6 MCP tools, four agents (brainstorm, onboarding, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
+
+**Three entry paths, one graph.**
+
+*No project yet.* The brainstorm agent shapes the idea with you, then decompose breaks it into a task graph:
+
+```text
+❯ I want to build a real-time dashboard for server metrics
+```
+
+*Existing codebase, no tracking yet.* Onboarding reverse-engineers a graph from the code and git history, gated on your approval before anything is written:
+
+```text
+❯ Onboard this existing codebase
+```
+
+*Ongoing project.* The `/mymir` skill detects the repo and picks up where you left off:
+
+```text
+❯ What's the status of the project?
+```
+
+**Skip the context briefing.** Name a task or ask what's next. Mymir delivers the right bundle for that task's state, so you don't write "here's what you need to know" prompts yourself:
+
+```text
+❯ What should I work on next?
+❯ Plan and implement MYMR-101
+```
+
+**Add and refine mid-flow.** Spot something missing, describe it, and push back until it's right:
+
+```text
+❯ Add a task for an onboarding agent that records shipped work as done tasks. Relate it to the codex/gemini support task.
+```
+
+```text
+❯ Priority is release-blocker, draft ACs are enough, and monorepo detection should ask the user.
+```
+
+**Tune in the UI.** Inspect edges, read execution records, and edit descriptions, ACs, tags, or dependencies directly. The agent loop and the UI write to the same store, so edits land by the next tool call.
+
+---
+
+## How it works
+
+Instead of docs, wikis, or messy markdown files, Mymir treats project context as a live knowledge base agents can reason from.
+
+We built Mymir around two core concepts:
+
+**Context network.** A living map of your project that captures not just what was built, but why decisions were made, what was tried and abandoned, and how different parts of the codebase relate to each other.
+
+**Context retrieval interface.** Four context shapes, one per job. Each is arranged by U-shaped attention (highest-recall content at the start and end) so what matters most lands where LLMs read best:
+
+| Shape | For | What's in it |
+| --- | --- | --- |
+| `summary` | Quick lookup | Title, status, edge counts |
+| `working` | Refining or reviewing a task | Criteria, decisions, 1-hop neighbors, conversation history |
+| `planning` | Writing an implementation plan | Project brief, prerequisites, upstream execution records, downstream specs |
+| `agent` | Coding the task | Implementation plan, multi-hop upstream execution records, file paths, acceptance criteria |
+
+Together, they don't just inform your agent, they drive it. Mymir manages the full lifecycle: **Brainstorm > Decompose > Refine > Plan > Execute > Track**.
+
+Describe your idea and Mymir decomposes it into tasks with dependency edges, determines what's ready to plan or implement, and hands your agent the exact context it needs for that stage. When a task is plannable, your agent gets the spec, prerequisites, and related work. When it's ready to implement, your agent gets the full execution context: upstream decisions, file paths, and acceptance criteria.
+
+The agent moves from task to task with the right context at every step, no manual handoff required.
+
+*We're building Mymir using Mymir, so everything described here is something we're living in real time.*
+
+---
+
+## How it looks
+
+The web UI has two modes: **Structure** and **Graph**.
+
+Structure mode puts your task list on the left and a detail panel on the right. You refine specs, track progress, and review execution records without switching views.
+
+![Structure view](assets/projectview.png)
+
+Graph mode overlays the context network so you can see how tasks, decisions, and dependencies connect while still working in the detail panel.
+
+![Graph view](assets/graphview.png)
+
+Zoom out and the full graph renders your entire context network. Clusters, bottlenecks, and orphaned work become obvious at a glance.
+
+![Full graph](assets/graphonlyview.png)
 
 ---
 
