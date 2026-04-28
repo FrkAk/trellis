@@ -16,6 +16,7 @@ export default function ConsentPage() {
   const scope = searchParams.get("scope");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
 
   /**
    * Submit consent decision to the OAuth provider.
@@ -32,7 +33,12 @@ export default function ConsentPage() {
       });
 
       if (res.data?.url) {
+        const isHttp = /^https?:/i.test(res.data.url);
         window.location.href = res.data.url;
+        if (!isHttp) {
+          setDone(true);
+          setLoading(false);
+        }
         return;
       }
 
@@ -47,6 +53,19 @@ export default function ConsentPage() {
   }
 
   const scopes = scope?.split(" ").filter(Boolean) ?? [];
+
+  if (done) {
+    return (
+      <div className="space-y-4 text-center">
+        <h1 className="text-xl font-semibold text-text-primary">
+          Authorization sent
+        </h1>
+        <p className="text-sm text-text-muted">
+          Return to your application to finish signing in. You can close this tab.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

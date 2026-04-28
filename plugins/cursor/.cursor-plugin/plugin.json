@@ -1,0 +1,22 @@
+{
+  "name": "mymir",
+  "version": "1.3.1",
+  "description": "Persistent context network for coding projects. Tracks tasks, dependencies, and decisions across sessions.",
+  "author": {
+    "name": "Mymir",
+    "email": "hello@mymir.dev"
+  },
+  "homepage": "https://www.mymir.dev",
+  "repository": "https://github.com/FrkAk/mymir",
+  "license": "AGPL-3.0",
+  "keywords": [
+    "project-management",
+    "task-tracking",
+    "dependencies",
+    "context-network",
+    "mcp",
+    "coding-agents"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json"
+}
