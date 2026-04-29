@@ -14,7 +14,7 @@ import type {
 import type { ProjectOverview } from "@/lib/context/overview";
 import type { SummaryContext } from "@/lib/context/summary";
 
-const STATUS_ORDER = ["in_progress", "planned", "draft", "done"] as const;
+const STATUS_ORDER = ["in_progress", "planned", "draft", "done", "cancelled"] as const;
 
 /**
  * Format a task as a compact single line.
@@ -112,8 +112,10 @@ export function formatSearchResults(results: SearchResult[], hint?: string): str
 export function formatTaskList(tasks: TaskSlim[]): string {
   if (tasks.length === 0) return "No tasks.";
   const done = tasks.filter((t) => t.status === "done").length;
+  const cancelled = tasks.filter((t) => t.status === "cancelled").length;
   const inProg = tasks.filter((t) => t.status === "in_progress").length;
-  const header = `${tasks.length} tasks (${done} done, ${inProg} in_progress, ${tasks.length - done - inProg} other):`;
+  const other = tasks.length - done - cancelled - inProg;
+  const header = `${tasks.length} tasks (${done} done, ${cancelled} cancelled, ${inProg} in_progress, ${other} other):`;
   return header + renderGrouped(tasks, taskLine);
 }
 
@@ -140,9 +142,10 @@ export function formatDetailedEdges(edges: DetailedEdge[]): string {
  * @returns Formatted markdown overview.
  */
 export function formatOverview(overview: ProjectOverview): string {
+  const denominator = overview.totalTasks - overview.cancelledTasks;
   const parts: string[] = [
     `# \`${overview.identifier}\` "${overview.title}" [${overview.status}]`,
-    `Progress: ${overview.doneTasks}/${overview.totalTasks} done (${overview.progress}%) | ${overview.inProgressTasks} in_progress`,
+    `Progress: ${overview.doneTasks}/${denominator} done (${overview.progress}%) | ${overview.inProgressTasks} in_progress | ${overview.cancelledTasks} cancelled`,
   ];
   if (overview.categories.length > 0) parts.push(`Categories: ${overview.categories.join(", ")}`);
   if (overview.tagVocabulary.length > 0) parts.push(`Tags: ${overview.tagVocabulary.join(", ")}`);
@@ -230,7 +233,7 @@ export function formatCriticalPath(tasks: CriticalPathTask[]): string {
  */
 export function formatPlannableTasks(tasks: PlannableTask[]): string {
   if (tasks.length === 0)
-    return "No plannable tasks.\n\n> Drafts need description and acceptance criteria before planning.";
+    return "No plannable tasks.\n\n> Drafts must have description, acceptance criteria, AND every effective dep done. Run type='blocked' to see what's gating drafts.";
   const parts = [`${tasks.length} plannable task${tasks.length > 1 ? "s" : ""}:`];
   for (const t of tasks) parts.push(taskLine(t));
   return parts.join("\n");

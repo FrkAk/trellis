@@ -334,16 +334,20 @@ export function StructureView({
   // Compute drawer-level stats
   const drawerStats = useCallback((groupTasks: TaskWithRef[]) => {
     const done = groupTasks.filter((t) => t.status === 'done').length;
+    const cancelled = groupTasks.filter((t) => t.status === 'cancelled').length;
     const total = groupTasks.length;
-    return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+    const activeTotal = Math.max(total - cancelled, 0);
+    return { done, total, cancelled, activeTotal, pct: activeTotal > 0 ? Math.round((done / activeTotal) * 100) : 0 };
   }, []);
 
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter((t) => t.status === 'done').length;
+  const cancelledTasks = tasks.filter((t) => t.status === 'cancelled').length;
+  const activeTasks = Math.max(totalTasks - cancelledTasks, 0);
   const inProgressTasks = tasks.filter((t) => t.status === 'in_progress').length;
   const plannableTasks = tasks.filter((t) => isPlannable(t, statusMap, edges)).length;
   const readyTasks = tasks.filter((t) => isReady(t, statusMap, edges)).length;
-  const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const progressPct = activeTasks > 0 ? Math.round((doneTasks / activeTasks) * 100) : 0;
 
   if (tasks.length === 0) {
     return (
@@ -410,6 +414,12 @@ export function StructureView({
               <span className="flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-planned/50" />
                 {plannableTasks} plannable
+              </span>
+            )}
+            {cancelledTasks > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-cancelled" />
+                {cancelledTasks} cancelled
               </span>
             )}
             <span className="ml-auto tabular-nums">{totalTasks} total</span>
@@ -554,7 +564,7 @@ export function StructureView({
                     {/* Status filter chips */}
                     <span className="mb-1 block font-mono text-[9px] font-semibold uppercase tracking-wider text-text-muted/50">Status</span>
                     <div className="flex flex-wrap gap-1.5 mb-2.5">
-                      {(['draft', 'planned', 'in_progress', 'done', 'plannable', 'ready'] as const).map((status) => {
+                      {(['draft', 'planned', 'in_progress', 'done', 'cancelled', 'plannable', 'ready'] as const).map((status) => {
                         const isActive = activeStatusFilters.has(status);
                         const isDerived = status === 'plannable' || status === 'ready';
                         const count = isDerived
@@ -770,13 +780,13 @@ export function StructureView({
                   </span>
                   {/* Mini progress indicator */}
                   <div className="flex items-center gap-2">
-                    {stats.done > 0 && stats.done === stats.total && (
+                    {stats.activeTotal > 0 && stats.done === stats.activeTotal && (
                       <svg className="h-3 w-3 text-done" viewBox="0 0 16 16" fill="currentColor">
                         <path fillRule="evenodd" d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16Zm3.78-9.72a.75.75 0 0 0-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.06 0l4.25-4.25Z" clipRule="evenodd" />
                       </svg>
                     )}
                     <span className="font-mono text-[10px] tabular-nums text-text-muted">
-                      {stats.done}/{stats.total}
+                      {stats.done}/{stats.activeTotal}
                     </span>
                   </div>
                 </button>
@@ -896,7 +906,7 @@ export function StructureView({
                           <span className={`flex-1 text-sm transition-colors duration-150 ${
                             selectedNodeId === task.id
                               ? 'text-accent font-medium'
-                              : task.status === 'done'
+                              : (task.status === 'done' || task.status === 'cancelled')
                                 ? 'text-text-muted line-through'
                                 : 'text-text-secondary'
                           }`}>

@@ -22,6 +22,8 @@ interface ProjectCardProps {
   tasksDone: number;
   /** @param totalTasks - Total number of tasks. */
   totalTasks: number;
+  /** @param cancelledTasks - Number of cancelled tasks excluded from progress. */
+  cancelledTasks?: number;
   /** @param tasksInProgress - Number of in-progress tasks. */
   tasksInProgress: number;
   /** @param lastActive - Relative time string. */
@@ -41,12 +43,14 @@ export function ProjectCard({
   status,
   tasksDone,
   totalTasks,
+  cancelledTasks = 0,
   tasksInProgress,
   lastActive,
 }: ProjectCardProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
-  const progress = totalTasks > 0 ? Math.round((tasksDone / totalTasks) * 100) : 0;
+  const activeTasks = Math.max(totalTasks - cancelledTasks, 0);
+  const progress = activeTasks > 0 ? Math.round((tasksDone / activeTasks) * 100) : 0;
 
   const href = status === 'brainstorming'
     ? `/new/brainstorm?projectId=${id}`
@@ -132,7 +136,13 @@ export function ProjectCard({
           <div className="flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-text-muted">
             <span className="text-text-secondary">{identifier}</span>
             <span className="text-text-muted/40">·</span>
-            <span>{tasksDone}/{totalTasks} tasks</span>
+            <span>{tasksDone}/{activeTasks} tasks</span>
+            {cancelledTasks > 0 && (
+              <>
+                <span className="text-text-muted/40">·</span>
+                <span>{cancelledTasks} cancelled</span>
+              </>
+            )}
             {tasksInProgress > 0 && (
               <>
                 <span className="text-text-muted/40">·</span>

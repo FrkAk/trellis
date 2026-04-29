@@ -31,6 +31,8 @@
 
   --color-draft: #9ca3af;
   --color-planned: #55b3ff;
+  --color-cancelled: #e57373;
+  --color-cancelled-bg: rgba(229, 115, 115, 0.10);
   --color-danger: #FF6363;
 
   --color-depends: #55b3ff;
@@ -69,6 +71,7 @@ html.light {
   --color-done-bg: rgba(95, 201, 146, 0.08);
   --color-progress-bg: rgba(255, 188, 51, 0.08);
   --color-todo-bg: rgba(106, 107, 108, 0.06);
+  --color-cancelled-bg: rgba(229, 115, 115, 0.08);
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06);

@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import type { EdgeType } from "@/lib/types";
 import { asIdentifier, composeTaskRef, enrichWithTaskRef } from "./identifier";
+import { buildEffectiveDepGraph } from "./effective-deps";
 import { normalizeTags } from "@/lib/ai/tag-similarity";
 
 // ---------------------------------------------------------------------------
@@ -276,18 +277,21 @@ export async function getProjectList() {
   return allProjects.map((project) => {
     const projTasks = tasksByProject.get(project.id) ?? [];
 
+    const cancelled = projTasks.filter((t) => t.status === "cancelled").length;
     const taskStats = {
       total: projTasks.length,
       done: projTasks.filter((t) => t.status === "done").length,
       inProgress: projTasks.filter((t) => t.status === "in_progress").length,
+      cancelled,
     };
+    const denominator = taskStats.total - cancelled;
 
     return {
       ...project,
       taskStats,
       progress:
-        taskStats.total > 0
-          ? Math.round((taskStats.done / taskStats.total) * 100)
+        denominator > 0
+          ? Math.round((taskStats.done / denominator) * 100)
           : 0,
     };
   });
@@ -334,25 +338,35 @@ export async function getConversation(projectId: string, taskId?: string) {
 // ---------------------------------------------------------------------------
 
 /** Derived task state based on status + dependency readiness. */
-export type TaskState = "done" | "in_progress" | "ready" | "plannable" | "blocked" | "draft";
+export type TaskState = "done" | "cancelled" | "in_progress" | "ready" | "plannable" | "blocked" | "draft";
 
 /**
- * Derive the actionable state for a single task.
+ * Derive the actionable state for a single task using effective deps.
+ *
+ * Cancelled tasks short-circuit. For active tasks, dep readiness is checked
+ * against the *effective* dependency set — cancelled middles are walked
+ * through, and the wall is the next active prerequisite.
+ *
  * @param task - Task with status, description, and acceptanceCriteria.
- * @param depsBySource - Map of taskId → array of depends_on target IDs.
- * @param statusMap - Map of taskId → status for all project tasks.
+ * @param graph - Effective dependency graph for the project.
  * @returns Derived TaskState.
  */
 function deriveTaskState(
   task: { id: string; status: string; description: string; acceptanceCriteria: unknown },
-  depsBySource: Map<string, string[]>,
-  statusMap: Map<string, string>,
+  graph: { activeTasks: Map<string, { status: string }>; effectiveDeps: Map<string, Set<string>> },
 ): TaskState {
   if (task.status === "done") return "done";
+  if (task.status === "cancelled") return "cancelled";
   if (task.status === "in_progress") return "in_progress";
 
-  const deps = depsBySource.get(task.id) ?? [];
-  const allDepsDone = deps.every((depId) => statusMap.get(depId) === "done");
+  const deps = graph.effectiveDeps.get(task.id) ?? new Set<string>();
+  let allDepsDone = true;
+  for (const depId of deps) {
+    if (graph.activeTasks.get(depId)?.status !== "done") {
+      allDepsDone = false;
+      break;
+    }
+  }
 
   if (task.status === "planned") {
     return allDepsDone ? "ready" : "blocked";
@@ -369,7 +383,12 @@ function deriveTaskState(
 }
 
 /**
- * Derive states for a batch of tasks in one project. Fetches depends_on edges once.
+ * Derive states for a batch of tasks in one project.
+ *
+ * Builds the effective dependency graph once and reuses it for every task in
+ * the subset, so dep readiness reflects transitive blocking through cancelled
+ * middles rather than just direct edges.
+ *
  * @param projectId - UUID of the project.
  * @param taskSubset - Tasks to derive states for (must belong to the project).
  * @returns Map of taskId → TaskState.
@@ -378,32 +397,10 @@ export async function deriveTaskStates(
   projectId: string,
   taskSubset: { id: string; status: string; description: string; acceptanceCriteria: unknown }[],
 ): Promise<Map<string, TaskState>> {
-  const allProjectTasks = await db
-    .select({ id: tasks.id, status: tasks.status })
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId));
-
-  const statusMap = new Map<string, string>();
-  for (const t of allProjectTasks) statusMap.set(t.id, t.status);
-
-  const taskIds = allProjectTasks.map((t) => t.id);
-  const dependsOnEdges = taskIds.length > 0
-    ? await db
-        .select({ sourceTaskId: taskEdges.sourceTaskId, targetTaskId: taskEdges.targetTaskId })
-        .from(taskEdges)
-        .where(and(sql`${taskEdges.sourceTaskId} IN ${taskIds}`, eq(taskEdges.edgeType, "depends_on")))
-    : [];
-
-  const depsBySource = new Map<string, string[]>();
-  for (const edge of dependsOnEdges) {
-    const existing = depsBySource.get(edge.sourceTaskId) ?? [];
-    existing.push(edge.targetTaskId);
-    depsBySource.set(edge.sourceTaskId, existing);
-  }
-
+  const graph = await buildEffectiveDepGraph(projectId);
   const result = new Map<string, TaskState>();
   for (const task of taskSubset) {
-    result.set(task.id, deriveTaskState(task, depsBySource, statusMap));
+    result.set(task.id, deriveTaskState(task, graph));
   }
   return result;
 }

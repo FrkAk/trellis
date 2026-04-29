@@ -25,6 +25,8 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
 
   const doneCount = project.tasks.filter((t) => t.status === 'done').length;
   const totalCount = project.tasks.length;
+  const cancelledCount = project.tasks.filter((t) => t.status === 'cancelled').length;
+  const activeCount = Math.max(totalCount - cancelledCount, 0);
 
   return (
     <>
@@ -37,7 +39,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
         categories={project.categories}
         taskCount={totalCount}
         stageLabel={`${totalCount} tasks`}
-        taskStats={`${doneCount}/${totalCount} tasks done`}
+        taskStats={`${doneCount}/${activeCount} tasks done${cancelledCount > 0 ? `, ${cancelledCount} cancelled` : ''}`}
       />
       <div className="pt-[var(--topbar-h)]">
         {children}

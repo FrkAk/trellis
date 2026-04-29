@@ -99,7 +99,9 @@ function ReviewContent() {
 
   const totalTasks = graph.tasks.length;
   const doneTasks = graph.tasks.filter((t) => t.status === 'done').length;
-  const progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const cancelledTasks = graph.tasks.filter((t) => t.status === 'cancelled').length;
+  const activeTasks = Math.max(totalTasks - cancelledTasks, 0);
+  const progress = activeTasks > 0 ? Math.round((doneTasks / activeTasks) * 100) : 0;
 
   // Collect unique tags
   const allTags = [...new Set(graph.tasks.flatMap((t) => t.tags))].sort();
@@ -141,6 +143,12 @@ function ReviewContent() {
             <span>{graph.edges.length} edges</span>
             <span>&middot;</span>
             <span>{progress}% complete</span>
+            {cancelledTasks > 0 && (
+              <>
+                <span>&middot;</span>
+                <span>{cancelledTasks} cancelled</span>
+              </>
+            )}
           </div>
 
           {/* Tags overview */}
@@ -168,7 +176,7 @@ function ReviewContent() {
               Task Breakdown
             </h3>
             <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-              {(['draft', 'planned', 'in_progress', 'done'] as const).map((status) => {
+              {(['draft', 'planned', 'in_progress', 'done', 'cancelled'] as const).map((status) => {
                 const count = graph.tasks.filter((t) => t.status === status).length;
                 if (count === 0) return null;
                 return (
@@ -213,6 +221,7 @@ function statusDotColor(status: string): string {
     case 'done': return 'bg-done';
     case 'in_progress': return 'bg-progress';
     case 'planned': return 'bg-planned';
+    case 'cancelled': return 'bg-cancelled';
     default: return 'bg-draft';
   }
 }
@@ -227,6 +236,7 @@ function statusDisplayLabel(status: string): string {
     case 'done': return 'done';
     case 'in_progress': return 'in progress';
     case 'planned': return 'planned';
+    case 'cancelled': return 'cancelled';
     default: return 'draft';
   }
 }

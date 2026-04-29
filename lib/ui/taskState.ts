@@ -1,12 +1,51 @@
 import type { Task, TaskEdge } from "@/lib/db/schema";
 
 /**
+ * Walk forward from a task through depends_on edges, treating cancelled tasks
+ * as transparent. Mirrors server-side `walkEffectiveDeps` so client-side badges
+ * stay consistent with `mymir_analyze` and `deriveTaskState`.
+ *
+ * @param taskId - Starting task id.
+ * @param statusMap - Map of task ID to status.
+ * @param edges - All edges in the project.
+ * @returns Array of active task IDs reachable through any number of cancelled middles.
+ */
+function walkEffectiveDeps(
+  taskId: string,
+  statusMap: Map<string, string>,
+  edges: TaskEdge[],
+): string[] {
+  const result = new Set<string>();
+  const visited = new Set<string>();
+  const stack: string[] = [taskId];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (visited.has(cur)) continue;
+    visited.add(cur);
+    const targets = edges
+      .filter((e) => e.sourceTaskId === cur && e.edgeType === "depends_on")
+      .map((e) => e.targetTaskId);
+    for (const target of targets) {
+      if (visited.has(target)) continue;
+      const status = statusMap.get(target);
+      if (status === "cancelled") {
+        stack.push(target);
+      } else if (status !== undefined) {
+        result.add(target);
+      }
+    }
+  }
+  return [...result];
+}
+
+/**
  * Check if a draft task has enough content to be planned and is not blocked.
- * Mirrors server-side deriveTaskState logic (queries.ts).
+ * Mirrors server-side deriveTaskState logic (queries.ts) using effective deps —
+ * cancelled tasks are transparent (passable but not satisfying).
  * @param task - The task to check.
  * @param statusMap - Pre-built map of task ID to status.
  * @param edges - All edges in the project.
- * @returns True if the task is draft, unblocked, with description and acceptance criteria.
+ * @returns True if the task is draft, all effective deps are done, with description and criteria.
  */
 export function isPlannable(
   task: Task,
@@ -14,10 +53,8 @@ export function isPlannable(
   edges: TaskEdge[],
 ): boolean {
   if (task.status !== "draft") return false;
-  const depTargetIds = edges
-    .filter((e) => e.sourceTaskId === task.id && e.edgeType === "depends_on")
-    .map((e) => e.targetTaskId);
-  if (depTargetIds.length > 0 && !depTargetIds.every((id) => statusMap.get(id) === "done")) return false;
+  const effectiveDeps = walkEffectiveDeps(task.id, statusMap, edges);
+  if (!effectiveDeps.every((id) => statusMap.get(id) === "done")) return false;
   if (!task.description?.trim()) return false;
   const criteria = task.acceptanceCriteria as
     | { id: string; text: string; checked: boolean }[]
@@ -26,12 +63,12 @@ export function isPlannable(
 }
 
 /**
- * Check if a planned task has all dependencies satisfied.
- * Mirrors server-side getReadyTasks logic.
+ * Check if a planned task has all dependencies satisfied via the effective
+ * dependency graph. Cancelled tasks are transparent.
  * @param task - The task to check.
  * @param statusMap - Pre-built map of task ID to status.
  * @param edges - All edges in the project.
- * @returns True if the task is planned and all depends_on targets are done.
+ * @returns True if the task is planned and every effective dep is done.
  */
 export function isReady(
   task: Task,
@@ -39,11 +76,8 @@ export function isReady(
   edges: TaskEdge[],
 ): boolean {
   if (task.status !== "planned") return false;
-  const depTargetIds = edges
-    .filter((e) => e.sourceTaskId === task.id && e.edgeType === "depends_on")
-    .map((e) => e.targetTaskId);
-  if (depTargetIds.length === 0) return true;
-  return depTargetIds.every((id) => statusMap.get(id) === "done");
+  const effectiveDeps = walkEffectiveDeps(task.id, statusMap, edges);
+  return effectiveDeps.every((id) => statusMap.get(id) === "done");
 }
 
 /**

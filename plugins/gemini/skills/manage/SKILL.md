@@ -29,7 +29,7 @@ Before transitioning a task to `status='done'`, confirm based on invoker:
 - **Direct user invocation** (no parent agent): ask the user "Ready to mark this done?" with a one-sentence executionRecord preview. Wait for explicit confirmation.
 - **Dispatched sub-agent** (parent agent is reviewer): skip the ask. Mark done directly with the full payload. Return to the parent with the task ref and a one-sentence summary.
 
-The update call should populate `executionRecord`, `decisions`, and `files` — tool responses include hints when any are missing. Empty `files` is acceptable only if the task genuinely touched no files (e.g., a decision or research task).
+The update call should populate `executionRecord`, `decisions`, and `files` — tool responses include hints when any are missing. Empty `files` is acceptable only if the task genuinely touched no files (e.g., a decision or research task). For `cancelled`, use the same confirmation rule and record rationale in `executionRecord` plus any decisions learned.
 
 If uncertain which mode you're in: default to asking.
 
@@ -182,10 +182,10 @@ When the user says "continue", "what's the status", or starts a new session:
 4. Run Workflow F to check if existing tasks need new edges to this task
 
 ### Delete a Task
-1. `mymir_task` with `action='delete'` (defaults to preview)
-2. Show the user the impact
-3. Wait for confirmation
-4. `mymir_task` with `action='delete'`, `preview=false`
+Cancel when rationale is worth keeping; delete only noise.
+
+- Cancel: `mymir_task` with `action='update'`, `status='cancelled'`, `executionRecord='<why abandoned + what was tried>'`, `decisions=[...]`, then Workflow F
+- Delete: `mymir_task` with `action='delete'` (preview) → show impact → wait for confirmation → `preview=false`
 
 ### When User Mentions a Task by Name
 1. `mymir_query` with `type='search'` → find it
@@ -210,6 +210,7 @@ When the user says "continue", "what's the status", or starts a new session:
 ## Status Lifecycle
 
 - Task: `draft` → `planned` → `in_progress` → `done`
+- `cancelled`: terminal abandoned work. Transparent in deps (pass through, never satisfies); excluded from progress %, critical path, and blocked listings.
 
 ## Edge Types
 

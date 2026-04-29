@@ -77,6 +77,60 @@ function tagVariantHints(proposed: string[], existing: string[]): string[] {
 }
 
 /**
+ * Build warning hints for semantically incoherent terminal-to-terminal
+ * status transitions. Currently flags `done → cancelled` (drops the task
+ * from progress numerator) and `cancelled → done` (skips the work pipeline).
+ * Other reversals (done → planned/in_progress/draft) are usually deliberate
+ * UI corrections and do NOT trigger a hint.
+ *
+ * @param priorStatus - The task's status before the update.
+ * @param nextStatus - The status the caller is transitioning to.
+ * @returns Hint strings (empty when the transition is normal).
+ */
+function terminalReversalHints(priorStatus: string, nextStatus: string): string[] {
+  if (priorStatus === "done" && nextStatus === "cancelled") {
+    return [
+      "Transitioning done → cancelled is unusual: it removes this task from the progress numerator and drops the percentage. If the work shipped but is now obsolete, prefer keeping it done and creating a follow-up cancelled task with the rationale, so the historical credit is preserved.",
+    ];
+  }
+  if (priorStatus === "cancelled" && nextStatus === "done") {
+    return [
+      "Transitioning cancelled → done skips the work pipeline. If the work was actually completed, prefer cancelled → in_progress → done so executionRecord captures what was built rather than the cancellation rationale.",
+    ];
+  }
+  return [];
+}
+
+/**
+ * Build hints when a task is cancelled, mirroring `doneStatusHints` so agents
+ * see the same shape of guidance: warn when rationale (executionRecord) and
+ * decisions are missing, and prompt downstream propagation.
+ * @param payload - Fields supplied by the caller in this request.
+ * @param persisted - Row state after the mutation (createTask/updateTask result).
+ * @returns Hint strings for missing rationale and downstream propagation.
+ */
+function cancelledStatusHints(
+  payload: {
+    executionRecord?: string;
+    decisions?: Decision[];
+  },
+  persisted: {
+    executionRecord?: string | null;
+    decisions?: Decision[] | null;
+  },
+): string[] {
+  const hints: string[] = [];
+  if (!payload.executionRecord && !persisted.executionRecord) {
+    hints.push("Missing cancellation rationale. Add it to executionRecord — record why this was abandoned and any approaches already tried, so downstream tasks (and future revisits) understand the decision.");
+  }
+  if (!payload.decisions && (!persisted.decisions || persisted.decisions.length === 0)) {
+    hints.push("Missing decisions. Record any technical choices made before cancelling (CHOICE + WHY) — preserves what was learned for future revisits.");
+  }
+  hints.push("Cancelled is transparent in the dep graph: dependents stay blocked through this task's own unsatisfied deps. Run mymir_analyze type='downstream' to see dependents — if a replacement task should take this one's place, rewire their edges to it.");
+  return hints;
+}
+
+/**
  * Build completion-protocol hints when a task transitions to or is created in
  * the `done` state. Mirrors the same wording across create and update branches
  * so agents see consistent guidance.
@@ -147,6 +201,7 @@ const STATE_HINTS: Record<TaskState, string> = {
   blocked: "Task is blocked by dependencies. Fetch context with depth='working' to see what's blocking it.",
   in_progress: "Task is claimed (in progress). Fetch context with depth='working' to review — avoid duplicating work.",
   done: "Task is complete. Fetch context with depth='working' to review what was built.",
+  cancelled: "Task is cancelled (terminal). Fetch context with depth='working' to review the rationale.",
   draft: "Task is a draft (needs description/criteria before planning). Fetch context with depth='working'.",
 };
 
@@ -205,7 +260,7 @@ export const DESCRIPTIONS = {
     "Always 'list' then 'select' at session start. Always pass projectId explicitly on every call.",
   mymir_task:
     "Create, update, delete, or reorder tasks. " +
-    "Status lifecycle: draft → planned → in_progress → done (see `status` field for per-state expectations). " +
+    "Status lifecycle: draft → planned → in_progress → done; cancelled is terminal abandoned work with transparent deps (see `status`). " +
     "Before marking done, follow the skill's Completion Protocol. " +
     "For delete: preview defaults to true (shows impact without deleting). Set preview=false to execute. " +
     "Update accepts any combination of fields — pass only what changed. " +
@@ -260,7 +315,7 @@ export type TaskParams = {
   taskId?: string;
   title?: string;
   description?: string;
-  status?: "draft" | "planned" | "in_progress" | "done";
+  status?: "draft" | "planned" | "in_progress" | "done" | "cancelled";
   acceptanceCriteria?: unknown[];
   decisions?: unknown[];
   tags?: string[];
@@ -443,6 +498,23 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
             );
           }
         }
+        if (p.status === "cancelled") {
+          const persisted = await fetchTask(task.id);
+          if (persisted) {
+            createHints.push(
+              ...cancelledStatusHints(
+                {
+                  executionRecord: p.executionRecord,
+                  decisions: p.decisions as Decision[] | undefined,
+                },
+                {
+                  executionRecord: persisted.executionRecord,
+                  decisions: persisted.decisions as Decision[] | null,
+                },
+              ),
+            );
+          }
+        }
         return ok({ ...task, _hints: createHints });
       }
       case "update": {
@@ -466,9 +538,17 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         const notFound = await requireTask(p.taskId);
         if (notFound) return notFound;
         let preExistingTags: string[] = [];
+        let priorStatus: string | undefined;
         if (p.tags && p.tags.length > 0) {
           const existing = await fetchTask(p.taskId);
-          if (existing) preExistingTags = (await getProjectTags(existing.projectId)).map((t) => t.tag);
+          if (existing) {
+            preExistingTags = (await getProjectTags(existing.projectId)).map((t) => t.tag);
+            priorStatus = existing.status;
+          }
+        }
+        if (p.status !== undefined && priorStatus === undefined) {
+          const existing = await fetchTask(p.taskId);
+          if (existing) priorStatus = existing.status;
         }
         const changes: Record<string, unknown> = {};
         if (p.title !== undefined) changes.title = p.title;
@@ -509,6 +589,23 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
               },
             ),
           );
+        }
+        if (p.status === "cancelled") {
+          updateHints.push(
+            ...cancelledStatusHints(
+              {
+                executionRecord: p.executionRecord,
+                decisions: p.decisions as Decision[] | undefined,
+              },
+              {
+                executionRecord: result.executionRecord,
+                decisions: result.decisions as Decision[] | null,
+              },
+            ),
+          );
+        }
+        if (priorStatus !== undefined && p.status !== undefined && priorStatus !== p.status) {
+          updateHints.push(...terminalReversalHints(priorStatus, p.status));
         }
         return ok(updateHints.length > 0 ? { ...result, _hints: updateHints } : result);
       }

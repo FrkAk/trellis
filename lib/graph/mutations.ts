@@ -373,6 +373,7 @@ export async function updateTask(
 
   const [current] = await db
     .select({
+      status: tasks.status,
       history: tasks.history,
       decisions: tasks.decisions,
       acceptanceCriteria: tasks.acceptanceCriteria,
@@ -404,9 +405,12 @@ export async function updateTask(
     }
   }
 
+  const isStatusChange = "status" in changes && current?.status !== changes.status;
   const entry = makeHistoryEntry({
-    type: "refined",
-    label: "Task updated",
+    type: isStatusChange ? "status_change" : "refined",
+    label: isStatusChange
+      ? `Status: ${current?.status} → ${changes.status}`
+      : "Task updated",
     description: `Updated task fields: ${Object.keys(changes).join(", ")}.`,
     actor: "ai",
   });

@@ -49,7 +49,7 @@ export async function buildAgentContext(taskId: string): Promise<string> {
 
   const parts: string[] = [headerLines.join("\n")];
 
-  if (task.implementationPlan && status !== "done") {
+  if (task.implementationPlan && status !== "done" && status !== "cancelled") {
     parts.push(section("Implementation Plan") + "\n" + task.implementationPlan);
   }
 
@@ -125,7 +125,7 @@ export async function buildAgentContext(taskId: string): Promise<string> {
     parts.push(section("Files") + "\n" + files.map((f) => `- ${f}`).join("\n"));
   }
 
-  if (task.executionRecord && status === "done") {
+  if (task.executionRecord && (status === "done" || status === "cancelled")) {
     parts.push(section("Execution Record") + "\n" + task.executionRecord);
   }
 
