@@ -41,7 +41,7 @@ const taskFields = {
   taskId: z.string().uuid().optional().describe("Task UUID. Required for update/delete/reorder"),
   title: z.string().optional().describe("Short task name. Required for create"),
   description: z.string().optional().describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create"),
-  status: z.enum(["draft", "planned", "in_progress", "done", "cancelled"]).optional().describe("Task lifecycle: draft → planned → in_progress → done. `cancelled` is a parallel terminal state for explicitly abandoned work — record rationale in executionRecord. Cancelled tasks unblock dependents (like done) but are excluded from progress and critical-path analysis."),
+  status: z.enum(["draft", "planned", "in_progress", "done", "cancelled"]).optional().describe("Task lifecycle: draft → planned → in_progress → done; `cancelled` = terminal abandoned work with executionRecord rationale. Cancelled deps are transparent: pass through to active prerequisites, never satisfy by themselves. Excluded from progress and critical path."),
   acceptanceCriteria: z.array(
     z.union([
       z.string(),

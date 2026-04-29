@@ -36,7 +36,7 @@ export default async function HomePage() {
           <ContinueBanner
             projectId={activeProject.id}
             projectName={activeProject.title}
-            lastActiveNode={`${activeProject.taskStats.done}/${activeProject.taskStats.total} tasks done`}
+            lastActiveNode={`${activeProject.taskStats.done}/${Math.max(activeProject.taskStats.total - activeProject.taskStats.cancelled, 0)} tasks done`}
             lastActive={activeProject.updatedAt.toLocaleDateString()}
           />
         )}
@@ -53,6 +53,7 @@ export default async function HomePage() {
               status={project.status}
               tasksDone={project.taskStats.done}
               totalTasks={project.taskStats.total}
+              cancelledTasks={project.taskStats.cancelled}
               tasksInProgress={project.taskStats.inProgress}
               lastActive={project.updatedAt.toLocaleDateString()}
             />

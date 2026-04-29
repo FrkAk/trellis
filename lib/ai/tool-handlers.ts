@@ -260,7 +260,7 @@ export const DESCRIPTIONS = {
     "Always 'list' then 'select' at session start. Always pass projectId explicitly on every call.",
   mymir_task:
     "Create, update, delete, or reorder tasks. " +
-    "Status lifecycle: draft → planned → in_progress → done (see `status` field for per-state expectations). " +
+    "Status lifecycle: draft → planned → in_progress → done; cancelled is terminal abandoned work with transparent deps (see `status`). " +
     "Before marking done, follow the skill's Completion Protocol. " +
     "For delete: preview defaults to true (shows impact without deleting). Set preview=false to execute. " +
     "Update accepts any combination of fields — pass only what changed. " +
