@@ -1,10 +1,9 @@
 'use server';
 
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod/v4';
 import { db } from '@/lib/db';
-import { projects, tasks } from '@/lib/db/schema';
-import type { ProjectStatus } from '@/lib/types';
+import { projects } from '@/lib/db/schema';
 import { parseIdentifier } from '@/lib/graph/identifier';
 import {
   deleteCategory,
@@ -17,7 +16,11 @@ import { ProjectNotFoundError } from '@/lib/graph/errors';
 import { requireSession } from '@/lib/auth/session';
 import { dbEvents } from '@/lib/events';
 
-const PROJECT_STATUSES = ['brainstorming', 'decomposing', 'active', 'archived'] as const;
+/** Statuses the web app is allowed to set. CLI agents handle brainstorming/decomposing via MCP. */
+const WEB_ALLOWED_STATUSES = ['active', 'archived'] as const;
+type WebAllowedStatus = (typeof WEB_ALLOWED_STATUSES)[number];
+const webStatusSchema = z.enum(WEB_ALLOWED_STATUSES);
+
 const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 10_000;
 const CATEGORY_NAME_MAX = 64;
@@ -40,8 +43,6 @@ const projectSettingsChangesSchema = z
     categories: z.array(categoryNameSchema).max(CATEGORIES_MAX).optional(),
   })
   .strict();
-
-const projectStatusSchema = z.enum(PROJECT_STATUSES);
 
 /** Fields the settings modal can update. All optional. */
 export type ProjectSettingsChanges = z.infer<typeof projectSettingsChangesSchema>;
@@ -95,21 +96,22 @@ async function hasSession(): Promise<boolean> {
 }
 
 /**
- * Update a project's status.
+ * Update a project's status. Web is restricted to `active` ↔ `archived`;
+ * CLI agents handle `brainstorming`/`decomposing` transitions via MCP.
  * @param projectId - UUID of the project.
- * @param status - New project status.
+ * @param status - New status (`active` or `archived` only).
  * @returns Discriminated result — `{ ok: true }` or a typed failure.
  */
 export async function updateProjectStatus(
   projectId: string,
-  status: ProjectStatus,
+  status: WebAllowedStatus,
 ): Promise<ProjectStatusResult> {
   if (!(await hasSession())) {
     return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
   }
 
   const idParsed = projectIdSchema.safeParse(projectId);
-  const statusParsed = projectStatusSchema.safeParse(status);
+  const statusParsed = webStatusSchema.safeParse(status);
   if (!idParsed.success || !statusParsed.success) {
     return { ok: false, code: 'invalid_input', message: 'Invalid project id or status.' };
   }
@@ -124,34 +126,6 @@ export async function updateProjectStatus(
   }
   dbEvents.emit('change', '*');
   return { ok: true };
-}
-
-/**
- * Get a project's status and task count for phase validation.
- * @param projectId - UUID of the project.
- * @returns Project status and task count, or null if not found or unauthorized.
- */
-export async function getProjectPhaseInfo(projectId: string) {
-  try {
-    await requireSession();
-  } catch {
-    return null;
-  }
-  const parsed = projectIdSchema.safeParse(projectId);
-  if (!parsed.success) return null;
-
-  const [project] = await db
-    .select({ id: projects.id, status: projects.status })
-    .from(projects)
-    .where(eq(projects.id, parsed.data));
-  if (!project) return null;
-
-  const [countRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(eq(tasks.projectId, parsed.data));
-
-  return { status: project.status as ProjectStatus, taskCount: countRow?.count ?? 0 };
 }
 
 /**

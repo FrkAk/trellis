@@ -2,37 +2,39 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
+import { useRouter } from 'next/navigation';
 import { updateProjectStatus } from '@/lib/actions/project';
 import type { ProjectStatus } from '@/lib/types';
 
 interface StatusSectionProps {
+  /** @param projectId - UUID of the project. */
   projectId: string;
+  /** @param status - Current project status. */
   status: ProjectStatus;
+  /** @param onUpdated - Fired after a successful status change. */
   onUpdated?: () => void;
 }
 
-/** Project lifecycle, ordered. */
-const PROJECT_STATUS_FLOW: ProjectStatus[] = ['brainstorming', 'decomposing', 'active', 'archived'];
+type WebStatus = 'active' | 'archived';
 
-/** Display mapping for project statuses inside the modal stepper. */
-const PROJECT_STATUS_META: Record<ProjectStatus, { label: string; dot: string; text: string }> = {
-  brainstorming: { label: 'Idea', dot: 'bg-accent', text: 'text-accent' },
-  decomposing: { label: 'Building', dot: 'bg-progress', text: 'text-progress' },
-  active: { label: 'Active', dot: 'bg-done', text: 'text-done' },
-  archived: { label: 'Archived', dot: 'bg-draft', text: 'text-draft' },
-};
+const STATUS_OPTIONS: { id: WebStatus; label: string; dot: string; text: string }[] = [
+  { id: 'active', label: 'Active', dot: 'bg-done', text: 'text-done' },
+  { id: 'archived', label: 'Archived', dot: 'bg-draft', text: 'text-draft' },
+];
 
 const SECTION_LABEL_CLASS =
   'font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted';
 
 /**
- * Project lifecycle stepper — mirrors the task status stepper in DetailPanel.
- * Each step is clickable and calls `updateProjectStatus` server action.
+ * Active ↔ archived toggle. Hidden when the project is in a CLI-only phase
+ * (brainstorming/decomposing) — those transitions belong to the CLI agent.
+ * Archiving from inside the workspace redirects home; unarchive flips back.
  * @param props - Section props.
- * @returns Status row with stepper.
+ * @returns Status row with two-pill toggle, or null when status is CLI-managed.
  */
 export function StatusSection({ projectId, status, onUpdated }: StatusSectionProps) {
-  const [pending, setPending] = useState<ProjectStatus | null>(null);
+  const router = useRouter();
+  const [pending, setPending] = useState<WebStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<ProjectStatus>(status);
 
@@ -40,14 +42,7 @@ export function StatusSection({ projectId, status, onUpdated }: StatusSectionPro
     statusRef.current = status;
   }, [status]);
 
-  const currentIdx = PROJECT_STATUS_FLOW.indexOf(status);
-
-  /**
-   * Persist a new project status via the server action.
-   * @param next - Target status.
-   * @returns Resolves once the server round-trip completes and UI state settles.
-   */
-  const handleStatusChange = useCallback(async (next: ProjectStatus): Promise<void> => {
+  const handleStatusChange = useCallback(async (next: WebStatus): Promise<void> => {
     if (next === statusRef.current) return;
     setPending(next);
     setError(null);
@@ -55,50 +50,45 @@ export function StatusSection({ projectId, status, onUpdated }: StatusSectionPro
       const result = await updateProjectStatus(projectId, next);
       if (!result.ok) { setError(result.message); return; }
       onUpdated?.();
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setPending(null);
     }
-  }, [projectId, onUpdated]);
+  }, [projectId, onUpdated, router]);
+
+  if (status !== 'active' && status !== 'archived') return null;
 
   const isBusy = pending !== null;
 
   return (
     <section className="space-y-1.5">
       <label className={SECTION_LABEL_CLASS}>Status</label>
-      <div className="flex items-center gap-0.5 overflow-x-auto">
-        {PROJECT_STATUS_FLOW.map((s, i) => {
-          const meta = PROJECT_STATUS_META[s];
-          const isCurrent = s === status;
-          const isPast = i < currentIdx;
-          const isPending = pending === s;
+      <div className="flex items-center gap-1">
+        {STATUS_OPTIONS.map((opt) => {
+          const isCurrent = opt.id === status;
+          const isPending = pending === opt.id;
           return (
-            <div key={s} className="flex items-center">
-              {i > 0 && (
-                <div className={`mx-0.5 h-px w-3 ${isPast ? 'bg-done/40' : 'bg-border-strong'}`} />
-              )}
-              <motion.button
-                whileHover={isBusy ? undefined : { scale: 1.02 }}
-                whileTap={isBusy ? undefined : { scale: 0.98 }}
-                type="button"
-                onClick={() => handleStatusChange(s)}
-                disabled={isBusy}
-                className={`relative rounded-md px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider transition-all ${
-                  isCurrent
-                    ? `${meta.text} bg-surface-raised ring-1 ring-current/20`
-                    : isPast
-                      ? 'text-done/60 hover:bg-surface-hover'
-                      : 'text-text-muted/60 hover:bg-surface-hover hover:text-text-muted'
-                } ${isBusy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${isPending ? 'opacity-60' : ''}`}
-                title={`Set status to ${meta.label}`}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <span className={`h-1.5 w-1.5 rounded-full ${isCurrent ? meta.dot : 'bg-current'}`} />
-                  {meta.label}
-                </span>
-              </motion.button>
-            </div>
+            <motion.button
+              key={opt.id}
+              whileHover={isBusy || isCurrent ? undefined : { scale: 1.02 }}
+              whileTap={isBusy || isCurrent ? undefined : { scale: 0.98 }}
+              type="button"
+              onClick={() => handleStatusChange(opt.id)}
+              disabled={isBusy || isCurrent}
+              className={`relative rounded-md px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider transition-all ${
+                isCurrent
+                  ? `${opt.text} bg-surface-raised ring-1 ring-current/20`
+                  : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+              } ${isBusy ? 'cursor-not-allowed opacity-50' : isCurrent ? 'cursor-default' : 'cursor-pointer'} ${isPending ? 'opacity-60' : ''}`}
+              title={`Set status to ${opt.label}`}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${isCurrent ? opt.dot : 'bg-current'}`} />
+                {opt.label}
+              </span>
+            </motion.button>
           );
         })}
       </div>

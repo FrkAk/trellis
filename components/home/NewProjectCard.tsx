@@ -1,16 +1,20 @@
 'use client';
 
-import Link from 'next/link';
+import { useState } from 'react';
 import { motion } from 'motion/react';
+import { GetStartedModal } from '@/components/home/GetStartedModal';
 
 /**
- * Card that links to the new project brainstorm flow.
+ * Card opening the get-started modal with CLI install commands.
  * @returns A styled "new project" call-to-action card.
  */
 export function NewProjectCard() {
+  const [open, setOpen] = useState(false);
   return (
-    <Link href="/new/brainstorm" className="block no-underline">
-      <motion.div
+    <>
+      <motion.button
+        type="button"
+        onClick={() => setOpen(true)}
         whileHover={{ y: -2 }}
         whileTap={{ scale: 0.99 }}
         className="flex h-full min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border-strong/60 bg-transparent p-5 transition-all hover:border-accent/30 hover:bg-accent/[0.03]"
@@ -21,8 +25,9 @@ export function NewProjectCard() {
           </svg>
         </div>
         <span className="text-xs text-text-muted">New Project</span>
-      </motion.div>
-    </Link>
+      </motion.button>
+      <GetStartedModal open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 

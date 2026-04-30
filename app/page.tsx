@@ -28,7 +28,7 @@ export default async function HomePage() {
             Your Projects
           </h1>
           <p className="text-sm text-text-muted">
-            Brainstorm, decompose, refine, plan, execute, track.
+            Track projects created by your CLI agent.
           </p>
         </div>
 
@@ -39,6 +39,15 @@ export default async function HomePage() {
             lastActiveNode={`${activeProject.taskStats.done}/${Math.max(activeProject.taskStats.total - activeProject.taskStats.cancelled, 0)} tasks done`}
             lastActive={activeProject.updatedAt.toLocaleDateString()}
           />
+        )}
+
+        {projects.length === 0 && (
+          <div className="mb-6 rounded-xl border border-dashed border-border-strong/60 bg-surface-raised/40 p-6">
+            <h2 className="mb-1 text-sm font-semibold text-text-primary">No projects yet</h2>
+            <p className="text-xs leading-relaxed text-text-muted">
+              Projects are created from your CLI agent. Click <span className="font-medium text-text-secondary">New Project</span> below for install commands.
+            </p>
+          </div>
         )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">

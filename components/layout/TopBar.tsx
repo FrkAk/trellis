@@ -9,7 +9,7 @@ import { signOut } from '@/lib/auth-client';
 interface TopBarProps {
   /** @param projectName - Optional breadcrumb project name. */
   projectName?: string;
-  /** @param stageLabel - Optional center stage label (e.g. "Brainstorm", "Decompose"). */
+  /** @param stageLabel - Optional center stage label (e.g. task counts). */
   stageLabel?: string;
   /** @param taskStats - Optional center task completion stats. */
   taskStats?: string;

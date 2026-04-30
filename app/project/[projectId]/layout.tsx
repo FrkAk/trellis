@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { getProject } from '@/lib/graph/queries';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 interface LayoutProps {
   /** @param children - Page content. */
@@ -21,6 +21,9 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
 
   if (!project) {
     notFound();
+  }
+  if (project.status === 'brainstorming' || project.status === 'decomposing') {
+    redirect('/');
   }
 
   const doneCount = project.tasks.filter((t) => t.status === 'done').length;

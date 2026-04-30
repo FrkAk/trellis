@@ -12,7 +12,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "Mymir",
-  description: "A structure that supports organic growth. Brainstorm, decompose, refine, plan, execute, track.",
+  description: "A structure that supports organic growth. Track projects created by your CLI agent.",
 };
 
 /**
