@@ -16,9 +16,9 @@ import { ProjectNotFoundError } from '@/lib/graph/errors';
 import { requireSession } from '@/lib/auth/session';
 import { dbEvents } from '@/lib/events';
 
-/** Statuses the web app is allowed to set. CLI agents handle brainstorming/decomposing via MCP. */
+/** Statuses the web app is allowed to set. Coding agents handle brainstorming/decomposing via MCP. */
 const WEB_ALLOWED_STATUSES = ['active', 'archived'] as const;
-type WebAllowedStatus = (typeof WEB_ALLOWED_STATUSES)[number];
+export type WebAllowedStatus = (typeof WEB_ALLOWED_STATUSES)[number];
 const webStatusSchema = z.enum(WEB_ALLOWED_STATUSES);
 
 const TITLE_MAX = 200;
@@ -97,7 +97,7 @@ async function hasSession(): Promise<boolean> {
 
 /**
  * Update a project's status. Web is restricted to `active` ↔ `archived`;
- * CLI agents handle `brainstorming`/`decomposing` transitions via MCP.
+ * Coding agents handle `brainstorming`/`decomposing` transitions via MCP.
  * @param projectId - UUID of the project.
  * @param status - New status (`active` or `archived` only).
  * @returns Discriminated result — `{ ok: true }` or a typed failure.

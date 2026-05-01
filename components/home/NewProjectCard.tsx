@@ -4,11 +4,18 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { GetStartedModal } from '@/components/home/GetStartedModal';
 
+interface NewProjectCardProps {
+  /** @param hasProjects - True when the user already owns at least one project. Switches the modal to the returning-user view. */
+  hasProjects?: boolean;
+}
+
 /**
- * Card opening the get-started modal with CLI install commands.
+ * Card opening the get-started modal. The modal adapts: first-time users see
+ * install commands, returning users see a tight "go talk to your agent" hint.
+ * @param props - Card configuration.
  * @returns A styled "new project" call-to-action card.
  */
-export function NewProjectCard() {
+export function NewProjectCard({ hasProjects = false }: NewProjectCardProps) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -26,7 +33,7 @@ export function NewProjectCard() {
         </div>
         <span className="text-xs text-text-muted">New Project</span>
       </motion.button>
-      <GetStartedModal open={open} onClose={() => setOpen(false)} />
+      <GetStartedModal open={open} onClose={() => setOpen(false)} hasProjects={hasProjects} />
     </>
   );
 }

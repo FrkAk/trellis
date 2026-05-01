@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
-import { updateProjectStatus } from '@/lib/actions/project';
+import { updateProjectStatus, type WebAllowedStatus } from '@/lib/actions/project';
 import type { ProjectStatus } from '@/lib/types';
 
 interface StatusSectionProps {
@@ -15,9 +15,7 @@ interface StatusSectionProps {
   onUpdated?: () => void;
 }
 
-type WebStatus = 'active' | 'archived';
-
-const STATUS_OPTIONS: { id: WebStatus; label: string; dot: string; text: string }[] = [
+const STATUS_OPTIONS: { id: WebAllowedStatus; label: string; dot: string; text: string }[] = [
   { id: 'active', label: 'Active', dot: 'bg-done', text: 'text-done' },
   { id: 'archived', label: 'Archived', dot: 'bg-draft', text: 'text-draft' },
 ];
@@ -27,14 +25,14 @@ const SECTION_LABEL_CLASS =
 
 /**
  * Active ↔ archived toggle. Hidden when the project is in a CLI-only phase
- * (brainstorming/decomposing) — those transitions belong to the CLI agent.
+ * (brainstorming/decomposing) — those transitions belong to the coding agent.
  * Archiving from inside the workspace redirects home; unarchive flips back.
  * @param props - Section props.
  * @returns Status row with two-pill toggle, or null when status is CLI-managed.
  */
 export function StatusSection({ projectId, status, onUpdated }: StatusSectionProps) {
   const router = useRouter();
-  const [pending, setPending] = useState<WebStatus | null>(null);
+  const [pending, setPending] = useState<WebAllowedStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<ProjectStatus>(status);
 
@@ -42,7 +40,7 @@ export function StatusSection({ projectId, status, onUpdated }: StatusSectionPro
     statusRef.current = status;
   }, [status]);
 
-  const handleStatusChange = useCallback(async (next: WebStatus): Promise<void> => {
+  const handleStatusChange = useCallback(async (next: WebAllowedStatus): Promise<void> => {
     if (next === statusRef.current) return;
     setPending(next);
     setError(null);

@@ -43,7 +43,7 @@ function isCliManagedStatus(status: string): status is CliManagedStatus {
 /**
  * Card displaying a project summary with progress, stats, and delete action.
  * Workspace-ready projects link into the workspace; CLI-managed projects open
- * a status modal so the user knows to continue from their CLI agent.
+ * a status modal so the user knows to continue from their coding agent.
  * @param props - Project data for rendering.
  * @returns A linked or button-wrapped project card element.
  */
