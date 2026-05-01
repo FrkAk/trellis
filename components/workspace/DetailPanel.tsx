@@ -466,7 +466,6 @@ export function DetailPanel({
             {activeTab === 'refine' && (
               <TaskTab
                 taskId={taskId}
-                projectId={projectId}
                 description={task.description}
                 acceptanceCriteria={task.acceptanceCriteria}
                 decisions={task.decisions}

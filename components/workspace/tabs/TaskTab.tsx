@@ -2,20 +2,12 @@
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
-import type { UIMessage } from 'ai';
 import { Markdown } from '@/components/shared/Markdown';
 import { AutoGrowTextarea } from '@/components/shared/AutoGrowTextarea';
 import { Badge } from '@/components/shared/Badge';
 import { Checkbox } from '@/components/shared/Checkbox';
-import { ChatPanel } from '@/components/chat/ChatPanel';
 import { updateTask, createEdge, removeEdge } from '@/lib/graph/mutations';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
-import { getSettings } from '@/lib/settings';
-import { getMessageText, convertPersistedToUIMessages } from '@/lib/chat-helpers';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
-import { dedupedFetch } from '@/lib/fetch-dedupe';
 import type { TaskEdge } from '@/lib/db/schema';
 import type { AcceptanceCriterion, Decision } from '@/lib/types';
 
@@ -55,25 +47,9 @@ function normalizeDecisions(items: Decision[] | undefined | null): Decision[] {
   return out;
 }
 
-/**
- * Fetches persisted task chat history, deduped across concurrent callers.
- * @param projectId - Project UUID.
- * @param taskId - Task UUID.
- * @returns Resolved chat messages.
- */
-function loadHistory(projectId: string, taskId: string): Promise<UIMessage[]> {
-  return dedupedFetch(`task-history:${projectId}:${taskId}`, () =>
-    fetch(`/api/project/${projectId}/conversations?taskId=${taskId}`)
-      .then((r) => r.json())
-      .then((data) => convertPersistedToUIMessages(data.messages ?? [])),
-  );
-}
-
 interface TaskTabProps {
   /** @param taskId - UUID of the selected task. */
   taskId: string;
-  /** @param projectId - UUID of the project. */
-  projectId: string;
   /** @param description - Task description. */
   description: string;
   /** @param acceptanceCriteria - Task acceptance criteria. */
@@ -97,13 +73,12 @@ interface TaskTabProps {
 }
 
 /**
- * Task tab with collapsible spec sections and AI refinement chat.
+ * Task tab with editable spec sections — description, criteria, decisions, relationships, files, execution record.
  * @param props - Task tab configuration.
- * @returns Vertical split with spec (collapsible top) and chat (flex bottom).
+ * @returns Scrollable form-based task spec editor.
  */
 export function TaskTab({
   taskId,
-  projectId,
   description,
   acceptanceCriteria,
   decisions,
@@ -131,19 +106,6 @@ export function TaskTab({
   const [editingDecisionId, setEditingDecisionId] = useState<string | null>(null);
   const [addingDecision, setAddingDecision] = useState(false);
   const cancelledRef = useRef(false);
-  const [specCollapsed, setSpecCollapsed] = useState(false);
-  const [chatCollapsed, setChatCollapsed] = useState(true);
-
-  const toggleSpec = () => {
-    if (!specCollapsed && chatCollapsed) setChatCollapsed(false);
-    setSpecCollapsed(!specCollapsed);
-  };
-
-  const toggleChat = () => {
-    if (!chatCollapsed && specCollapsed) setSpecCollapsed(false);
-    setChatCollapsed(!chatCollapsed);
-  };
-  const [loadedHistory, setLoadedHistory] = useState<UIMessage[] | null>(null);
 
   // Sync local state when props change (after graph re-fetch).
   // Suppressed briefly after local mutations to prevent stale SSE refreshes from clobbering optimistic state.
@@ -172,32 +134,6 @@ export function TaskTab({
     setEditingDecisionId(null);
     setAddingDecision(false);
   }, [taskId]);
-
-  const [historyError, setHistoryError] = useState(false);
-
-  // Load persisted chat history on mount / node change
-  useEffect(() => {
-    setLoadedHistory(null);
-    setHistoryError(false);
-    let cancelled = false;
-    loadHistory(projectId, taskId)
-      .then((messages) => { if (!cancelled) setLoadedHistory(messages); })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error('[refine] history fetch failed:', err);
-        setHistoryError(true);
-        setLoadedHistory([]);
-      });
-    return () => { cancelled = true; };
-  }, [projectId, taskId]);
-
-  const retryHistory = useCallback(() => {
-    setHistoryError(false);
-    setLoadedHistory(null);
-    loadHistory(projectId, taskId)
-      .then((messages) => setLoadedHistory(messages))
-      .catch((err) => { console.error('[refine] history fetch failed:', err); setHistoryError(true); setLoadedHistory([]); });
-  }, [projectId, taskId]);
 
   const handleSaveDesc = useCallback(async () => {
     setEditingDesc(false);
@@ -359,8 +295,7 @@ export function TaskTab({
 
   return (
     <div className={`flex h-full flex-col ${className}`}>
-      {/* Spec section (collapsible — expands fully when chat is hidden) */}
-      <div className={`overflow-y-auto transition-all duration-200 ${specCollapsed ? 'h-0 overflow-hidden' : chatCollapsed ? 'flex-1' : 'max-h-[240px] shrink-0'}`}>
+      <div className="flex-1 overflow-y-auto">
         <div className="min-w-0 space-y-3 p-5">
           {/* Description */}
           <section>
@@ -579,7 +514,7 @@ export function TaskTab({
             onGraphChange={onGraphChange}
           />
 
-          {/* Files */}
+          {/* Files — read-only; edit form tracked in MYMR-149 */}
           {files && files.length > 0 && (
             <section>
               <h4 className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
@@ -620,134 +555,7 @@ export function TaskTab({
           )}
         </div>
       </div>
-
-      {/* Collapse toggles */}
-      <div className="flex shrink-0 items-center border-t border-border">
-        <button
-          onClick={toggleSpec}
-          className="flex cursor-pointer items-center gap-2 px-5 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
-        >
-          <svg
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            className={`h-3 w-3 transition-transform ${specCollapsed ? '' : 'rotate-180'}`}
-          >
-            <path d="M6.22 4.22a.75.75 0 011.06 0l3.25 3.25a.75.75 0 010 1.06l-3.25 3.25a.75.75 0 01-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 010-1.06z" />
-          </svg>
-          {specCollapsed ? 'Show spec' : 'Hide spec'}
-        </button>
-        <span className="h-3 w-px bg-border-strong" />
-        <button
-          onClick={toggleChat}
-          className="flex cursor-pointer items-center gap-2 px-5 py-2 font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
-        >
-          <svg
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            className={`h-3 w-3 transition-transform ${chatCollapsed ? 'rotate-180' : ''}`}
-          >
-            <path d="M6.22 4.22a.75.75 0 011.06 0l3.25 3.25a.75.75 0 010 1.06l-3.25 3.25a.75.75 0 01-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 010-1.06z" />
-          </svg>
-          {chatCollapsed ? 'Show chat' : 'Hide chat'}
-        </button>
-      </div>
-
-      {historyError && (
-        <div className="mx-5 mt-3 rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 flex items-center justify-between">
-          <span className="text-xs text-text-secondary">Failed to load chat history.</span>
-          <button onClick={retryHistory} className="cursor-pointer text-xs font-semibold text-accent hover:underline">Retry</button>
-        </div>
-      )}
-
-      {/* Refinement chat */}
-      <div className={`transition-all duration-200 ${chatCollapsed ? 'h-0 overflow-hidden' : 'min-h-0 flex-1'}`}>
-        {loadedHistory !== null ? (
-          <RefineChatPanel
-            taskId={taskId}
-            projectId={projectId}
-            initialMessages={loadedHistory}
-            onGraphChange={onGraphChange}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <LoadingSpinner />
-          </div>
-        )}
-      </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Chat sub-component
-// ---------------------------------------------------------------------------
-
-interface RefineChatPanelProps {
-  /** @param taskId - UUID of the selected task. */
-  taskId: string;
-  /** @param projectId - UUID of the project. */
-  projectId: string;
-  /** @param initialMessages - Pre-loaded chat history. */
-  initialMessages: UIMessage[];
-  /** @param onGraphChange - Called after graph mutations to trigger re-fetch. */
-  onGraphChange?: () => void;
-}
-
-/**
- * Refine chat panel that wraps useChat. Separated so it only mounts after
- * persisted history is fetched, ensuring initialMessages are correct.
- * @param props - Chat panel configuration.
- * @returns ChatPanel wired to useChat.
- */
-function RefineChatPanel({ taskId, projectId, initialMessages, onGraphChange }: RefineChatPanelProps) {
-  const settings = getSettings();
-
-  const { messages, sendMessage, setMessages, status, error } = useChat({
-    transport: new DefaultChatTransport({
-      api: '/api/chat',
-      body: { scope: 'refine', taskId: taskId, projectId, settings },
-    }),
-    id: `refine-${taskId}`,
-    messages: initialMessages,
-    onFinish: ({ message }) => {
-      const hasToolCalls = message.parts?.some((p) => p.type.startsWith('tool-') || p.type === 'dynamic-tool');
-      if (hasToolCalls) onGraphChange?.();
-    },
-  });
-
-  const isLoading = status === 'streaming' || status === 'submitted';
-
-  const handleSend = useCallback(
-    (text: string) => { sendMessage({ text }); },
-    [sendMessage],
-  );
-
-  const handleClear = useCallback(async () => {
-    await fetch(`/api/project/${projectId}/conversations?taskId=${taskId}`, { method: 'DELETE' });
-    setMessages([]);
-  }, [projectId, taskId, setMessages]);
-
-  const quickActions = [
-    { label: 'Is scope too big?', onClick: () => handleSend('Is the scope of this task too big? Should it be split?') },
-    { label: 'Add criteria', onClick: () => handleSend('Suggest acceptance criteria I might be missing.') },
-    { label: 'What depends on this?', onClick: () => handleSend('What other tasks depend on this one?') },
-    { label: 'Ready for planning', onClick: () => handleSend('This task looks good. Summarize what we defined and confirm it is ready for implementation planning.') },
-  ];
-
-  return (
-    <ChatPanel
-      messages={messages.map((m) => ({
-        id: m.id,
-        role: m.role as 'user' | 'assistant',
-        content: getMessageText(m),
-      }))}
-      onSend={handleSend}
-      isLoading={isLoading}
-      quickActions={quickActions}
-      placeholder="Type to refine this task..."
-      onClear={handleClear}
-      error={error}
-    />
   );
 }
 
