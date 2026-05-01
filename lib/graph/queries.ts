@@ -10,7 +10,7 @@ import {
 import type { EdgeType } from "@/lib/types";
 import { asIdentifier, composeTaskRef, enrichWithTaskRef } from "./identifier";
 import { buildEffectiveDepGraph } from "./effective-deps";
-import { normalizeTags } from "@/lib/ai/tag-similarity";
+import { normalizeTags } from "./tag-similarity";
 
 // ---------------------------------------------------------------------------
 // Task helpers

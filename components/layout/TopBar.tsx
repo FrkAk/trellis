@@ -22,7 +22,7 @@ interface TopBarProps {
 }
 
 /**
- * Fixed top navigation bar with logo, breadcrumb, theme toggle, and settings link.
+ * Fixed top navigation bar with logo, breadcrumb, theme toggle, and sign-out button.
  * @param props - TopBar configuration.
  * @returns A fixed-position navigation bar element.
  */
@@ -73,7 +73,7 @@ export function TopBar({ projectName, stageLabel, taskStats, projectId, projectS
           </div>
         )}
 
-        {/* Right: Theme toggle + Settings */}
+        {/* Right: Theme toggle + Sign out */}
         <div className="flex items-center gap-1 sm:gap-3">
           <button
             onClick={toggleTheme}
@@ -99,15 +99,6 @@ export function TopBar({ projectName, stageLabel, taskStats, projectId, projectS
               <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h5a1 1 0 100-2H4V5h4a1 1 0 100-2H3zm10.293 3.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L14.586 11H7a1 1 0 110-2h7.586l-1.293-1.293a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
           </button>
-          <Link href="/settings" className="rounded-md p-2.5 sm:p-1.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary">
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-              <path
-                fillRule="evenodd"
-                d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </Link>
         </div>
       </div>
       {/* Bottom gradient line */}

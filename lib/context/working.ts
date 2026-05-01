@@ -2,8 +2,8 @@
 
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { tasks, projects, conversations } from "@/lib/db/schema";
-import type { AcceptanceCriterion, Message } from "@/lib/types";
+import { tasks, projects } from "@/lib/db/schema";
+import type { AcceptanceCriterion } from "@/lib/types";
 import { getAncestors } from "@/lib/graph/traversal";
 import { fetchTask, getTaskEdgesDetailed } from "@/lib/graph/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
@@ -24,15 +24,14 @@ type WorkingContext = {
     note: string;
   }[];
   siblings: { id: string; taskRef: string; title: string; status: string }[];
-  conversationHistory: Message[];
 };
 
 /**
  * Build full working context for a task. 1-hop traversal with token budgeting.
- * Used by AI assistant during refinement and planning.
+ * Used by MCP for `mymir_context depth='working'`.
  * @param taskId - UUID of the task.
- * @param projectId - UUID of the project (for conversation and sibling lookup).
- * @returns Working context with task data, ancestors, edges, siblings, and conversation.
+ * @param projectId - UUID of the project (for taskRef and sibling lookup).
+ * @returns Working context with task data, ancestors, edges, and siblings.
  */
 export async function buildWorkingContext(
   taskId: string,
@@ -40,15 +39,14 @@ export async function buildWorkingContext(
 ): Promise<WorkingContext> {
   const task = await fetchTask(taskId);
   if (!task) {
-    return { node: {}, taskRef: "", ancestors: [], edges: [], siblings: [], conversationHistory: [] };
+    return { node: {}, taskRef: "", ancestors: [], edges: [], siblings: [] };
   }
 
-  const [projectRow, ancestors, detailedEdges, siblings, conversationHistory] = await Promise.all([
+  const [projectRow, ancestors, detailedEdges, siblings] = await Promise.all([
     db.select({ identifier: projects.identifier }).from(projects).where(eq(projects.id, projectId)).then(r => r[0]),
     getAncestors(taskId),
     getTaskEdgesDetailed(taskId),
     fetchSiblings(taskId, projectId),
-    fetchConversation(taskId, projectId),
   ]);
 
   if (!projectRow) {
@@ -74,14 +72,13 @@ export async function buildWorkingContext(
     ancestors,
     edges,
     siblings,
-    conversationHistory,
   };
 }
 
 /**
  * Format working context as structured markdown for AI consumption.
  * Sections ordered by U-shaped attention: header+description+criteria at start,
- * edges+siblings in middle, conversation at end (recency).
+ * edges+siblings in middle.
  * No token budget — all content included as-is.
  * @param ctx - The raw working context object.
  * @returns Human-readable markdown string.
@@ -119,10 +116,6 @@ export async function formatWorkingContext(
 
   const siblings = formatSiblingsSection(ctx.siblings);
   if (siblings) parts.push(siblings);
-
-  // --- END: second-highest recall (recency) ---
-  const conversation = formatConversationSection(ctx.conversationHistory);
-  if (conversation) parts.push(conversation);
 
   return parts.join("\n");
 }
@@ -208,23 +201,6 @@ function formatSiblingsSection(siblings: WorkingContext["siblings"]): string {
 }
 
 /**
- * Format recent conversation section.
- * @param history - Array of chat messages.
- * @returns Formatted conversation section or empty string.
- */
-function formatConversationSection(history: Message[]): string {
-  if (history.length === 0) return "";
-  const lines = ["\n## Recent Conversation"];
-  const recent = history.slice(-10);
-  for (const m of recent) {
-    const role = m.role === "user" ? "User" : "Assistant";
-    const content = m.content.length > 200 ? m.content.slice(0, 200) + "..." : m.content;
-    lines.push(`${role}: ${content}`);
-  }
-  return lines.join("\n");
-}
-
-/**
  * Fetch other tasks in the same project (siblings).
  * @param taskId - UUID of the current task.
  * @param projectId - UUID of the project.
@@ -248,20 +224,4 @@ async function fetchSiblings(taskId: string, projectId: string) {
     title: r.title,
     status: r.status,
   }));
-}
-
-/**
- * Fetch conversation history for a task.
- * @param taskId - UUID of the task.
- * @param projectId - UUID of the project.
- * @returns Array of messages.
- */
-async function fetchConversation(taskId: string, projectId: string): Promise<Message[]> {
-  const [conv] = await db
-    .select({ messages: conversations.messages })
-    .from(conversations)
-    .where(
-      sql`${conversations.projectId} = ${projectId} AND ${conversations.taskId} = ${taskId}`,
-    );
-  return (conv?.messages ?? []) as Message[];
 }

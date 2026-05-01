@@ -1,7 +1,6 @@
 /**
- * Shared tool handlers for the 6 Mymir tools.
- * Single source of truth — called by both web app (AI SDK) and MCP server.
- * All business logic lives in lib/graph/*; handlers do validation + routing.
+ * Tool handlers for the 6 Mymir tools, called by the MCP server.
+ * Business logic lives in lib/graph/*; handlers do validation + routing.
  */
 
 import {

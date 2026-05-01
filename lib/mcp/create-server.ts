@@ -8,8 +8,8 @@ import {
   handleQuery,
   handleContext,
   handleAnalyze,
-} from "@/lib/ai/tool-handlers";
-import type { ToolResult } from "@/lib/ai/tool-handlers";
+} from "@/lib/graph/tool-handlers";
+import type { ToolResult } from "@/lib/graph/tool-handlers";
 import { identifierSchema } from "@/lib/graph/identifier";
 
 /**

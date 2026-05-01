@@ -35,7 +35,6 @@ export async function proxy(request: NextRequest) {
     pathname === "/consent" ||
     pathname.startsWith("/api/auth/") ||
     pathname === "/api/mcp" ||
-    pathname === "/api/test-connection" ||
     pathname.startsWith("/.well-known/");
   if (!session && !isPublicPath) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
