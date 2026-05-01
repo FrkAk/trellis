@@ -179,7 +179,7 @@ We built Mymir around two core concepts:
 | Shape | For | What's in it |
 | --- | --- | --- |
 | `summary` | Quick lookup | Title, status, edge counts |
-| `working` | Refining or reviewing a task | Criteria, decisions, 1-hop neighbors, conversation history |
+| `working` | Refining or reviewing a task | Criteria, decisions, 1-hop neighbors |
 | `planning` | Writing an implementation plan | Project brief, prerequisites, upstream execution records, downstream specs |
 | `agent` | Coding the task | Implementation plan, multi-hop upstream execution records, file paths, acceptance criteria |
 
