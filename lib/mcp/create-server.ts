@@ -11,6 +11,7 @@ import {
 } from "@/lib/graph/tool-handlers";
 import type { ToolResult } from "@/lib/graph/tool-handlers";
 import { identifierSchema } from "@/lib/graph/identifier";
+import type { AuthContext } from "@/lib/auth/context";
 
 /**
  * Format a successful tool result as MCP content.
@@ -97,11 +98,13 @@ const INSTRUCTIONS = [
 ].join("\n");
 
 /**
- * Register all 6 Mymir tools on a server instance.
- * Extracted so createMcpServer and external tooling can reuse it.
+ * Register all 6 Mymir tools on a server instance, bound to the caller's
+ * auth context. Each tool handler receives `ctx` as its second arg so
+ * authorization and team scoping happen inside the data layer.
  * @param server - Any object with a registerTool method (McpServer or mock).
+ * @param ctx - Resolved auth context (user id + active org id).
  */
-export function registerAllTools(server: McpServer): void {
+export function registerAllTools(server: McpServer, ctx: AuthContext): void {
   server.registerTool(
     "mymir_project",
     {
@@ -138,7 +141,10 @@ export function registerAllTools(server: McpServer): void {
         }
         // select returns early above; narrow for handleProject
         const { action, ...rest } = params;
-        const result = await handleProject({ action: action as "list" | "create" | "update", ...rest });
+        const result = await handleProject(
+          { action: action as "list" | "create" | "update", ...rest },
+          ctx,
+        );
         return toMcp(result);
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
@@ -199,7 +205,7 @@ export function registerAllTools(server: McpServer): void {
     },
     async (params) => {
       try {
-        const result = await handleTask(params);
+        const result = await handleTask(params, ctx);
         return toMcp(result);
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
@@ -235,7 +241,7 @@ export function registerAllTools(server: McpServer): void {
     },
     async (params) => {
       try {
-        const result = await handleEdge(params);
+        const result = await handleEdge(params, ctx);
         return toMcp(result);
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
@@ -269,7 +275,7 @@ export function registerAllTools(server: McpServer): void {
     },
     async (params) => {
       try {
-        const result = await handleQuery(params);
+        const result = await handleQuery(params, ctx);
         return toMcp(result);
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
@@ -298,7 +304,7 @@ export function registerAllTools(server: McpServer): void {
     },
     async (params) => {
       try {
-        const result = await handleContext(params);
+        const result = await handleContext(params, ctx);
         return toMcp(result);
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
@@ -328,7 +334,7 @@ export function registerAllTools(server: McpServer): void {
     },
     async (params) => {
       try {
-        const result = await handleAnalyze(params);
+        const result = await handleAnalyze(params, ctx);
         return toMcp(result);
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e));
@@ -339,15 +345,17 @@ export function registerAllTools(server: McpServer): void {
 }
 
 /**
- * Create a stateless MCP server with all 6 Mymir tools registered.
- * No session state — callers must always pass projectId explicitly.
+ * Create a stateless MCP server bound to the caller's auth context.
+ * Tool calls are scoped to `ctx.activeOrgId` so cross-team data is
+ * never visible to this client.
+ * @param ctx - Resolved auth context derived from the OAuth JWT.
  * @returns Configured McpServer instance.
  */
-export function createMcpServer(): McpServer {
+export function createMcpServer(ctx: AuthContext): McpServer {
   const server = new McpServer(
     { name: "mymir", version: "1.3.2" },
     { instructions: INSTRUCTIONS },
   );
-  registerAllTools(server);
+  registerAllTools(server, ctx);
   return server;
 }

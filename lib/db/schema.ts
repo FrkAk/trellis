@@ -9,6 +9,7 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { organization } from "@/lib/db/auth-schema";
 import type {
   ProjectStatus,
   TaskStatus,
@@ -22,17 +23,24 @@ import type {
 // Projects
 // ---------------------------------------------------------------------------
 
-export const projects = pgTable("projects", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  title: text("title").notNull(),
-  identifier: text("identifier").notNull().unique("projects_identifier_unique"),
-  description: text("description").notNull().default(""),
-  status: text("status").$type<ProjectStatus>().notNull().default("brainstorming"),
-  categories: jsonb("categories").$type<string[]>().notNull().default([]),
-  history: jsonb("history").$type<HistoryEntry[]>().notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    identifier: text("identifier").notNull().unique("projects_identifier_unique"),
+    description: text("description").notNull().default(""),
+    status: text("status").$type<ProjectStatus>().notNull().default("brainstorming"),
+    categories: jsonb("categories").$type<string[]>().notNull().default([]),
+    history: jsonb("history").$type<HistoryEntry[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("projects_organization_id_idx").on(t.organizationId)],
+);
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;

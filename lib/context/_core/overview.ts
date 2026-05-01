@@ -1,12 +1,16 @@
-"use server";
-
 import { eq, asc, sql, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
 import type { EdgeType } from "@/lib/types";
-import { asIdentifier, composeTaskRef, enrichWithTaskRef } from "@/lib/graph/identifier";
-import { getProjectTags } from "@/lib/graph/queries";
-import { compress } from "./format";
+import {
+  asIdentifier,
+  composeTaskRef,
+  enrichWithTaskRef,
+} from "@/lib/graph/identifier";
+import { getProjectTags } from "@/lib/graph/_core/queries";
+import { compress } from "@/lib/context/format";
+import type { AuthContext } from "@/lib/auth/context";
+import { assertProjectAccess } from "@/lib/auth/authorization";
 
 /** Task summary within a project overview. */
 type TaskSummary = {
@@ -50,12 +54,16 @@ export type ProjectOverview = {
 
 /**
  * Build a full project overview with flat task list, edges, and progress.
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns ProjectOverview or undefined if project not found.
  */
 export async function buildProjectOverview(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<ProjectOverview | undefined> {
+  await assertProjectAccess(projectId, ctx);
+
   const [project] = await db
     .select()
     .from(projects)
@@ -68,10 +76,13 @@ export async function buildProjectOverview(
     .where(eq(tasks.projectId, projectId))
     .orderBy(asc(tasks.order));
 
-  const projectTags = await getProjectTags(projectId);
+  const projectTags = await getProjectTags(ctx, projectId);
 
   const identifier = asIdentifier(project.identifier);
-  const taskSummaries: TaskSummary[] = enrichWithTaskRef(allTasks, identifier).map((t) => ({
+  const taskSummaries: TaskSummary[] = enrichWithTaskRef(
+    allTasks,
+    identifier,
+  ).map((t) => ({
     id: t.id,
     taskRef: t.taskRef,
     title: t.title,
@@ -84,7 +95,9 @@ export async function buildProjectOverview(
 
   const totalTasks = allTasks.length;
   const doneTasks = allTasks.filter((t) => t.status === "done").length;
-  const inProgressTasks = allTasks.filter((t) => t.status === "in_progress").length;
+  const inProgressTasks = allTasks.filter(
+    (t) => t.status === "in_progress",
+  ).length;
   const cancelledTasks = allTasks.filter((t) => t.status === "cancelled").length;
 
   const taskIds = allTasks.map((t) => t.id);

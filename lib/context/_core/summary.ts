@@ -1,11 +1,11 @@
-"use server";
-
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
 import type { EdgeType, AcceptanceCriterion, Decision } from "@/lib/types";
-import { getTaskEdgesDetailed } from "@/lib/graph/queries";
+import { getTaskEdgesDetailed } from "@/lib/graph/_core/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
+import type { AuthContext } from "@/lib/auth/context";
+import { assertTaskAccess } from "@/lib/auth/authorization";
 
 /** Detailed edge information for summary context. */
 type EdgeDetail = {
@@ -20,7 +20,12 @@ type EdgeDetail = {
 
 /** Summary context for a task (0-hop). */
 export type SummaryContext = {
-  node: { taskRef: string; title: string; status: string; description: string };
+  node: {
+    taskRef: string;
+    title: string;
+    status: string;
+    description: string;
+  };
   parent: { title: string; type: "project" } | null;
   edgeCount: Record<EdgeType, number>;
   edges: EdgeDetail[];
@@ -31,12 +36,16 @@ export type SummaryContext = {
 
 /**
  * Build a lightweight summary context for a task. Zero-hop traversal.
+ * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
  * @returns Summary context with task info, parent project, and edge details/counts.
  */
 export async function buildSummaryContext(
+  ctx: AuthContext,
   taskId: string,
 ): Promise<SummaryContext> {
+  await assertTaskAccess(taskId, ctx);
+
   const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
   if (!task) return emptyContext();
 
@@ -45,10 +54,13 @@ export async function buildSummaryContext(
     .from(projects)
     .where(eq(projects.id, task.projectId));
   if (!project) {
-    console.error('Task has no joinable project', { taskId: task.id, projectId: task.projectId });
+    console.error("Task has no joinable project", {
+      taskId: task.id,
+      projectId: task.projectId,
+    });
   }
 
-  const detailedEdges = await getTaskEdgesDetailed(taskId);
+  const detailedEdges = await getTaskEdgesDetailed(ctx, taskId);
 
   const edges: EdgeDetail[] = detailedEdges.map((e) => ({
     edgeType: e.edgeType,
@@ -74,7 +86,8 @@ export async function buildSummaryContext(
     parent: project ? { title: project.title, type: "project" } : null,
     edgeCount,
     edges,
-    acceptanceCriteriaCount: (task.acceptanceCriteria as AcceptanceCriterion[]).length,
+    acceptanceCriteriaCount: (task.acceptanceCriteria as AcceptanceCriterion[])
+      .length,
     decisionsCount: (task.decisions as Decision[]).length,
     hasImplementationPlan: !!task.implementationPlan,
   };

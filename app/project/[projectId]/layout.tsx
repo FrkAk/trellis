@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { getProject } from '@/lib/graph/queries';
+import { requireMembership } from '@/lib/auth/membership';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
 import { notFound, redirect } from 'next/navigation';
 
@@ -16,6 +17,7 @@ interface LayoutProps {
  * @returns Layout with TopBar and content area.
  */
 export default async function ProjectLayout({ children, params }: LayoutProps) {
+  await requireMembership();
   const { projectId } = await params;
   const project = await getProject(projectId);
 

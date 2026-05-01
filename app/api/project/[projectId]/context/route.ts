@@ -1,17 +1,24 @@
-import { getSession } from "@/lib/auth/session";
+import { getAuthContext, NoActiveTeamError } from "@/lib/auth/context";
+import { ForbiddenError } from "@/lib/auth/authorization";
 import { ok, error } from "@/lib/api/response";
-import { buildAgentContext } from "@/lib/context/agent";
-import { buildPlanningContext } from "@/lib/context/planning";
+import { buildAgentContext } from "@/lib/context/_core/agent";
+import { buildPlanningContext } from "@/lib/context/_core/planning";
 
 /**
  * POST handler for fetching task context (agent + planning).
- * Uses session auth (cookie-based).
  * @param req - Request with { taskId } as JSON body.
  * @returns JSON { agent, planning } with context strings.
  */
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session) return error("Unauthorized", 401);
+  let ctx;
+  try {
+    ctx = await getAuthContext();
+  } catch (err) {
+    if (err instanceof NoActiveTeamError) {
+      return error("No active team selected", 403);
+    }
+    return error("Unauthorized", 401);
+  }
 
   let body: { taskId?: string };
   try {
@@ -25,11 +32,14 @@ export async function POST(req: Request) {
 
   try {
     const [agent, planning] = await Promise.all([
-      buildAgentContext(taskId),
-      buildPlanningContext(taskId),
+      buildAgentContext(ctx, taskId),
+      buildPlanningContext(ctx, taskId),
     ]);
     return ok({ agent, planning });
   } catch (err) {
+    if (err instanceof ForbiddenError) {
+      return error("Task not found", 404);
+    }
     console.error("[context] error:", err);
     return error("Internal server error", 500);
   }

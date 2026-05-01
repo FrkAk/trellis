@@ -1,75 +1,74 @@
-"use server";
-
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
-import { getDependencyChain, getDownstream } from "@/lib/graph/traversal";
+import {
+  getDependencyChain,
+  getDownstream,
+} from "@/lib/graph/_core/traversal";
 import {
   fetchEdgeNotesBySource,
   fetchEdgeNotesByTarget,
   fetchTaskSummaries,
-} from "@/lib/graph/queries";
+} from "@/lib/graph/_core/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
-import { section, formatCriteria, formatDecisions } from "./format";
+import { section, formatCriteria, formatDecisions } from "@/lib/context/format";
+import type { AuthContext } from "@/lib/auth/context";
+import { assertTaskAccess } from "@/lib/auth/authorization";
 
 /**
- * Build planning-optimized context for a task.
- * Supplies the project-level breadth a planner can't derive from reading code alone:
- * project description, upstream execution records, and downstream task specs.
- * Sections ordered by U-shaped attention. No token budget — all content included as-is.
+ * Build lean, position-optimized context for external coding agents.
+ * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
- * @returns Formatted planning context string.
+ * @returns Formatted context string.
  */
-export async function buildPlanningContext(taskId: string): Promise<string> {
+export async function buildAgentContext(
+  ctx: AuthContext,
+  taskId: string,
+): Promise<string> {
+  await assertTaskAccess(taskId, ctx);
+
   const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
   if (!task) return "# Task not found";
 
   const [project] = await db
-    .select({
-      title: projects.title,
-      description: projects.description,
-      identifier: projects.identifier,
-    })
+    .select({ identifier: projects.identifier })
     .from(projects)
     .where(eq(projects.id, task.projectId));
-
   if (!project) {
-    console.error('Task has no joinable project', { taskId: task.id, projectId: task.projectId });
+    console.error("Task has no joinable project", {
+      taskId: task.id,
+      projectId: task.projectId,
+    });
   }
-  const tags = (task.tags as string[] | null) ?? [];
   const taskRef = project
     ? composeTaskRef(asIdentifier(project.identifier), task.sequenceNumber)
     : "";
 
-  // --- START: highest recall zone (primacy) — big picture + task spec ---
+  const tags = (task.tags as string[] | null) ?? [];
+  const files = (task.files as string[] | null) ?? [];
+  const status = task.status as string;
 
-  const headerLines: string[] = [`# ${taskRef ? `\`${taskRef}\` ` : ""}${task.title}`];
+  const headerLines: string[] = [
+    `# ${taskRef ? `\`${taskRef}\` ` : ""}${task.title}`,
+  ];
   if (tags.length > 0) {
     headerLines.push(`Tags: ${tags.map((t) => `\`${t}\``).join(", ")}`);
   }
+  headerLines.push("");
+  headerLines.push(task.description);
 
   const parts: string[] = [headerLines.join("\n")];
 
-  if (project) {
-    const projectLines = [`Project: ${project.title}`];
-    if (project.description) {
-      projectLines.push(project.description);
-    }
-    parts.push(section("Project Context") + "\n" + projectLines.join("\n"));
+  if (task.implementationPlan && status !== "done" && status !== "cancelled") {
+    parts.push(
+      section("Implementation Plan") + "\n" + task.implementationPlan,
+    );
   }
-
-  parts.push(section("Description") + "\n" + task.description);
-  parts.push(section("Acceptance Criteria") + "\n" + formatCriteria(task.acceptanceCriteria));
-
-  if (task.implementationPlan) {
-    parts.push(section("Existing Implementation Plan") + "\n" + task.implementationPlan);
-  }
-
-  // --- MIDDLE: lowest recall zone — prerequisites + what's been built ---
 
   const [deps, downstream, upstreamEdgeNotes] = await Promise.all([
     getDependencyChain(taskId, 2),
-    getDownstream(taskId, 2),
+    // getDownstream is public — caller already asserted; pass ctx through
+    getDownstream(ctx, taskId, 2),
     fetchEdgeNotesBySource(taskId),
   ]);
 
@@ -91,10 +90,15 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
       .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(sql`${tasks.id} IN ${depIds}`);
 
-    const depMap = new Map(depTasks.map((dt) => [dt.id, {
-      ...dt,
-      taskRef: composeTaskRef(asIdentifier(dt.identifier), dt.sequenceNumber),
-    }]));
+    const depMap = new Map(
+      depTasks.map((dt) => [
+        dt.id,
+        {
+          ...dt,
+          taskRef: composeTaskRef(asIdentifier(dt.identifier), dt.sequenceNumber),
+        },
+      ]),
+    );
 
     for (const dep of deps) {
       const info = depMap.get(dep.id);
@@ -104,7 +108,7 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
       if (note) line += ` — ${note}`;
       prereqLines.push(line);
 
-      if (info.status === "done" && info.executionRecord) {
+      if (info.executionRecord) {
         execLines.push(`### \`${info.taskRef}\` ${info.title}`);
         execLines.push(info.executionRecord);
       }
@@ -120,18 +124,28 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
 
     if (execLines.length > 0) {
       parts.push(
-        section("What's Been Built (from done prerequisites)") +
-          "\n" +
-          execLines.join("\n"),
+        section("Upstream Execution Records") + "\n" + execLines.join("\n"),
       );
     }
   }
 
   if (task.decisions.length > 0) {
-    parts.push(section("Decisions") + "\n" + formatDecisions(task.decisions));
+    parts.push(section("Constraints") + "\n" + formatDecisions(task.decisions));
   }
 
-  // --- END: second-highest recall zone (recency) — downstream ---
+  parts.push(
+    section("Done Means") + "\n" + formatCriteria(task.acceptanceCriteria),
+  );
+
+  if (files.length > 0) {
+    parts.push(
+      section("Files") + "\n" + files.map((f) => `- ${f}`).join("\n"),
+    );
+  }
+
+  if (task.executionRecord && (status === "done" || status === "cancelled")) {
+    parts.push(section("Execution Record") + "\n" + task.executionRecord);
+  }
 
   if (downstream.length > 0) {
     const [downstreamEdgeNotes, downstreamSummaries] = await Promise.all([
@@ -147,13 +161,12 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
       const note = downstreamEdgeNotes.get(d.id);
       let line = `- \`${info.taskRef}\` **${info.title}** [${info.status}]`;
       if (note) line += ` — ${note}`;
-      if (info.description) line += `\n  ${info.description}`;
       downLines.push(line);
     }
 
     if (downLines.length > 0) {
       parts.push(
-        section("Downstream (tasks that depend on this task's output)") +
+        section("Downstream (what depends on this task's output)") +
           "\n" +
           downLines.join("\n"),
       );

@@ -1,8 +1,12 @@
 /**
  * Tool handlers for the 6 Mymir tools, called by the MCP server.
- * Business logic lives in lib/graph/*; handlers do validation + routing.
+ * Business logic lives in lib/graph/_core/* and lib/context/_core/*;
+ * handlers do validation, authorization, and routing.
  */
 
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { taskEdges } from "@/lib/db/schema";
 import {
   createProject,
   updateProject,
@@ -14,7 +18,7 @@ import {
   createEdge,
   updateEdge,
   removeEdge,
-} from "@/lib/graph/mutations";
+} from "@/lib/graph/_core/mutations";
 import {
   getProjectList,
   searchTasks,
@@ -23,29 +27,26 @@ import {
   getProjectTags,
   fetchTask,
   findEdgeByNodes,
-  projectExists,
-  taskExists,
-  edgeExists,
-} from "@/lib/graph/queries";
-import type { TaskState } from "@/lib/graph/queries";
-import { buildProjectOverview } from "@/lib/context/overview";
-import { buildSummaryContext } from "@/lib/context/summary";
+} from "@/lib/graph/_core/queries";
+import type { TaskState } from "@/lib/graph/_core/queries";
+import { buildProjectOverview } from "@/lib/context/_core/overview";
+import { buildSummaryContext } from "@/lib/context/_core/summary";
 import {
   buildWorkingContext,
   formatWorkingContext,
-} from "@/lib/context/working";
-import { buildAgentContext } from "@/lib/context/agent";
-import { buildPlanningContext } from "@/lib/context/planning";
+} from "@/lib/context/_core/working";
+import { buildAgentContext } from "@/lib/context/_core/agent";
+import { buildPlanningContext } from "@/lib/context/_core/planning";
 import {
   getReadyTasks,
   getBlockedTasks,
   getDownstream,
   getCriticalPath,
   getPlannableTasks,
-} from "@/lib/graph/traversal";
+} from "@/lib/graph/_core/traversal";
 import type { EdgeType, Decision } from "@/lib/types";
 import { parseIdentifier } from "@/lib/graph/identifier";
-import type { ProjectUpdate } from "@/lib/graph/mutations";
+import type { ProjectUpdate } from "@/lib/graph/_core/mutations";
 import {
   formatSummary,
   formatSearchResults,
@@ -59,6 +60,12 @@ import {
   formatPlannableTasks,
 } from "./format-responses";
 import { findVariant, normalizeTags } from "./tag-similarity";
+import type { AuthContext } from "@/lib/auth/context";
+import {
+  ForbiddenError,
+  assertProjectAccess,
+  assertTaskAccess,
+} from "@/lib/auth/authorization";
 
 /**
  * Build variant-warning hints for proposed tags against existing project tags.
@@ -70,23 +77,25 @@ function tagVariantHints(proposed: string[], existing: string[]): string[] {
   const hints: string[] = [];
   for (const tag of proposed) {
     const variant = findVariant(tag, existing);
-    if (variant) hints.push(`Tag "${tag}" looks like a variant of existing "${variant}" — reuse or confirm.`);
+    if (variant)
+      hints.push(
+        `Tag "${tag}" looks like a variant of existing "${variant}" — reuse or confirm.`,
+      );
   }
   return hints;
 }
 
 /**
  * Build warning hints for semantically incoherent terminal-to-terminal
- * status transitions. Currently flags `done → cancelled` (drops the task
- * from progress numerator) and `cancelled → done` (skips the work pipeline).
- * Other reversals (done → planned/in_progress/draft) are usually deliberate
- * UI corrections and do NOT trigger a hint.
- *
+ * status transitions.
  * @param priorStatus - The task's status before the update.
  * @param nextStatus - The status the caller is transitioning to.
  * @returns Hint strings (empty when the transition is normal).
  */
-function terminalReversalHints(priorStatus: string, nextStatus: string): string[] {
+function terminalReversalHints(
+  priorStatus: string,
+  nextStatus: string,
+): string[] {
   if (priorStatus === "done" && nextStatus === "cancelled") {
     return [
       "Transitioning done → cancelled is unusual: it removes this task from the progress numerator and drops the percentage. If the work shipped but is now obsolete, prefer keeping it done and creating a follow-up cancelled task with the rationale, so the historical credit is preserved.",
@@ -101,11 +110,9 @@ function terminalReversalHints(priorStatus: string, nextStatus: string): string[
 }
 
 /**
- * Build hints when a task is cancelled, mirroring `doneStatusHints` so agents
- * see the same shape of guidance: warn when rationale (executionRecord) and
- * decisions are missing, and prompt downstream propagation.
+ * Build hints when a task is cancelled.
  * @param payload - Fields supplied by the caller in this request.
- * @param persisted - Row state after the mutation (createTask/updateTask result).
+ * @param persisted - Row state after the mutation.
  * @returns Hint strings for missing rationale and downstream propagation.
  */
 function cancelledStatusHints(
@@ -120,21 +127,26 @@ function cancelledStatusHints(
 ): string[] {
   const hints: string[] = [];
   if (!payload.executionRecord && !persisted.executionRecord) {
-    hints.push("Missing cancellation rationale. Add it to executionRecord — record why this was abandoned and any approaches already tried, so downstream tasks (and future revisits) understand the decision.");
+    hints.push(
+      "Missing cancellation rationale. Add it to executionRecord — record why this was abandoned and any approaches already tried, so downstream tasks (and future revisits) understand the decision.",
+    );
   }
   if (!payload.decisions && (!persisted.decisions || persisted.decisions.length === 0)) {
-    hints.push("Missing decisions. Record any technical choices made before cancelling (CHOICE + WHY) — preserves what was learned for future revisits.");
+    hints.push(
+      "Missing decisions. Record any technical choices made before cancelling (CHOICE + WHY) — preserves what was learned for future revisits.",
+    );
   }
-  hints.push("Cancelled is transparent in the dep graph: dependents stay blocked through this task's own unsatisfied deps. Run mymir_analyze type='downstream' to see dependents — if a replacement task should take this one's place, rewire their edges to it.");
+  hints.push(
+    "Cancelled is transparent in the dep graph: dependents stay blocked through this task's own unsatisfied deps. Run mymir_analyze type='downstream' to see dependents — if a replacement task should take this one's place, rewire their edges to it.",
+  );
   return hints;
 }
 
 /**
- * Build completion-protocol hints when a task transitions to or is created in
- * the `done` state. Mirrors the same wording across create and update branches
- * so agents see consistent guidance.
+ * Build completion-protocol hints when a task transitions to or is created
+ * in the `done` state.
  * @param payload - Fields supplied by the caller in this request.
- * @param persisted - Row state after the mutation (createTask/updateTask result).
+ * @param persisted - Row state after the mutation.
  * @returns Hint strings for missing execution metadata and unchecked criteria.
  */
 function doneStatusHints(
@@ -152,15 +164,23 @@ function doneStatusHints(
 ): string[] {
   const hints: string[] = [];
   if (!payload.executionRecord && !persisted.executionRecord) {
-    hints.push("Missing executionRecord. Add it — downstream tasks depend on this for context.");
+    hints.push(
+      "Missing executionRecord. Add it — downstream tasks depend on this for context.",
+    );
   }
   if (!payload.decisions && (!persisted.decisions || persisted.decisions.length === 0)) {
-    hints.push("Missing decisions. Record technical choices (CHOICE + WHY) — downstream tasks need them.");
+    hints.push(
+      "Missing decisions. Record technical choices (CHOICE + WHY) — downstream tasks need them.",
+    );
   }
   if (!payload.files && (!persisted.files || persisted.files.length === 0)) {
-    hints.push("Missing files. Record every path touched during implementation (empty only if the task genuinely touched no files).");
+    hints.push(
+      "Missing files. Record every path touched during implementation (empty only if the task genuinely touched no files).",
+    );
   }
-  hints.push("Run mymir_analyze type='downstream' to propagate changes and update any edges made stale by this completion.");
+  hints.push(
+    "Run mymir_analyze type='downstream' to propagate changes and update any edges made stale by this completion.",
+  );
   const criteria = persisted.acceptanceCriteria;
   if (
     persisted.executionRecord &&
@@ -195,13 +215,19 @@ function fail(msg: string): ToolResult {
 }
 
 const STATE_HINTS: Record<TaskState, string> = {
-  plannable: "Task is plannable. Fetch context with depth='planning' to write an implementation plan.",
-  ready: "Task is ready to implement. Fetch context with depth='agent' to get implementation context.",
-  blocked: "Task is blocked by dependencies. Fetch context with depth='working' to see what's blocking it.",
-  in_progress: "Task is claimed (in progress). Fetch context with depth='working' to review — avoid duplicating work.",
+  plannable:
+    "Task is plannable. Fetch context with depth='planning' to write an implementation plan.",
+  ready:
+    "Task is ready to implement. Fetch context with depth='agent' to get implementation context.",
+  blocked:
+    "Task is blocked by dependencies. Fetch context with depth='working' to see what's blocking it.",
+  in_progress:
+    "Task is claimed (in progress). Fetch context with depth='working' to review — avoid duplicating work.",
   done: "Task is complete. Fetch context with depth='working' to review what was built.",
-  cancelled: "Task is cancelled (terminal). Fetch context with depth='working' to review the rationale.",
-  draft: "Task is a draft (needs description/criteria before planning). Fetch context with depth='working'.",
+  cancelled:
+    "Task is cancelled (terminal). Fetch context with depth='working' to review the rationale.",
+  draft:
+    "Task is a draft (needs description/criteria before planning). Fetch context with depth='working'.",
 };
 
 /**
@@ -214,34 +240,92 @@ function stateHint(state: TaskState): string {
 }
 
 // ---------------------------------------------------------------------------
-// Existence guards — return actionable error or null (pass)
+// Access-aware existence guards — return actionable error or null (pass)
 // ---------------------------------------------------------------------------
 
 /**
- * Verify a project exists. Returns a fail result with recovery hint, or null.
+ * Verify the caller can access the project. Returns a fail result with a
+ * recovery hint when not, or null when the caller is authorized.
+ * Maps ForbiddenError to "not found" to avoid leaking team membership.
  * @param id - Project UUID to check.
+ * @param ctx - Resolved auth context.
  */
-async function requireProject(id: string): Promise<ToolResult | null> {
-  if (await projectExists(id)) return null;
-  return fail(`Project '${id}' not found. Run mymir_project action='list' to see available projects.`);
+async function requireProjectAccess(
+  id: string,
+  ctx: AuthContext,
+): Promise<ToolResult | null> {
+  try {
+    await assertProjectAccess(id, ctx);
+    return null;
+  } catch (e) {
+    if (e instanceof ForbiddenError) {
+      return fail(
+        `Project '${id}' not found. Run mymir_project action='list' to see available projects.`,
+      );
+    }
+    throw e;
+  }
 }
 
 /**
- * Verify a task exists. Returns a fail result with recovery hint, or null.
+ * Verify the caller can access the task.
  * @param id - Task UUID to check.
+ * @param ctx - Resolved auth context.
  */
-async function requireTask(id: string): Promise<ToolResult | null> {
-  if (await taskExists(id)) return null;
-  return fail(`Task '${id}' not found. Run mymir_query type='search' to find tasks, or type='list' with your projectId.`);
+async function requireTaskAccess(
+  id: string,
+  ctx: AuthContext,
+): Promise<ToolResult | null> {
+  try {
+    await assertTaskAccess(id, ctx);
+    return null;
+  } catch (e) {
+    if (e instanceof ForbiddenError) {
+      return fail(
+        `Task '${id}' not found. Run mymir_query type='search' to find tasks, or type='list' with your projectId.`,
+      );
+    }
+    throw e;
+  }
 }
 
 /**
- * Verify an edge exists. Returns a fail result with recovery hint, or null.
+ * Verify the caller can access the edge by joining through the source task.
  * @param id - Edge UUID to check.
+ * @param ctx - Resolved auth context.
  */
-async function requireEdge(id: string): Promise<ToolResult | null> {
-  if (await edgeExists(id)) return null;
-  return fail(`Edge '${id}' not found. Run mymir_query type='edges' with a taskId to see current edges.`);
+async function requireEdgeAccess(
+  id: string,
+  ctx: AuthContext,
+): Promise<ToolResult | null> {
+  const notFoundMessage = `Edge '${id}' not found. Run mymir_query type='edges' with a taskId to see current edges.`;
+  const [edge] = await db
+    .select({ sourceTaskId: taskEdges.sourceTaskId })
+    .from(taskEdges)
+    .where(eq(taskEdges.id, id))
+    .limit(1);
+  if (!edge) return fail(notFoundMessage);
+  try {
+    await assertTaskAccess(edge.sourceTaskId, ctx);
+    return null;
+  } catch (e) {
+    if (e instanceof ForbiddenError) return fail(notFoundMessage);
+    throw e;
+  }
+}
+
+/**
+ * Translate a thrown ForbiddenError to a generic tool failure. Other
+ * errors fall through unchanged for catch-all logging.
+ * @param e - Caught error.
+ */
+function translateError(e: unknown): ToolResult {
+  if (e instanceof ForbiddenError) {
+    return fail(
+      "Forbidden: not a member of this resource's team. Run mymir_project action='list' to see your team's projects.",
+    );
+  }
+  return fail(e instanceof Error ? e.message : String(e));
 }
 
 // ---------------------------------------------------------------------------
@@ -361,20 +445,23 @@ export type AnalyzeParams = {
 };
 
 // ---------------------------------------------------------------------------
-// Handlers
+// Handlers — all take ctx as the second arg
 // ---------------------------------------------------------------------------
 
 /**
  * Handle mymir_project actions (list/create/update).
- * MCP handles `select` separately before calling this.
  * @param p - Validated project params.
+ * @param ctx - Resolved auth context.
  * @returns Tool result with project data.
  */
-export async function handleProject(p: ProjectParams): Promise<ToolResult> {
+export async function handleProject(
+  p: ProjectParams,
+  ctx: AuthContext,
+): Promise<ToolResult> {
   try {
     switch (p.action) {
       case "list":
-        return ok(await getProjectList());
+        return ok(await getProjectList(ctx));
       case "create": {
         if (!p.title) return fail("title required for create");
         let parsedIdentifier;
@@ -383,7 +470,7 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
           if (!parsed.ok) return fail(parsed.error);
           parsedIdentifier = parsed.value;
         }
-        const project = await createProject({
+        const project = await createProject(ctx, {
           title: p.title,
           description: p.description ?? "",
           ...(p.status !== undefined && { status: p.status }),
@@ -392,7 +479,9 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
         });
         const createHints: string[] = [];
         if (p.identifier === undefined) {
-          createHints.push(`Auto-derived identifier '${project.identifier}' from title. Pass identifier='...' on create to override (2-12 chars, uppercase alphanumeric).`);
+          createHints.push(
+            `Auto-derived identifier '${project.identifier}' from title. Pass identifier='...' on create to override (2-12 chars, uppercase alphanumeric).`,
+          );
         }
         return ok(createHints.length > 0 ? { ...project, _hints: createHints } : project);
       }
@@ -409,7 +498,7 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
             "update requires at least one of: title, description, status, categories, identifier.",
           );
         }
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
         const changes: ProjectUpdate = {};
         if (p.title !== undefined) changes.title = p.title;
@@ -421,44 +510,61 @@ export async function handleProject(p: ProjectParams): Promise<ToolResult> {
           if (!parsed.ok) return fail(parsed.error);
           changes.identifier = parsed.value;
         }
-        const project = await updateProject(p.projectId, changes);
+        const project = await updateProject(ctx, p.projectId, changes);
         const updateHints: string[] = [];
         if (p.identifier !== undefined) {
-          updateHints.push(`Renamed all task refs to '${p.identifier}-N'. External references (GitHub PRs, docs, commit messages) to the old prefix no longer resolve.`);
+          updateHints.push(
+            `Renamed all task refs to '${p.identifier}-N'. External references (GitHub PRs, docs, commit messages) to the old prefix no longer resolve.`,
+          );
         }
-        return ok(updateHints.length > 0 ? { ...project, _hints: updateHints } : project);
+        return ok(
+          updateHints.length > 0
+            ? { ...project, _hints: updateHints }
+            : project,
+        );
       }
     }
   } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
+    return translateError(e);
   }
 }
 
 /**
  * Handle mymir_task actions.
  * @param p - Validated task params. projectId required for create.
+ * @param ctx - Resolved auth context.
  * @returns Tool result with task data.
  */
-export async function handleTask(p: TaskParams): Promise<ToolResult> {
+export async function handleTask(
+  p: TaskParams,
+  ctx: AuthContext,
+): Promise<ToolResult> {
   try {
     switch (p.action) {
       case "create": {
         if (!p.projectId) return fail("projectId required for create");
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
         if (!p.title) return fail("title required for create");
-        if (!p.description) return fail("description required for create (2-4 sentences: what, why, how)");
+        if (!p.description)
+          return fail(
+            "description required for create (2-4 sentences: what, why, how)",
+          );
         const preExistingTags =
           p.tags && p.tags.length > 0
-            ? (await getProjectTags(p.projectId)).map((t) => t.tag)
+            ? (await getProjectTags(ctx, p.projectId)).map((t) => t.tag)
             : [];
-        const task = await createTask({
+        const task = await createTask(ctx, {
           projectId: p.projectId,
           title: p.title,
           description: p.description,
           status: p.status,
           order: p.order ?? 0,
-          acceptanceCriteria: (p.acceptanceCriteria ?? []) as unknown as { id: string; text: string; checked: boolean }[],
+          acceptanceCriteria: (p.acceptanceCriteria ?? []) as unknown as {
+            id: string;
+            text: string;
+            checked: boolean;
+          }[],
           tags: p.tags,
           category: p.category,
           files: p.files,
@@ -469,16 +575,20 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         const createHints: string[] = [];
         createHints.push("No edges. Add dependencies with mymir_edge.");
         if (!p.category) {
-          createHints.push("No category. Use mymir_project to see project categories, then set one with mymir_task action='update'.");
+          createHints.push(
+            "No category. Use mymir_project to see project categories, then set one with mymir_task action='update'.",
+          );
         }
         if (!p.acceptanceCriteria || p.acceptanceCriteria.length === 0) {
-          createHints.push("No acceptance criteria. Add testable done conditions with mymir_task action='update'.");
+          createHints.push(
+            "No acceptance criteria. Add testable done conditions with mymir_task action='update'.",
+          );
         }
         if (p.tags && p.tags.length > 0) {
           createHints.push(...tagVariantHints(p.tags, preExistingTags));
         }
         if (p.status === "done") {
-          const persisted = await fetchTask(task.id);
+          const persisted = await fetchTask(ctx, task.id);
           if (persisted) {
             createHints.push(
               ...doneStatusHints(
@@ -491,14 +601,15 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
                   executionRecord: persisted.executionRecord,
                   decisions: persisted.decisions as Decision[] | null,
                   files: persisted.files,
-                  acceptanceCriteria: persisted.acceptanceCriteria as { checked: boolean }[] | null,
+                  acceptanceCriteria:
+                    persisted.acceptanceCriteria as { checked: boolean }[] | null,
                 },
               ),
             );
           }
         }
         if (p.status === "cancelled") {
-          const persisted = await fetchTask(task.id);
+          const persisted = await fetchTask(ctx, task.id);
           if (persisted) {
             createHints.push(
               ...cancelledStatusHints(
@@ -517,7 +628,10 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
         return ok({ ...task, _hints: createHints });
       }
       case "update": {
-        if (!p.taskId) return fail("taskId required for update. Use mymir_query type='search' to find it.");
+        if (!p.taskId)
+          return fail(
+            "taskId required for update. Use mymir_query type='search' to find it.",
+          );
         if (
           p.title === undefined &&
           p.description === undefined &&
@@ -534,43 +648,54 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
             "update requires at least one of: title, description, status, acceptanceCriteria, decisions, tags, category, files, implementationPlan, executionRecord.",
           );
         }
-        const notFound = await requireTask(p.taskId);
+        const notFound = await requireTaskAccess(p.taskId, ctx);
         if (notFound) return notFound;
         let preExistingTags: string[] = [];
         let priorStatus: string | undefined;
         if (p.tags && p.tags.length > 0) {
-          const existing = await fetchTask(p.taskId);
+          const existing = await fetchTask(ctx, p.taskId);
           if (existing) {
-            preExistingTags = (await getProjectTags(existing.projectId)).map((t) => t.tag);
+            preExistingTags = (
+              await getProjectTags(ctx, existing.projectId)
+            ).map((t) => t.tag);
             priorStatus = existing.status;
           }
         }
         if (p.status !== undefined && priorStatus === undefined) {
-          const existing = await fetchTask(p.taskId);
+          const existing = await fetchTask(ctx, p.taskId);
           if (existing) priorStatus = existing.status;
         }
         const changes: Record<string, unknown> = {};
         if (p.title !== undefined) changes.title = p.title;
         if (p.description !== undefined) changes.description = p.description;
         if (p.status !== undefined) changes.status = p.status;
-        if (p.acceptanceCriteria !== undefined) changes.acceptanceCriteria = p.acceptanceCriteria;
+        if (p.acceptanceCriteria !== undefined)
+          changes.acceptanceCriteria = p.acceptanceCriteria;
         if (p.decisions !== undefined) changes.decisions = p.decisions;
         if (p.tags !== undefined) changes.tags = p.tags;
         if (p.category !== undefined) changes.category = p.category;
         if (p.files !== undefined) changes.files = p.files;
-        if (p.implementationPlan !== undefined) changes.implementationPlan = p.implementationPlan;
-        if (p.executionRecord !== undefined) changes.executionRecord = p.executionRecord;
-        const result = await updateTask(p.taskId, changes, !!p.overwriteArrays);
+        if (p.implementationPlan !== undefined)
+          changes.implementationPlan = p.implementationPlan;
+        if (p.executionRecord !== undefined)
+          changes.executionRecord = p.executionRecord;
+        const result = await updateTask(ctx, p.taskId, changes, !!p.overwriteArrays);
         const updateHints: string[] = [];
         if (p.tags && p.tags.length > 0) {
           updateHints.push(...tagVariantHints(p.tags, preExistingTags));
         }
         if (p.status === "planned") {
-          updateHints.push("Task planned. Claim with status='in_progress' when ready to implement.");
+          updateHints.push(
+            "Task planned. Claim with status='in_progress' when ready to implement.",
+          );
         }
         if (p.status === "in_progress") {
-          updateHints.push("Run mymir_context depth='agent' to get implementation context before starting.");
-          updateHints.push("Before marking done: confirm with the user (single-agent mode) or return to the orchestrator (dispatched mode). See Completion Protocol in the skill.");
+          updateHints.push(
+            "Run mymir_context depth='agent' to get implementation context before starting.",
+          );
+          updateHints.push(
+            "Before marking done: confirm with the user (single-agent mode) or return to the orchestrator (dispatched mode). See Completion Protocol in the skill.",
+          );
         }
         if (p.status === "done") {
           updateHints.push(
@@ -584,7 +709,8 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
                 executionRecord: result.executionRecord,
                 decisions: result.decisions as Decision[] | null,
                 files: result.files,
-                acceptanceCriteria: result.acceptanceCriteria as { checked: boolean }[] | null,
+                acceptanceCriteria:
+                  result.acceptanceCriteria as { checked: boolean }[] | null,
               },
             ),
           );
@@ -603,52 +729,68 @@ export async function handleTask(p: TaskParams): Promise<ToolResult> {
             ),
           );
         }
-        if (priorStatus !== undefined && p.status !== undefined && priorStatus !== p.status) {
+        if (
+          priorStatus !== undefined &&
+          p.status !== undefined &&
+          priorStatus !== p.status
+        ) {
           updateHints.push(...terminalReversalHints(priorStatus, p.status));
         }
-        return ok(updateHints.length > 0 ? { ...result, _hints: updateHints } : result);
+        return ok(
+          updateHints.length > 0 ? { ...result, _hints: updateHints } : result,
+        );
       }
       case "delete": {
         if (!p.taskId) return fail("taskId required for delete");
-        const notFound = await requireTask(p.taskId);
+        const notFound = await requireTaskAccess(p.taskId, ctx);
         if (notFound) return notFound;
         if (p.preview !== false) {
-          const result = await deleteTaskPreview(p.taskId);
-          return ok({ ...result, _hints: ["Preview only. Run again with preview=false to delete."] });
+          const result = await deleteTaskPreview(ctx, p.taskId);
+          return ok({
+            ...result,
+            _hints: ["Preview only. Run again with preview=false to delete."],
+          });
         }
-        return ok(await deleteTask(p.taskId));
+        return ok(await deleteTask(ctx, p.taskId));
       }
       case "reorder": {
         if (!p.taskId) return fail("taskId required for reorder");
-        const notFound = await requireTask(p.taskId);
+        const notFound = await requireTaskAccess(p.taskId, ctx);
         if (notFound) return notFound;
-        if (p.order === undefined) return fail("order required for reorder (0-based position)");
-        return ok(await reorderTask(p.taskId, p.order));
+        if (p.order === undefined)
+          return fail("order required for reorder (0-based position)");
+        return ok(await reorderTask(ctx, p.taskId, p.order));
       }
     }
   } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
+    return translateError(e);
   }
 }
 
 /**
  * Handle mymir_edge actions.
  * @param p - Validated edge params.
+ * @param ctx - Resolved auth context.
  * @returns Tool result with edge data.
  */
-export async function handleEdge(p: EdgeParams): Promise<ToolResult> {
+export async function handleEdge(
+  p: EdgeParams,
+  ctx: AuthContext,
+): Promise<ToolResult> {
   try {
     switch (p.action) {
       case "create": {
         if (!p.sourceTaskId || !p.targetTaskId)
           return fail("sourceTaskId and targetTaskId required for create");
         if (!p.edgeType)
-          return fail("edgeType required for create (depends_on or relates_to)");
-        const sourceMissing = await requireTask(p.sourceTaskId);
+          return fail(
+            "edgeType required for create (depends_on or relates_to)",
+          );
+        const sourceMissing = await requireTaskAccess(p.sourceTaskId, ctx);
         if (sourceMissing) return sourceMissing;
-        const targetMissing = await requireTask(p.targetTaskId);
+        const targetMissing = await requireTaskAccess(p.targetTaskId, ctx);
         if (targetMissing) return targetMissing;
-        const edge = await createEdge({
+        const edge = await createEdge(ctx, {
           sourceTaskId: p.sourceTaskId,
           targetTaskId: p.targetTaskId,
           edgeType: p.edgeType as EdgeType,
@@ -656,34 +798,45 @@ export async function handleEdge(p: EdgeParams): Promise<ToolResult> {
         });
         const edgeHints: string[] = [];
         if (!p.note) {
-          edgeHints.push("Missing edge note. Add one — notes propagate to downstream agent context.");
+          edgeHints.push(
+            "Missing edge note. Add one — notes propagate to downstream agent context.",
+          );
         }
         return ok(edgeHints.length > 0 ? { ...edge, _hints: edgeHints } : edge);
       }
       case "update": {
         if (!p.edgeId)
-          return fail("edgeId required for update. Use mymir_query type='edges' to find edge IDs.");
+          return fail(
+            "edgeId required for update. Use mymir_query type='edges' to find edge IDs.",
+          );
         if (p.edgeType === undefined && p.note === undefined)
           return fail(
             "update requires at least one of: edgeType, note. " +
-            "To remove the edge, use action='remove'.",
+              "To remove the edge, use action='remove'.",
           );
-        const notFound = await requireEdge(p.edgeId);
+        const notFound = await requireEdgeAccess(p.edgeId, ctx);
         if (notFound) return notFound;
-        return ok(await updateEdge(p.edgeId, {
-          edgeType: p.edgeType as EdgeType | undefined,
-          note: p.note,
-        }));
+        return ok(
+          await updateEdge(ctx, p.edgeId, {
+            edgeType: p.edgeType as EdgeType | undefined,
+            note: p.note,
+          }),
+        );
       }
       case "remove": {
         if (p.edgeId) {
-          const notFound = await requireEdge(p.edgeId);
+          const notFound = await requireEdgeAccess(p.edgeId, ctx);
           if (notFound) return notFound;
-          await removeEdge(p.edgeId);
+          await removeEdge(ctx, p.edgeId);
           return ok({ removed: p.edgeId });
         }
         if (p.sourceTaskId && p.targetTaskId && p.edgeType) {
+          const sourceMissing = await requireTaskAccess(p.sourceTaskId, ctx);
+          if (sourceMissing) return sourceMissing;
+          const targetMissing = await requireTaskAccess(p.targetTaskId, ctx);
+          if (targetMissing) return targetMissing;
           const edge = await findEdgeByNodes(
+            ctx,
             p.sourceTaskId,
             p.targetTaskId,
             p.edgeType as EdgeType,
@@ -691,29 +844,33 @@ export async function handleEdge(p: EdgeParams): Promise<ToolResult> {
           if (!edge) {
             return fail(
               `No matching edge for ${p.sourceTaskId} -[${p.edgeType}]-> ${p.targetTaskId}. ` +
-              `Use mymir_query type='edges' to list current edges.`,
+                `Use mymir_query type='edges' to list current edges.`,
             );
           }
-          await removeEdge(edge.id);
+          await removeEdge(ctx, edge.id);
           return ok({ removed: edge.id });
         }
         return fail(
           "Provide edgeId OR sourceTaskId+targetTaskId+edgeType. " +
-          "Use mymir_query type='edges' to find edge details.",
+            "Use mymir_query type='edges' to find edge details.",
         );
       }
     }
   } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
+    return translateError(e);
   }
 }
 
 /**
  * Handle mymir_query actions.
  * @param p - Validated query params. projectId required for search/list/overview.
+ * @param ctx - Resolved auth context.
  * @returns Tool result with query data.
  */
-export async function handleQuery(p: QueryParams): Promise<ToolResult> {
+export async function handleQuery(
+  p: QueryParams,
+  ctx: AuthContext,
+): Promise<ToolResult> {
   try {
     switch (p.type) {
       case "search": {
@@ -723,15 +880,18 @@ export async function handleQuery(p: QueryParams): Promise<ToolResult> {
         if (!hasQuery && tagFilter.length === 0) {
           return fail("query or tags required for search");
         }
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
 
         const variantHints =
           tagFilter.length > 0
-            ? tagVariantHints(tagFilter, (await getProjectTags(p.projectId)).map((t) => t.tag))
+            ? tagVariantHints(
+                tagFilter,
+                (await getProjectTags(ctx, p.projectId)).map((t) => t.tag),
+              )
             : [];
 
-        const results = await searchTasks(p.projectId, p.query, tagFilter);
+        const results = await searchTasks(ctx, p.projectId, p.query, tagFilter);
         const hintParts: string[] = [...variantHints];
         if (results.length === 1) hintParts.push(stateHint(results[0].state));
         const hint = hintParts.length > 0 ? hintParts.join("\n> ") : undefined;
@@ -739,108 +899,122 @@ export async function handleQuery(p: QueryParams): Promise<ToolResult> {
       }
       case "list": {
         if (!p.projectId) return fail("projectId required for list");
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
-        return ok(formatTaskList(await getProjectTasksSlim(p.projectId)));
+        return ok(formatTaskList(await getProjectTasksSlim(ctx, p.projectId)));
       }
       case "edges": {
         if (!p.taskId)
-          return fail("taskId required for edges. Use type='search' to find task IDs.");
-        const notFound = await requireTask(p.taskId);
+          return fail(
+            "taskId required for edges. Use type='search' to find task IDs.",
+          );
+        const notFound = await requireTaskAccess(p.taskId, ctx);
         if (notFound) return notFound;
-        return ok(formatDetailedEdges(await getTaskEdgesDetailed(p.taskId)));
+        return ok(formatDetailedEdges(await getTaskEdgesDetailed(ctx, p.taskId)));
       }
       case "overview": {
         if (!p.projectId) return fail("projectId required for overview");
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
-        const overview = await buildProjectOverview(p.projectId);
+        const overview = await buildProjectOverview(ctx, p.projectId);
         return ok(overview ? formatOverview(overview) : "Project not found.");
       }
     }
   } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
+    return translateError(e);
   }
 }
 
 /**
  * Handle mymir_context actions.
- * Returns structured data for summary, formatted string for other depths.
  * @param p - Validated context params. projectId required for working depth.
- * @returns Tool result — data is object (summary) or string (working/agent/planning).
+ * @param ctx - Resolved auth context.
+ * @returns Tool result.
  */
-export async function handleContext(p: ContextParams): Promise<ToolResult> {
+export async function handleContext(
+  p: ContextParams,
+  ctx: AuthContext,
+): Promise<ToolResult> {
   try {
-    const notFound = await requireTask(p.taskId);
+    const notFound = await requireTaskAccess(p.taskId, ctx);
     if (notFound) return notFound;
     switch (p.depth) {
       case "summary":
-        return ok(formatSummary(await buildSummaryContext(p.taskId)));
+        return ok(formatSummary(await buildSummaryContext(ctx, p.taskId)));
       case "working": {
-        if (!p.projectId) return fail("projectId required for working depth");
-        const notFound = await requireProject(p.projectId);
-        if (notFound) return notFound;
-        const task = await fetchTask(p.taskId);
+        if (!p.projectId)
+          return fail("projectId required for working depth");
+        const projectMissing = await requireProjectAccess(p.projectId, ctx);
+        if (projectMissing) return projectMissing;
+        const task = await fetchTask(ctx, p.taskId);
         if (task && task.projectId !== p.projectId) {
           return fail(
             `Task '${p.taskId}' belongs to project '${task.projectId}', not '${p.projectId}'. ` +
               `Run mymir_query type='search' to find the correct projectId.`,
           );
         }
-        const ctx = await buildWorkingContext(p.taskId, p.projectId);
-        return ok(await formatWorkingContext(ctx));
+        const result = await buildWorkingContext(ctx, p.taskId, p.projectId);
+        return ok(await formatWorkingContext(result));
       }
       case "agent":
-        return ok(await buildAgentContext(p.taskId));
+        return ok(await buildAgentContext(ctx, p.taskId));
       case "planning":
-        return ok(await buildPlanningContext(p.taskId));
+        return ok(await buildPlanningContext(ctx, p.taskId));
     }
   } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
+    return translateError(e);
   }
 }
 
 /**
  * Handle mymir_analyze actions.
- * @param p - Validated analyze params. projectId for ready/blocked/critical_path; taskId for downstream.
+ * @param p - Validated analyze params.
+ * @param ctx - Resolved auth context.
  * @returns Tool result with analysis data.
  */
-export async function handleAnalyze(p: AnalyzeParams): Promise<ToolResult> {
+export async function handleAnalyze(
+  p: AnalyzeParams,
+  ctx: AuthContext,
+): Promise<ToolResult> {
   try {
     switch (p.type) {
       case "ready": {
         if (!p.projectId) return fail("projectId required for ready");
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
-        return ok(formatReadyTasks(await getReadyTasks(p.projectId)));
+        return ok(formatReadyTasks(await getReadyTasks(ctx, p.projectId)));
       }
       case "blocked": {
         if (!p.projectId) return fail("projectId required for blocked");
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
-        return ok(formatBlockedTasks(await getBlockedTasks(p.projectId)));
+        return ok(formatBlockedTasks(await getBlockedTasks(ctx, p.projectId)));
       }
       case "downstream": {
         if (!p.taskId)
-          return fail("taskId required for downstream analysis. Use mymir_query type='search' to find it.");
-        const notFound = await requireTask(p.taskId);
+          return fail(
+            "taskId required for downstream analysis. Use mymir_query type='search' to find it.",
+          );
+        const notFound = await requireTaskAccess(p.taskId, ctx);
         if (notFound) return notFound;
-        return ok(formatDownstream(await getDownstream(p.taskId)));
+        return ok(formatDownstream(await getDownstream(ctx, p.taskId)));
       }
       case "critical_path": {
         if (!p.projectId) return fail("projectId required for critical_path");
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
-        return ok(formatCriticalPath(await getCriticalPath(p.projectId)));
+        return ok(formatCriticalPath(await getCriticalPath(ctx, p.projectId)));
       }
       case "plannable": {
         if (!p.projectId) return fail("projectId required for plannable");
-        const notFound = await requireProject(p.projectId);
+        const notFound = await requireProjectAccess(p.projectId, ctx);
         if (notFound) return notFound;
-        return ok(formatPlannableTasks(await getPlannableTasks(p.projectId)));
+        return ok(
+          formatPlannableTasks(await getPlannableTasks(ctx, p.projectId)),
+        );
       }
     }
   } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
+    return translateError(e);
   }
 }

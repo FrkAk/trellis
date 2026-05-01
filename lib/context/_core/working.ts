@@ -1,13 +1,13 @@
-"use server";
-
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
 import type { AcceptanceCriterion } from "@/lib/types";
-import { getAncestors } from "@/lib/graph/traversal";
-import { fetchTask, getTaskEdgesDetailed } from "@/lib/graph/queries";
+import { getAncestors } from "@/lib/graph/_core/traversal";
+import { getTaskEdgesDetailed } from "@/lib/graph/_core/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
-import { section, formatCriteria } from "./format";
+import { section, formatCriteria } from "@/lib/context/format";
+import type { AuthContext } from "@/lib/auth/context";
+import { assertTaskAccess } from "@/lib/auth/authorization";
 
 /** Full working context for AI assistant (1-hop). */
 type WorkingContext = {
@@ -27,30 +27,40 @@ type WorkingContext = {
 };
 
 /**
- * Build full working context for a task. 1-hop traversal with token budgeting.
- * Used by MCP for `mymir_context depth='working'`.
+ * Build full working context for a task. 1-hop traversal.
+ * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
  * @param projectId - UUID of the project (for taskRef and sibling lookup).
  * @returns Working context with task data, ancestors, edges, and siblings.
  */
 export async function buildWorkingContext(
+  ctx: AuthContext,
   taskId: string,
   projectId: string,
 ): Promise<WorkingContext> {
-  const task = await fetchTask(taskId);
+  await assertTaskAccess(taskId, ctx);
+
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
   if (!task) {
     return { node: {}, taskRef: "", ancestors: [], edges: [], siblings: [] };
   }
 
   const [projectRow, ancestors, detailedEdges, siblings] = await Promise.all([
-    db.select({ identifier: projects.identifier }).from(projects).where(eq(projects.id, projectId)).then(r => r[0]),
+    db
+      .select({ identifier: projects.identifier })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .then((r) => r[0]),
     getAncestors(taskId),
-    getTaskEdgesDetailed(taskId),
+    getTaskEdgesDetailed(ctx, taskId),
     fetchSiblings(taskId, projectId),
   ]);
 
   if (!projectRow) {
-    console.error('Task has no joinable project', { taskId: task.id, projectId: task.projectId });
+    console.error("Task has no joinable project", {
+      taskId: task.id,
+      projectId: task.projectId,
+    });
   }
   const taskRef = projectRow
     ? composeTaskRef(asIdentifier(projectRow.identifier), task.sequenceNumber)
@@ -77,9 +87,6 @@ export async function buildWorkingContext(
 
 /**
  * Format working context as structured markdown for AI consumption.
- * Sections ordered by U-shaped attention: header+description+criteria at start,
- * edges+siblings in middle.
- * No token budget — all content included as-is.
  * @param ctx - The raw working context object.
  * @returns Human-readable markdown string.
  */
@@ -91,7 +98,6 @@ export async function formatWorkingContext(
   const status = (node.status as string) ?? "draft";
   const description = (node.description as string) ?? "";
 
-  // --- START: highest recall (primacy) ---
   const parts: string[] = [
     `# ${ctx.taskRef ? `\`${ctx.taskRef}\` ` : ""}"${title}" (${status})`,
   ];
@@ -107,7 +113,6 @@ export async function formatWorkingContext(
   const hierarchy = formatHierarchySection(ctx, title);
   if (hierarchy) parts.push(hierarchy);
 
-  // --- MIDDLE: lowest recall ---
   const decisions = formatDecisionsSection(node);
   if (decisions) parts.push(decisions);
 
@@ -132,7 +137,7 @@ function formatTagsSection(node: Record<string, unknown>): string {
 }
 
 /**
- * Format acceptance criteria section using the shared grouped-by-state helper.
+ * Format acceptance criteria section.
  * @param node - Raw node data.
  * @returns Formatted criteria section or empty string.
  */
@@ -148,7 +153,8 @@ function formatCriteriaSection(node: Record<string, unknown>): string {
  * @returns Formatted decisions section or empty string.
  */
 function formatDecisionsSection(node: Record<string, unknown>): string {
-  const decisions = (node.decisions as { text: string; source: string; date: string }[]) ?? [];
+  const decisions =
+    (node.decisions as { text: string; source: string; date: string }[]) ?? [];
   if (decisions.length === 0) return "";
   const lines = ["\n## Decisions"];
   for (const d of decisions) {
@@ -165,7 +171,10 @@ function formatDecisionsSection(node: Record<string, unknown>): string {
  */
 function formatHierarchySection(ctx: WorkingContext, title: string): string {
   if (ctx.ancestors.length === 0) return "";
-  const path = [...ctx.ancestors].reverse().map((a) => `${a.type}: "${a.title}"`).join(" > ");
+  const path = [...ctx.ancestors]
+    .reverse()
+    .map((a) => `${a.type}: "${a.title}"`)
+    .join(" > ");
   return `\n## Hierarchy\n${path} > task: "${title}"`;
 }
 
@@ -178,9 +187,9 @@ function formatEdgesSection(edges: WorkingContext["edges"]): string {
   if (edges.length === 0) return "";
   const lines = ["\n## Connected Tasks"];
   for (const e of edges) {
-    const arrow = e.direction === "outgoing" ? "\u2192" : "\u2190";
+    const arrow = e.direction === "outgoing" ? "→" : "←";
     let line = `- ${e.edgeType} ${arrow} \`${e.taskRef}\` "${e.title}" (${e.status})`;
-    if (e.note) line += ` \u2014 ${e.note}`;
+    if (e.note) line += ` — ${e.note}`;
     lines.push(line);
   }
   return lines.join("\n");
@@ -201,7 +210,8 @@ function formatSiblingsSection(siblings: WorkingContext["siblings"]): string {
 }
 
 /**
- * Fetch other tasks in the same project (siblings).
+ * Fetch other tasks in the same project (siblings). Internal helper —
+ * caller asserted access on the parent task.
  * @param taskId - UUID of the current task.
  * @param projectId - UUID of the project.
  * @returns Array of siblings with id, title, and status.

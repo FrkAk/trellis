@@ -1,23 +1,27 @@
-"use server";
-
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { tasks, projects, taskEdges } from "@/lib/db/schema";
 import {
-  tasks,
-  projects,
-  taskEdges,
-} from "@/lib/db/schema";
-import { asIdentifier, composeTaskRef, type Identifier } from "./identifier";
-import { buildEffectiveDepGraph } from "./effective-deps";
-import { deriveTaskStates } from "./queries";
+  asIdentifier,
+  composeTaskRef,
+  type Identifier,
+} from "@/lib/graph/identifier";
+import { buildEffectiveDepGraph } from "@/lib/graph/effective-deps";
+import { deriveTaskStates } from "@/lib/graph/_core/queries";
+import type { AuthContext } from "@/lib/auth/context";
+import {
+  assertProjectAccess,
+  assertTaskAccess,
+} from "@/lib/auth/authorization";
 
 /**
  * Fetch a project's identifier prefix for composing taskRefs.
- *
  * @param projectId - UUID of the project.
  * @returns Identifier string, or null if project not found.
  */
-async function getProjectIdentifier(projectId: string): Promise<Identifier | null> {
+async function getProjectIdentifier(
+  projectId: string,
+): Promise<Identifier | null> {
   const [row] = await db
     .select({ identifier: projects.identifier })
     .from(projects)
@@ -26,14 +30,14 @@ async function getProjectIdentifier(projectId: string): Promise<Identifier | nul
 }
 
 // ---------------------------------------------------------------------------
-// Ancestor traversal
+// Ancestor traversal — internal helper
 // ---------------------------------------------------------------------------
 
 /** Ancestor node (always the project for a task). */
 type Ancestor = { id: string; type: "project"; title: string };
 
 /**
- * Get the parent project for a task.
+ * Get the parent project for a task. Internal — caller asserted access.
  * @param taskId - UUID of the task.
  * @returns Array with the project ancestor, or empty if not found.
  */
@@ -54,7 +58,7 @@ export async function getAncestors(taskId: string): Promise<Ancestor[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Dependency chain (recursive CTE)
+// Dependency chain — internal helper (recursive CTE)
 // ---------------------------------------------------------------------------
 
 /** A task in a dependency chain with depth. */
@@ -64,7 +68,9 @@ type DependencyNode = {
 };
 
 /**
- * Follow `depends_on` edges recursively up to maxDepth.
+ * Follow `depends_on` edges recursively up to maxDepth. Internal —
+ * caller asserted task access first; depth-limited walk stays within
+ * the same project's edge set.
  * @param taskId - UUID of the starting task.
  * @param maxDepth - Maximum traversal depth (default 10).
  * @returns Array of dependency tasks with depth.
@@ -108,7 +114,7 @@ export async function getDependencyChain(
 }
 
 // ---------------------------------------------------------------------------
-// Connected tasks (1-hop neighbors)
+// Connected tasks — internal helper (1-hop neighbors)
 // ---------------------------------------------------------------------------
 
 /** A 1-hop neighbor connected via an edge. */
@@ -119,7 +125,7 @@ type ConnectedTask = {
 };
 
 /**
- * Fetch all tasks connected by exactly one edge hop.
+ * Fetch all tasks connected by exactly one edge hop. Internal helper.
  * @param taskId - UUID of the task.
  * @returns Array of connected tasks with edge info.
  */
@@ -169,17 +175,20 @@ export type DownstreamNode = {
 };
 
 /**
- * Follow `depends_on` edges in reverse: find tasks that depend on this task.
- * Edges are project-scoped so all downstream tasks share the root task's project.
- *
+ * Find tasks that depend on this task. Edges are project-scoped, so all
+ * downstream tasks share the root task's project.
+ * @param ctx - Resolved auth context.
  * @param taskId - UUID of the starting task.
  * @param maxDepth - Maximum traversal depth (default 10).
  * @returns Array of downstream tasks with depth.
  */
 export async function getDownstream(
+  ctx: AuthContext,
   taskId: string,
   maxDepth = 10,
 ): Promise<DownstreamNode[]> {
+  await assertTaskAccess(taskId, ctx);
+
   const rows = await db.execute<{
     id: string;
     depth: number;
@@ -208,10 +217,9 @@ export async function getDownstream(
     ORDER BY depth ASC
   `);
 
-  const raw = (rows as unknown as { id: string; depth: number }[]).map((row) => ({
-    id: row.id,
-    depth: Number(row.depth),
-  }));
+  const raw = (rows as unknown as { id: string; depth: number }[]).map(
+    (row) => ({ id: row.id, depth: Number(row.depth) }),
+  );
   if (raw.length === 0) return [];
 
   const ids = raw.map((r) => r.id);
@@ -260,18 +268,16 @@ export type ReadyTask = {
 
 /**
  * Find all tasks whose dependencies are fully satisfied.
- *
- * A task is ready when its status is "planned" and every active task in its
- * effective dependency set is `done`. Cancelled tasks are transparent — they
- * don't satisfy a dep on their own, but the walk continues through them to
- * find the next active prerequisite (which is the actual wall).
- *
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns Array of ready tasks.
  */
 export async function getReadyTasks(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<ReadyTask[]> {
+  await assertProjectAccess(projectId, ctx);
+
   const identifier = await getProjectIdentifier(projectId);
   if (!identifier) return [];
 
@@ -315,17 +321,17 @@ export type PlannableTask = {
 };
 
 /**
- * Find draft tasks that are actually plannable now: have a description, at
- * least one acceptance criterion, AND every effective dep is done. Delegates
- * the readiness logic to `deriveTaskStates` so this analyzer agrees with
- * search-result `state` and `mymir_analyze type='blocked'`.
- *
+ * Find draft tasks that are plannable now.
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
- * @returns Array of plannable tasks (state === 'plannable' from deriveTaskStates).
+ * @returns Array of plannable tasks.
  */
 export async function getPlannableTasks(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<PlannableTask[]> {
+  await assertProjectAccess(projectId, ctx);
+
   const identifier = await getProjectIdentifier(projectId);
   if (!identifier) return [];
 
@@ -367,23 +373,26 @@ export type BlockedTask = {
   taskRef: string;
   title: string;
   status: string;
-  blockedBy: { id: string; taskRef: string; title: string; status: string }[];
+  blockedBy: {
+    id: string;
+    taskRef: string;
+    title: string;
+    status: string;
+  }[];
 };
 
 /**
  * Find all active tasks with at least one effective dependency that is not done.
- *
- * Blockers are reported at the *effective* level: if A depends on B and B is
- * cancelled with an unsatisfied dep C, A is reported as blocked by C (not B).
- * Cancelled tasks are transparent — they never appear as blockers and are
- * never themselves listed as blocked.
- *
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns Array of blocked tasks with their effective blockers.
  */
 export async function getBlockedTasks(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<BlockedTask[]> {
+  await assertProjectAccess(projectId, ctx);
+
   const identifier = await getProjectIdentifier(projectId);
   if (!identifier) return [];
 
@@ -392,7 +401,12 @@ export async function getBlockedTasks(
 
   for (const info of graph.activeTasks.values()) {
     const deps = graph.effectiveDeps.get(info.id) ?? new Set<string>();
-    const blockers: { id: string; taskRef: string; title: string; status: string }[] = [];
+    const blockers: {
+      id: string;
+      taskRef: string;
+      title: string;
+      status: string;
+    }[] = [];
     for (const depId of deps) {
       const depInfo = graph.activeTasks.get(depId);
       if (!depInfo) continue;
@@ -431,24 +445,16 @@ export type CriticalPathTask = {
 
 /**
  * Find the longest chain of effective `depends_on` edges across active tasks.
- *
- * Operates on the effective dependency graph — cancelled tasks are transparent,
- * so a chain `A → B → C` where B is cancelled is treated as the active chain
- * `A → C` (and contributes length 2, not 3). This avoids the orphan-bug where
- * tasks above a cancelled middle would be excluded from the chain entirely.
- *
- * Algorithm: Kahn's topological sort over active tasks (deps first) followed
- * by DP `longest[node] = 1 + max(longest[dep])`, then backtrack from the
- * highest-`longest` node to recover the chain in root-first order.
- *
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
- * @returns Ordered array of active tasks forming the longest effective chain
- *   (foundational task first, topmost dependent last). Empty when no active
- *   tasks exist or a cycle is detected.
+ * @returns Ordered array of active tasks forming the longest effective chain.
  */
 export async function getCriticalPath(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<CriticalPathTask[]> {
+  await assertProjectAccess(projectId, ctx);
+
   const identifier = await getProjectIdentifier(projectId);
   if (!identifier) return [];
 

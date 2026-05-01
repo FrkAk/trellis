@@ -1,9 +1,6 @@
 'use server';
 
-import { eq } from 'drizzle-orm';
 import { z } from 'zod/v4';
-import { db } from '@/lib/db';
-import { projects } from '@/lib/db/schema';
 import { parseIdentifier } from '@/lib/graph/identifier';
 import {
   deleteCategory,
@@ -13,8 +10,8 @@ import {
   type ProjectUpdate,
 } from '@/lib/graph/mutations';
 import { ProjectNotFoundError } from '@/lib/graph/errors';
-import { requireSession } from '@/lib/auth/session';
-import { dbEvents } from '@/lib/events';
+import { getAuthContext, NoActiveTeamError } from '@/lib/auth/context';
+import { ForbiddenError } from '@/lib/auth/authorization';
 
 /** Statuses the web app is allowed to set. Coding agents handle brainstorming/decomposing via MCP. */
 const WEB_ALLOWED_STATUSES = ['active', 'archived'] as const;
@@ -47,13 +44,15 @@ const projectSettingsChangesSchema = z
 /** Fields the settings modal can update. All optional. */
 export type ProjectSettingsChanges = z.infer<typeof projectSettingsChangesSchema>;
 
-/** Result of a project settings update action. Discriminated on `ok`. */
+/** Result of a project settings update action. */
 export type ProjectSettingsResult =
   | { ok: true }
   | {
       ok: false;
       code:
         | 'unauthorized'
+        | 'no_active_team'
+        | 'forbidden'
         | 'invalid_input'
         | 'invalid_identifier'
         | 'identifier_conflict'
@@ -62,53 +61,71 @@ export type ProjectSettingsResult =
       message: string;
     };
 
-/** Result of a project category update action. Discriminated on `ok`. */
+/** Result of a project category update action. */
 export type ProjectCategoryResult =
   | { ok: true }
   | {
       ok: false;
-      code: 'unauthorized' | 'invalid_input' | 'not_found' | 'unknown';
+      code:
+        | 'unauthorized'
+        | 'no_active_team'
+        | 'forbidden'
+        | 'invalid_input'
+        | 'not_found'
+        | 'unknown';
       message: string;
     };
 
-/** Result of a project status update action. Discriminated on `ok`. */
+/** Result of a project status update action. */
 export type ProjectStatusResult =
   | { ok: true }
   | {
       ok: false;
-      code: 'unauthorized' | 'invalid_input' | 'not_found' | 'unknown';
+      code:
+        | 'unauthorized'
+        | 'no_active_team'
+        | 'forbidden'
+        | 'invalid_input'
+        | 'not_found'
+        | 'unknown';
       message: string;
     };
 
 const UNAUTHORIZED_MESSAGE = 'You must be signed in to perform this action.';
+const NO_ACTIVE_TEAM_MESSAGE =
+  'Pick a team before continuing — visit /onboarding/team to create or join one.';
+const FORBIDDEN_MESSAGE = "You don't have access to this project.";
 
 /**
- * Check whether the caller has a valid session.
- * @returns True if authenticated, false otherwise.
+ * Resolve auth context and translate auth failures into typed error results.
+ * @returns The resolved AuthContext, or an error result variant.
  */
-async function hasSession(): Promise<boolean> {
+async function resolveAuthOrFail():
+  Promise<{ ok: true; ctx: Awaited<ReturnType<typeof getAuthContext>> }
+    | { ok: false; code: 'unauthorized' | 'no_active_team'; message: string }> {
   try {
-    await requireSession();
-    return true;
-  } catch {
-    return false;
+    const ctx = await getAuthContext();
+    return { ok: true, ctx };
+  } catch (err) {
+    if (err instanceof NoActiveTeamError) {
+      return { ok: false, code: 'no_active_team', message: NO_ACTIVE_TEAM_MESSAGE };
+    }
+    return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
   }
 }
 
 /**
- * Update a project's status. Web is restricted to `active` ↔ `archived`;
- * Coding agents handle `brainstorming`/`decomposing` transitions via MCP.
+ * Update a project's status. Web is restricted to `active` ↔ `archived`.
  * @param projectId - UUID of the project.
  * @param status - New status (`active` or `archived` only).
- * @returns Discriminated result — `{ ok: true }` or a typed failure.
+ * @returns Discriminated result.
  */
 export async function updateProjectStatus(
   projectId: string,
   status: WebAllowedStatus,
 ): Promise<ProjectStatusResult> {
-  if (!(await hasSession())) {
-    return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
-  }
+  const auth = await resolveAuthOrFail();
+  if (!auth.ok) return auth;
 
   const idParsed = projectIdSchema.safeParse(projectId);
   const statusParsed = webStatusSchema.safeParse(status);
@@ -116,38 +133,36 @@ export async function updateProjectStatus(
     return { ok: false, code: 'invalid_input', message: 'Invalid project id or status.' };
   }
 
-  const [updated] = await db
-    .update(projects)
-    .set({ status: statusParsed.data, updatedAt: new Date() })
-    .where(eq(projects.id, idParsed.data))
-    .returning();
-  if (!updated) {
-    return { ok: false, code: 'not_found', message: 'Project not found.' };
+  try {
+    const updated = await updateProject(idParsed.data, { status: statusParsed.data });
+    if (!updated) {
+      return { ok: false, code: 'not_found', message: 'Project not found.' };
+    }
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ForbiddenError) {
+      return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
+    }
+    if (err instanceof ProjectNotFoundError) {
+      return { ok: false, code: 'not_found', message: 'Project not found.' };
+    }
+    console.error('updateProjectStatus failed', { projectId: idParsed.data, err });
+    return { ok: false, code: 'unknown', message: 'Something went wrong. Please try again.' };
   }
-  dbEvents.emit('change', '*');
-  return { ok: true };
 }
 
 /**
  * Update project settings with identifier validation and conflict mapping.
- *
- * Identifier renames go through {@link renameProjectIdentifier} which holds the
- * shared identifier advisory lock, serializing with concurrent `createProject`
- * auto-suffix allocation. PostgreSQL unique-violations (code `23505`) surface
- * as a typed `identifier_conflict` so the UI can display an inline error
- * without losing user input.
- *
  * @param projectId - UUID of the project to update.
  * @param changes - Partial fields to persist.
- * @returns Discriminated result — `{ ok: true }` or a typed failure.
+ * @returns Discriminated result.
  */
 export async function updateProjectSettings(
   projectId: string,
   changes: ProjectSettingsChanges,
 ): Promise<ProjectSettingsResult> {
-  if (!(await hasSession())) {
-    return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
-  }
+  const auth = await resolveAuthOrFail();
+  if (!auth.ok) return auth;
 
   const idParsed = projectIdSchema.safeParse(projectId);
   if (!idParsed.success) {
@@ -184,6 +199,9 @@ export async function updateProjectSettings(
     }
     return { ok: true };
   } catch (err) {
+    if (err instanceof ForbiddenError) {
+      return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
+    }
     if (err instanceof ProjectNotFoundError) {
       return { ok: false, code: 'not_found', message: 'Project not found.' };
     }
@@ -209,16 +227,15 @@ export async function updateProjectSettings(
  * @param projectId - UUID of the project.
  * @param oldName - Existing category name.
  * @param newName - Replacement category name.
- * @returns Discriminated result — `{ ok: true }` or a typed failure.
+ * @returns Discriminated result.
  */
 export async function renameProjectCategory(
   projectId: string,
   oldName: string,
   newName: string,
 ): Promise<ProjectCategoryResult> {
-  if (!(await hasSession())) {
-    return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
-  }
+  const auth = await resolveAuthOrFail();
+  if (!auth.ok) return auth;
 
   const idParsed = projectIdSchema.safeParse(projectId);
   const oldParsed = categoryNameSchema.safeParse(oldName);
@@ -231,6 +248,9 @@ export async function renameProjectCategory(
     await renameCategory(idParsed.data, oldParsed.data, newParsed.data);
     return { ok: true };
   } catch (err) {
+    if (err instanceof ForbiddenError) {
+      return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
+    }
     if (err instanceof ProjectNotFoundError) {
       return { ok: false, code: 'not_found', message: 'Project not found.' };
     }
@@ -243,15 +263,14 @@ export async function renameProjectCategory(
  * Delete a category from a project, propagating to associated tasks.
  * @param projectId - UUID of the project.
  * @param categoryName - Category to remove.
- * @returns Discriminated result — `{ ok: true }` or a typed failure.
+ * @returns Discriminated result.
  */
 export async function deleteProjectCategory(
   projectId: string,
   categoryName: string,
 ): Promise<ProjectCategoryResult> {
-  if (!(await hasSession())) {
-    return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
-  }
+  const auth = await resolveAuthOrFail();
+  if (!auth.ok) return auth;
 
   const idParsed = projectIdSchema.safeParse(projectId);
   const nameParsed = categoryNameSchema.safeParse(categoryName);
@@ -263,6 +282,9 @@ export async function deleteProjectCategory(
     await deleteCategory(idParsed.data, nameParsed.data);
     return { ok: true };
   } catch (err) {
+    if (err instanceof ForbiddenError) {
+      return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
+    }
     if (err instanceof ProjectNotFoundError) {
       return { ok: false, code: 'not_found', message: 'Project not found.' };
     }

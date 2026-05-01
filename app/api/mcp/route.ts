@@ -1,14 +1,16 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createMcpServer } from "@/lib/mcp/create-server";
 import { serverClient } from "@/lib/auth/server-client";
+import type { AuthContext } from "@/lib/auth/context";
 
 const baseUrl = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 const origin = new URL(baseUrl).origin;
 const resourceMetadataUrl = `${origin}/.well-known/oauth-protected-resource`;
 
 /**
- * Verify a JWT Bearer token from the Authorization header.
- * Uses the resource client with auto-filled issuer/audience from auth config.
+ * Verify a JWT Bearer token from the Authorization header and return the
+ * decoded payload. Uses the resource client with auto-filled issuer/audience
+ * from auth config.
  * @param request - Incoming request.
  * @returns JWT payload if valid, null otherwise.
  */
@@ -30,6 +32,24 @@ async function verifyMcpAuth(request: Request) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve the MCP auth context from a verified JWT payload. The payload
+ * must carry `sub` (user id) and `active_org` (organization id stamped
+ * via `oauthProvider.customAccessTokenClaims`).
+ * @param payload - Decoded JWT payload.
+ * @returns AuthContext or null when claims are missing.
+ */
+function authContextFromPayload(
+  payload: Record<string, unknown>,
+): AuthContext | null {
+  const userId = payload.sub;
+  const activeOrgId = payload.active_org;
+  if (typeof userId !== "string" || typeof activeOrgId !== "string") {
+    return null;
+  }
+  return { userId, activeOrgId };
 }
 
 /**
@@ -55,16 +75,37 @@ function unauthorized() {
 }
 
 /**
- * POST handler for MCP JSON-RPC messages via Streamable HTTP transport.
- * Requires valid JWT Bearer token.
- * @param request - Incoming MCP JSON-RPC request.
- * @returns MCP JSON-RPC response or 401.
+ * MCP-spec 403 response when the OAuth token has no active team.
+ * @returns 403 JSON-RPC error response.
  */
-export async function POST(request: Request) {
-  const session = await verifyMcpAuth(request);
-  if (!session) return unauthorized();
+function noActiveTeam() {
+  return Response.json(
+    {
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message:
+          "No active team selected. Sign in to the web app, pick a team, then re-authorize this MCP client.",
+      },
+      id: null,
+    },
+    { status: 403 },
+  );
+}
 
-  const server = createMcpServer();
+/**
+ * Authenticate the request and run an MCP transport request.
+ * @param request - Incoming MCP request.
+ * @returns MCP response, 401, or 403.
+ */
+async function runMcpRequest(request: Request) {
+  const payload = await verifyMcpAuth(request);
+  if (!payload) return unauthorized();
+
+  const ctx = authContextFromPayload(payload as Record<string, unknown>);
+  if (!ctx) return noActiveTeam();
+
+  const server = createMcpServer(ctx);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
@@ -73,21 +114,22 @@ export async function POST(request: Request) {
 }
 
 /**
- * GET handler for MCP SSE streams.
- * Requires valid JWT Bearer token.
+ * POST handler for MCP JSON-RPC messages via Streamable HTTP transport.
+ * Requires valid JWT Bearer token with `active_org` claim.
+ * @param request - Incoming MCP JSON-RPC request.
+ * @returns MCP JSON-RPC response, 401, or 403.
+ */
+export async function POST(request: Request) {
+  return runMcpRequest(request);
+}
+
+/**
+ * GET handler for MCP SSE streams. Requires valid JWT Bearer token.
  * @param request - Incoming request.
- * @returns SSE stream or 401.
+ * @returns SSE stream, 401, or 403.
  */
 export async function GET(request: Request) {
-  const session = await verifyMcpAuth(request);
-  if (!session) return unauthorized();
-
-  const server = createMcpServer();
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-  });
-  await server.connect(transport);
-  return transport.handleRequest(request);
+  return runMcpRequest(request);
 }
 
 /**

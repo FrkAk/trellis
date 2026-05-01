@@ -1,4 +1,5 @@
 import { getProjectList } from '@/lib/graph/queries';
+import { requireMembership } from '@/lib/auth/membership';
 import { TopBar } from '@/components/layout/TopBar';
 import { PageShell } from '@/components/layout/PageShell';
 import { ProjectCard } from '@/components/home/ProjectCard';
@@ -15,6 +16,7 @@ export const dynamic = 'force-dynamic';
  * @returns Server-rendered project grid page.
  */
 export default async function HomePage() {
+  await requireMembership();
   const projects = await getProjectList();
   const activeProject = projects.find((p) => p.status === 'active');
 
