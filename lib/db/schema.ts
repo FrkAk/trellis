@@ -31,7 +31,7 @@ export const projects = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
-    identifier: text("identifier").notNull().unique("projects_identifier_unique"),
+    identifier: text("identifier").notNull(),
     description: text("description").notNull().default(""),
     status: text("status").$type<ProjectStatus>().notNull().default("brainstorming"),
     categories: jsonb("categories").$type<string[]>().notNull().default([]),
@@ -39,7 +39,10 @@ export const projects = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("projects_organization_id_idx").on(t.organizationId)],
+  (t) => [
+    index("projects_organization_id_idx").on(t.organizationId),
+    unique("projects_org_identifier_unique").on(t.organizationId, t.identifier),
+  ],
 );
 
 export type Project = typeof projects.$inferSelect;

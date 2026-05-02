@@ -99,24 +99,41 @@ export type CreateProjectInput = Omit<
   identifier?: Identifier;
 };
 
-/** Advisory-lock key serializing identifier auto-derivation across concurrent creates. */
-const IDENTIFIER_LOCK_KEY = sql`hashtext('mymir:project-identifier')`;
+/**
+ * Advisory-lock key serializing identifier auto-derivation across concurrent
+ * creates within a single organization. Identifiers are unique per-org, so
+ * scoping the lock per-org lets two teams allocate identifiers in parallel.
+ * @param organizationId - UUID of the organization the lock is scoped to.
+ */
+function identifierLockKey(organizationId: string) {
+  return sql`hashtext(${`mymir:project-identifier:${organizationId}`})`;
+}
 
 /**
- * Pick an identifier that's not already taken, auto-suffixing on collision.
- * Must be called inside a transaction holding the identifier advisory lock.
+ * Pick an identifier that's not already taken within an organization,
+ * auto-suffixing on collision. Identifiers are unique per organization
+ * (composite constraint `projects_org_identifier_unique`), so the scan
+ * is scoped to the caller's active team — two teams can independently
+ * use the same prefix.
+ *
+ * Must be called inside a transaction holding the identifier advisory
+ * lock; otherwise the select-then-insert window is racy.
+ *
  * @param tx - Drizzle transaction handle.
+ * @param organizationId - UUID of the organization the project belongs to.
  * @param base - Starting identifier (e.g. derived from title).
- * @returns Unique identifier.
+ * @returns Unique identifier within the organization.
  * @throws If no unique variant found within 1000 attempts.
  */
 async function pickAvailableIdentifier(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  organizationId: string,
   base: Identifier,
 ): Promise<Identifier> {
   const existing = await tx
     .select({ identifier: projects.identifier })
-    .from(projects);
+    .from(projects)
+    .where(eq(projects.organizationId, organizationId));
   const taken = new Set(existing.map((r) => r.identifier));
   if (!taken.has(base)) return base;
   for (let i = 2; i < 1000; i++) {
@@ -151,8 +168,14 @@ export async function createProject(
   const project = await db.transaction(async (tx) => {
     let identifier = data.identifier;
     if (identifier === undefined) {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${IDENTIFIER_LOCK_KEY})`);
-      identifier = await pickAvailableIdentifier(tx, deriveIdentifier(data.title));
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${identifierLockKey(ctx.activeOrgId)})`,
+      );
+      identifier = await pickAvailableIdentifier(
+        tx,
+        ctx.activeOrgId,
+        deriveIdentifier(data.title),
+      );
     }
 
     const [row] = await tx
@@ -227,12 +250,13 @@ export async function deleteProject(ctx: AuthContext, projectId: string) {
 }
 
 /**
- * Rename a project's identifier under the shared identifier advisory lock.
+ * Rename a project's identifier under the per-org identifier advisory lock.
  *
- * Holding {@link IDENTIFIER_LOCK_KEY} serializes this rename with concurrent
- * `createProject` auto-suffix allocation, closing the select-then-insert
- * window. The unique index on `projects.identifier` still surfaces a `23505`
- * if the target is already taken by a project outside the lock-protected
+ * Holding the org-scoped lock serializes this rename with concurrent
+ * `createProject` auto-suffix allocation in the same org, closing the
+ * select-then-insert window. The composite unique constraint
+ * `projects_org_identifier_unique` still surfaces a `23505` if the target
+ * is already taken inside this org by a project outside the lock-protected
  * critical section (e.g. a direct SQL rename).
  *
  * @param ctx - Resolved auth context.
@@ -249,7 +273,9 @@ export async function renameProjectIdentifier(
   await assertProjectAccess(projectId, ctx);
 
   const updated = await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${IDENTIFIER_LOCK_KEY})`);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(${identifierLockKey(ctx.activeOrgId)})`,
+    );
     const [row] = await tx
       .update(projects)
       .set({ identifier, updatedAt: new Date() })

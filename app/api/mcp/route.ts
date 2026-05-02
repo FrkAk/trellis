@@ -9,12 +9,10 @@ const origin = new URL(baseUrl).origin;
 const resourceMetadataUrl = `${origin}/.well-known/oauth-protected-resource`;
 
 /** Shape we require from a verified MCP access token payload. */
-const accessTokenClaimsSchema = z
-  .object({
-    sub: z.string().min(1),
-    active_org: z.string().min(1),
-  })
-  .passthrough();
+const accessTokenClaimsSchema = z.looseObject({
+  sub: z.uuid(),
+  active_org: z.uuid(),
+});
 
 /**
  * Verify a JWT Bearer token from the Authorization header and return the

@@ -23,7 +23,7 @@ const DESCRIPTION_MAX = 10_000;
 const CATEGORY_NAME_MAX = 64;
 const CATEGORIES_MAX = 50;
 
-const uuidSchema = z.string().uuid();
+const uuidSchema = z.uuid();
 const projectIdSchema = uuidSchema;
 
 const categoryNameSchema = z
@@ -32,14 +32,12 @@ const categoryNameSchema = z
   .min(1, 'Category name is required')
   .max(CATEGORY_NAME_MAX, `Category name must be ${CATEGORY_NAME_MAX} characters or less`);
 
-const projectSettingsChangesSchema = z
-  .object({
-    title: z.string().trim().min(1).max(TITLE_MAX).optional(),
-    description: z.string().max(DESCRIPTION_MAX).optional(),
-    identifier: z.string().optional(),
-    categories: z.array(categoryNameSchema).max(CATEGORIES_MAX).optional(),
-  })
-  .strict();
+const projectSettingsChangesSchema = z.strictObject({
+  title: z.string().trim().min(1).max(TITLE_MAX).optional(),
+  description: z.string().max(DESCRIPTION_MAX).optional(),
+  identifier: z.string().optional(),
+  categories: z.array(categoryNameSchema).max(CATEGORIES_MAX).optional(),
+});
 
 /** Fields the settings modal can update. All optional. */
 export type ProjectSettingsChanges = z.infer<typeof projectSettingsChangesSchema>;

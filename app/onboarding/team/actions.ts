@@ -26,7 +26,7 @@ const createTeamSchema = z.object({
 });
 
 const acceptInvitationSchema = z.object({
-  invitationId: z.string().uuid("Invitation id must be a UUID"),
+  invitationId: z.uuid("Invitation id must be a UUID"),
 });
 
 /**
@@ -76,7 +76,8 @@ export async function createTeam(input: {
     return {
       ok: false,
       code: "unknown",
-      message: "Could not create team. The slug may already be in use.",
+      message:
+        "Could not create team. Try a different slug, or refresh and retry.",
     };
   }
 
