@@ -1,28 +1,39 @@
-"use server";
+import "server-only";
 
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
-import { getDependencyChain, getDownstream } from "@/lib/graph/traversal";
+import {
+  getDependencyChain,
+  getDownstream,
+} from "@/lib/graph/_core/traversal";
 import {
   fetchEdgeNotesBySource,
   fetchEdgeNotesByTarget,
   fetchTaskSummaries,
-} from "@/lib/graph/queries";
+} from "@/lib/graph/_core/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
-import { section, formatCriteria, formatDecisions } from "./format";
+import { section, formatCriteria, formatDecisions } from "@/lib/context/format";
+import type { AuthContext } from "@/lib/auth/context";
+import { assertTaskAccess } from "@/lib/auth/authorization";
 
 /**
  * Build planning-optimized context for a task.
- * Supplies the project-level breadth a planner can't derive from reading code alone:
- * project description, upstream execution records, and downstream task specs.
- * Sections ordered by U-shaped attention. No token budget — all content included as-is.
+ *
+ * Supplies the project-level breadth a planner can't derive from reading code
+ * alone: project description, upstream execution records, and downstream task
+ * specs. Sections ordered by U-shaped attention. No token budget — all content
+ * included as-is.
+ *
+ * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
  * @returns Formatted planning context string.
  */
-export async function buildPlanningContext(taskId: string): Promise<string> {
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) return "# Task not found";
+export async function buildPlanningContext(
+  ctx: AuthContext,
+  taskId: string,
+): Promise<string> {
+  const task = await assertTaskAccess(taskId, ctx);
 
   const [project] = await db
     .select({
@@ -34,16 +45,19 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
     .where(eq(projects.id, task.projectId));
 
   if (!project) {
-    console.error('Task has no joinable project', { taskId: task.id, projectId: task.projectId });
+    console.error("Task has no joinable project", {
+      taskId: task.id,
+      projectId: task.projectId,
+    });
   }
   const tags = (task.tags as string[] | null) ?? [];
   const taskRef = project
     ? composeTaskRef(asIdentifier(project.identifier), task.sequenceNumber)
     : "";
 
-  // --- START: highest recall zone (primacy) — big picture + task spec ---
-
-  const headerLines: string[] = [`# ${taskRef ? `\`${taskRef}\` ` : ""}${task.title}`];
+  const headerLines: string[] = [
+    `# ${taskRef ? `\`${taskRef}\` ` : ""}${task.title}`,
+  ];
   if (tags.length > 0) {
     headerLines.push(`Tags: ${tags.map((t) => `\`${t}\``).join(", ")}`);
   }
@@ -59,18 +73,20 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
   }
 
   parts.push(section("Description") + "\n" + task.description);
-  parts.push(section("Acceptance Criteria") + "\n" + formatCriteria(task.acceptanceCriteria));
+  parts.push(
+    section("Acceptance Criteria") + "\n" + formatCriteria(task.acceptanceCriteria),
+  );
 
   if (task.implementationPlan) {
-    parts.push(section("Existing Implementation Plan") + "\n" + task.implementationPlan);
+    parts.push(
+      section("Existing Implementation Plan") + "\n" + task.implementationPlan,
+    );
   }
 
-  // --- MIDDLE: lowest recall zone — prerequisites + what's been built ---
-
   const [deps, downstream, upstreamEdgeNotes] = await Promise.all([
-    getDependencyChain(taskId, 2),
-    getDownstream(taskId, 2),
-    fetchEdgeNotesBySource(taskId),
+    getDependencyChain(taskId, task.projectId, 2),
+    getDownstream(ctx, taskId, 2),
+    fetchEdgeNotesBySource(task.projectId, taskId),
   ]);
 
   if (deps.length > 0) {
@@ -89,12 +105,19 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
       })
       .from(tasks)
       .innerJoin(projects, eq(tasks.projectId, projects.id))
-      .where(sql`${tasks.id} IN ${depIds}`);
+      .where(
+        sql`${tasks.id} IN ${depIds} AND ${tasks.projectId} = ${task.projectId}`,
+      );
 
-    const depMap = new Map(depTasks.map((dt) => [dt.id, {
-      ...dt,
-      taskRef: composeTaskRef(asIdentifier(dt.identifier), dt.sequenceNumber),
-    }]));
+    const depMap = new Map(
+      depTasks.map((dt) => [
+        dt.id,
+        {
+          ...dt,
+          taskRef: composeTaskRef(asIdentifier(dt.identifier), dt.sequenceNumber),
+        },
+      ]),
+    );
 
     for (const dep of deps) {
       const info = depMap.get(dep.id);
@@ -131,12 +154,13 @@ export async function buildPlanningContext(taskId: string): Promise<string> {
     parts.push(section("Decisions") + "\n" + formatDecisions(task.decisions));
   }
 
-  // --- END: second-highest recall zone (recency) — downstream ---
-
   if (downstream.length > 0) {
     const [downstreamEdgeNotes, downstreamSummaries] = await Promise.all([
-      fetchEdgeNotesByTarget(taskId),
-      fetchTaskSummaries(downstream.map((d) => d.id)),
+      fetchEdgeNotesByTarget(task.projectId, taskId),
+      fetchTaskSummaries(
+        task.projectId,
+        downstream.map((d) => d.id),
+      ),
     ]);
     const summaryMap = new Map(downstreamSummaries.map((s) => [s.id, s]));
     const downLines: string[] = [];

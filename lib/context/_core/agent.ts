@@ -1,34 +1,48 @@
-"use server";
+import "server-only";
 
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
-import { getDependencyChain, getDownstream } from "@/lib/graph/traversal";
+import {
+  getDependencyChain,
+  getDownstream,
+} from "@/lib/graph/_core/traversal";
 import {
   fetchEdgeNotesBySource,
   fetchEdgeNotesByTarget,
   fetchTaskSummaries,
-} from "@/lib/graph/queries";
+} from "@/lib/graph/_core/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
-import { section, formatCriteria, formatDecisions } from "./format";
+import { section, formatCriteria, formatDecisions } from "@/lib/context/format";
+import type { AuthContext } from "@/lib/auth/context";
+import { assertTaskAccess } from "@/lib/auth/authorization";
 
 /**
  * Build lean, position-optimized context for external coding agents.
- * Sections ordered by U-shaped attention: start/end get highest recall, middle lowest.
- * No token budget — controlled content is compact, implPlan is critical and never truncated.
+ *
+ * Sections ordered by U-shaped attention: start/end get highest recall, middle
+ * lowest. No token budget — controlled content is compact, implPlan is critical
+ * and never truncated.
+ *
+ * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
  * @returns Formatted context string.
  */
-export async function buildAgentContext(taskId: string): Promise<string> {
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) return "# Task not found";
+export async function buildAgentContext(
+  ctx: AuthContext,
+  taskId: string,
+): Promise<string> {
+  const task = await assertTaskAccess(taskId, ctx);
 
   const [project] = await db
     .select({ identifier: projects.identifier })
     .from(projects)
     .where(eq(projects.id, task.projectId));
   if (!project) {
-    console.error('Task has no joinable project', { taskId: task.id, projectId: task.projectId });
+    console.error("Task has no joinable project", {
+      taskId: task.id,
+      projectId: task.projectId,
+    });
   }
   const taskRef = project
     ? composeTaskRef(asIdentifier(project.identifier), task.sequenceNumber)
@@ -38,9 +52,9 @@ export async function buildAgentContext(taskId: string): Promise<string> {
   const files = (task.files as string[] | null) ?? [];
   const status = task.status as string;
 
-  // --- START: highest recall zone (primacy) ---
-
-  const headerLines: string[] = [`# ${taskRef ? `\`${taskRef}\` ` : ""}${task.title}`];
+  const headerLines: string[] = [
+    `# ${taskRef ? `\`${taskRef}\` ` : ""}${task.title}`,
+  ];
   if (tags.length > 0) {
     headerLines.push(`Tags: ${tags.map((t) => `\`${t}\``).join(", ")}`);
   }
@@ -50,15 +64,16 @@ export async function buildAgentContext(taskId: string): Promise<string> {
   const parts: string[] = [headerLines.join("\n")];
 
   if (task.implementationPlan && status !== "done" && status !== "cancelled") {
-    parts.push(section("Implementation Plan") + "\n" + task.implementationPlan);
+    parts.push(
+      section("Implementation Plan") + "\n" + task.implementationPlan,
+    );
   }
 
-  // --- MIDDLE: lowest recall zone ---
-
   const [deps, downstream, upstreamEdgeNotes] = await Promise.all([
-    getDependencyChain(taskId, 2),
-    getDownstream(taskId, 2),
-    fetchEdgeNotesBySource(taskId),
+    getDependencyChain(taskId, task.projectId, 2),
+    // getDownstream is public — caller already asserted; pass ctx through
+    getDownstream(ctx, taskId, 2),
+    fetchEdgeNotesBySource(task.projectId, taskId),
   ]);
 
   if (deps.length > 0) {
@@ -77,12 +92,19 @@ export async function buildAgentContext(taskId: string): Promise<string> {
       })
       .from(tasks)
       .innerJoin(projects, eq(tasks.projectId, projects.id))
-      .where(sql`${tasks.id} IN ${depIds}`);
+      .where(
+        sql`${tasks.id} IN ${depIds} AND ${tasks.projectId} = ${task.projectId}`,
+      );
 
-    const depMap = new Map(depTasks.map((dt) => [dt.id, {
-      ...dt,
-      taskRef: composeTaskRef(asIdentifier(dt.identifier), dt.sequenceNumber),
-    }]));
+    const depMap = new Map(
+      depTasks.map((dt) => [
+        dt.id,
+        {
+          ...dt,
+          taskRef: composeTaskRef(asIdentifier(dt.identifier), dt.sequenceNumber),
+        },
+      ]),
+    );
 
     for (const dep of deps) {
       const info = depMap.get(dep.id);
@@ -117,12 +139,14 @@ export async function buildAgentContext(taskId: string): Promise<string> {
     parts.push(section("Constraints") + "\n" + formatDecisions(task.decisions));
   }
 
-  // --- END: second-highest recall zone (recency) ---
-
-  parts.push(section("Done Means") + "\n" + formatCriteria(task.acceptanceCriteria));
+  parts.push(
+    section("Done Means") + "\n" + formatCriteria(task.acceptanceCriteria),
+  );
 
   if (files.length > 0) {
-    parts.push(section("Files") + "\n" + files.map((f) => `- ${f}`).join("\n"));
+    parts.push(
+      section("Files") + "\n" + files.map((f) => `- ${f}`).join("\n"),
+    );
   }
 
   if (task.executionRecord && (status === "done" || status === "cancelled")) {
@@ -131,8 +155,11 @@ export async function buildAgentContext(taskId: string): Promise<string> {
 
   if (downstream.length > 0) {
     const [downstreamEdgeNotes, downstreamSummaries] = await Promise.all([
-      fetchEdgeNotesByTarget(taskId),
-      fetchTaskSummaries(downstream.map((d) => d.id)),
+      fetchEdgeNotesByTarget(task.projectId, taskId),
+      fetchTaskSummaries(
+        task.projectId,
+        downstream.map((d) => d.id),
+      ),
     ]);
     const summaryMap = new Map(downstreamSummaries.map((s) => [s.id, s]));
     const downLines: string[] = [];

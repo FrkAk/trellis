@@ -3,16 +3,20 @@
  * Used by shared handlers so both web AI SDK and MCP get identical output.
  */
 
-import type { SearchResult, DetailedEdge, TaskSlim } from "@/lib/graph/queries";
+import type {
+  SearchResult,
+  DetailedEdge,
+  TaskSlim,
+} from "@/lib/graph/_core/queries";
 import type {
   ReadyTask,
   PlannableTask,
   BlockedTask,
   CriticalPathTask,
   DownstreamNode,
-} from "@/lib/graph/traversal";
-import type { ProjectOverview } from "@/lib/context/overview";
-import type { SummaryContext } from "@/lib/context/summary";
+} from "@/lib/graph/_core/traversal";
+import type { ProjectOverview } from "@/lib/context/_core/overview";
+import type { SummaryContext } from "@/lib/context/_core/summary";
 
 const STATUS_ORDER = ["in_progress", "planned", "draft", "done", "cancelled"] as const;
 

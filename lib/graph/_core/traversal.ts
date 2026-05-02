@@ -1,39 +1,26 @@
-"use server";
+import "server-only";
 
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { tasks, projects, taskEdges } from "@/lib/db/schema";
+import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
+import { buildEffectiveDepGraph } from "@/lib/graph/effective-deps";
+import { deriveTaskStates } from "@/lib/graph/_core/queries";
+import type { AuthContext } from "@/lib/auth/context";
 import {
-  tasks,
-  projects,
-  taskEdges,
-} from "@/lib/db/schema";
-import { asIdentifier, composeTaskRef, type Identifier } from "./identifier";
-import { buildEffectiveDepGraph } from "./effective-deps";
-import { deriveTaskStates } from "./queries";
-
-/**
- * Fetch a project's identifier prefix for composing taskRefs.
- *
- * @param projectId - UUID of the project.
- * @returns Identifier string, or null if project not found.
- */
-async function getProjectIdentifier(projectId: string): Promise<Identifier | null> {
-  const [row] = await db
-    .select({ identifier: projects.identifier })
-    .from(projects)
-    .where(eq(projects.id, projectId));
-  return row ? asIdentifier(row.identifier) : null;
-}
+  assertProjectAccess,
+  assertTaskAccess,
+} from "@/lib/auth/authorization";
 
 // ---------------------------------------------------------------------------
-// Ancestor traversal
+// Ancestor traversal — internal helper
 // ---------------------------------------------------------------------------
 
 /** Ancestor node (always the project for a task). */
 type Ancestor = { id: string; type: "project"; title: string };
 
 /**
- * Get the parent project for a task.
+ * Get the parent project for a task. Internal — caller asserted access.
  * @param taskId - UUID of the task.
  * @returns Array with the project ancestor, or empty if not found.
  */
@@ -54,7 +41,7 @@ export async function getAncestors(taskId: string): Promise<Ancestor[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Dependency chain (recursive CTE)
+// Dependency chain — internal helper (recursive CTE)
 // ---------------------------------------------------------------------------
 
 /** A task in a dependency chain with depth. */
@@ -64,13 +51,21 @@ type DependencyNode = {
 };
 
 /**
- * Follow `depends_on` edges recursively up to maxDepth.
+ * Follow `depends_on` edges recursively up to maxDepth. Internal —
+ * caller asserted task access first.
+ *
+ * Defense-in-depth: every step joins `tasks` and filters on `projectId` so
+ * a stale or hand-crafted cross-project edge cannot pull tasks from another
+ * project (and therefore another team) into the result.
+ *
  * @param taskId - UUID of the starting task.
+ * @param projectId - UUID of the project the starting task belongs to.
  * @param maxDepth - Maximum traversal depth (default 10).
  * @returns Array of dependency tasks with depth.
  */
 export async function getDependencyChain(
   taskId: string,
+  projectId: string,
   maxDepth = 10,
 ): Promise<DependencyNode[]> {
   const rows = await db.execute<{
@@ -79,11 +74,13 @@ export async function getDependencyChain(
   }>(sql`
     WITH RECURSIVE dep_chain AS (
       SELECT
-        ${taskEdges.targetTaskId} AS id,
+        e.target_task_id AS id,
         1 AS depth
-      FROM ${taskEdges}
-      WHERE ${taskEdges.sourceTaskId} = ${taskId}
-        AND ${taskEdges.edgeType} = 'depends_on'
+      FROM ${taskEdges} e
+      INNER JOIN ${tasks} t ON t.id = e.target_task_id
+      WHERE e.source_task_id = ${taskId}
+        AND e.edge_type = 'depends_on'
+        AND t.project_id = ${projectId}
 
       UNION ALL
 
@@ -92,7 +89,9 @@ export async function getDependencyChain(
         dc.depth + 1 AS depth
       FROM ${taskEdges} e
       INNER JOIN dep_chain dc ON e.source_task_id = dc.id
+      INNER JOIN ${tasks} t ON t.id = e.target_task_id
       WHERE e.edge_type = 'depends_on'
+        AND t.project_id = ${projectId}
         AND dc.depth < ${maxDepth}
     )
     SELECT DISTINCT id, MIN(depth) AS depth
@@ -108,7 +107,7 @@ export async function getDependencyChain(
 }
 
 // ---------------------------------------------------------------------------
-// Connected tasks (1-hop neighbors)
+// Connected tasks — internal helper (1-hop neighbors)
 // ---------------------------------------------------------------------------
 
 /** A 1-hop neighbor connected via an edge. */
@@ -119,7 +118,7 @@ type ConnectedTask = {
 };
 
 /**
- * Fetch all tasks connected by exactly one edge hop.
+ * Fetch all tasks connected by exactly one edge hop. Internal helper.
  * @param taskId - UUID of the task.
  * @returns Array of connected tasks with edge info.
  */
@@ -169,28 +168,38 @@ export type DownstreamNode = {
 };
 
 /**
- * Follow `depends_on` edges in reverse: find tasks that depend on this task.
- * Edges are project-scoped so all downstream tasks share the root task's project.
+ * Find tasks that depend on this task.
  *
+ * Defense-in-depth: walks only edges whose source task lives in the same
+ * project as the starting task, so a stale or hand-crafted cross-project
+ * edge cannot pull dependents from another team into the result.
+ *
+ * @param ctx - Resolved auth context.
  * @param taskId - UUID of the starting task.
  * @param maxDepth - Maximum traversal depth (default 10).
  * @returns Array of downstream tasks with depth.
  */
 export async function getDownstream(
+  ctx: AuthContext,
   taskId: string,
   maxDepth = 10,
 ): Promise<DownstreamNode[]> {
+  const rootTask = await assertTaskAccess(taskId, ctx);
+  const projectId = rootTask.projectId;
+
   const rows = await db.execute<{
     id: string;
     depth: number;
   }>(sql`
     WITH RECURSIVE downstream AS (
       SELECT
-        ${taskEdges.sourceTaskId} AS id,
+        e.source_task_id AS id,
         1 AS depth
-      FROM ${taskEdges}
-      WHERE ${taskEdges.targetTaskId} = ${taskId}
-        AND ${taskEdges.edgeType} = 'depends_on'
+      FROM ${taskEdges} e
+      INNER JOIN ${tasks} t ON t.id = e.source_task_id
+      WHERE e.target_task_id = ${taskId}
+        AND e.edge_type = 'depends_on'
+        AND t.project_id = ${projectId}
 
       UNION ALL
 
@@ -199,7 +208,9 @@ export async function getDownstream(
         ds.depth + 1 AS depth
       FROM ${taskEdges} e
       INNER JOIN downstream ds ON e.target_task_id = ds.id
+      INNER JOIN ${tasks} t ON t.id = e.source_task_id
       WHERE e.edge_type = 'depends_on'
+        AND t.project_id = ${projectId}
         AND ds.depth < ${maxDepth}
     )
     SELECT DISTINCT id, MIN(depth) AS depth
@@ -208,10 +219,9 @@ export async function getDownstream(
     ORDER BY depth ASC
   `);
 
-  const raw = (rows as unknown as { id: string; depth: number }[]).map((row) => ({
-    id: row.id,
-    depth: Number(row.depth),
-  }));
+  const raw = (rows as unknown as { id: string; depth: number }[]).map(
+    (row) => ({ id: row.id, depth: Number(row.depth) }),
+  );
   if (raw.length === 0) return [];
 
   const ids = raw.map((r) => r.id);
@@ -224,7 +234,9 @@ export async function getDownstream(
     })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(sql`${tasks.id} IN ${ids}`);
+    .where(
+      sql`${tasks.id} IN ${ids} AND ${tasks.projectId} = ${projectId}`,
+    );
 
   const infoMap = new Map<string, { taskRef: string; title: string }>();
   for (const t of taskRows) {
@@ -266,14 +278,16 @@ export type ReadyTask = {
  * don't satisfy a dep on their own, but the walk continues through them to
  * find the next active prerequisite (which is the actual wall).
  *
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns Array of ready tasks.
  */
 export async function getReadyTasks(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<ReadyTask[]> {
-  const identifier = await getProjectIdentifier(projectId);
-  if (!identifier) return [];
+  const project = await assertProjectAccess(projectId, ctx);
+  const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);
   const ready: ReadyTask[] = [];
@@ -315,19 +329,21 @@ export type PlannableTask = {
 };
 
 /**
- * Find draft tasks that are actually plannable now: have a description, at
- * least one acceptance criterion, AND every effective dep is done. Delegates
- * the readiness logic to `deriveTaskStates` so this analyzer agrees with
+ * Find draft tasks that are plannable now: have a description, at least one
+ * acceptance criterion, AND every effective dep is done. Delegates the
+ * readiness logic to `deriveTaskStates` so this analyzer agrees with
  * search-result `state` and `mymir_analyze type='blocked'`.
  *
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns Array of plannable tasks (state === 'plannable' from deriveTaskStates).
  */
 export async function getPlannableTasks(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<PlannableTask[]> {
-  const identifier = await getProjectIdentifier(projectId);
-  if (!identifier) return [];
+  const project = await assertProjectAccess(projectId, ctx);
+  const identifier = asIdentifier(project.identifier);
 
   const allTasks = await db
     .select({
@@ -367,7 +383,12 @@ export type BlockedTask = {
   taskRef: string;
   title: string;
   status: string;
-  blockedBy: { id: string; taskRef: string; title: string; status: string }[];
+  blockedBy: {
+    id: string;
+    taskRef: string;
+    title: string;
+    status: string;
+  }[];
 };
 
 /**
@@ -378,21 +399,28 @@ export type BlockedTask = {
  * Cancelled tasks are transparent — they never appear as blockers and are
  * never themselves listed as blocked.
  *
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns Array of blocked tasks with their effective blockers.
  */
 export async function getBlockedTasks(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<BlockedTask[]> {
-  const identifier = await getProjectIdentifier(projectId);
-  if (!identifier) return [];
+  const project = await assertProjectAccess(projectId, ctx);
+  const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);
   const blocked: BlockedTask[] = [];
 
   for (const info of graph.activeTasks.values()) {
     const deps = graph.effectiveDeps.get(info.id) ?? new Set<string>();
-    const blockers: { id: string; taskRef: string; title: string; status: string }[] = [];
+    const blockers: {
+      id: string;
+      taskRef: string;
+      title: string;
+      status: string;
+    }[] = [];
     for (const depId of deps) {
       const depInfo = graph.activeTasks.get(depId);
       if (!depInfo) continue;
@@ -441,16 +469,18 @@ export type CriticalPathTask = {
  * by DP `longest[node] = 1 + max(longest[dep])`, then backtrack from the
  * highest-`longest` node to recover the chain in root-first order.
  *
+ * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns Ordered array of active tasks forming the longest effective chain
  *   (foundational task first, topmost dependent last). Empty when no active
  *   tasks exist or a cycle is detected.
  */
 export async function getCriticalPath(
+  ctx: AuthContext,
   projectId: string,
 ): Promise<CriticalPathTask[]> {
-  const identifier = await getProjectIdentifier(projectId);
-  if (!identifier) return [];
+  const project = await assertProjectAccess(projectId, ctx);
+  const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);
   if (graph.activeTasks.size === 0) return [];

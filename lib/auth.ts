@@ -4,8 +4,9 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { ac, owner, admin, member } from "@/lib/auth/permissions";
+import { asc, eq } from "drizzle-orm";
 import * as authSchema from "@/lib/db/auth-schema";
+import { member } from "@/lib/db/auth-schema";
 
 /**
  * Auth DB connection. Uses the same DATABASE_URL as the app.
@@ -53,12 +54,33 @@ export const auth = betterAuth({
       ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"],
     },
   },
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => {
+          if (session.activeOrganizationId) return { data: session };
+          const [earliest] = await authDb
+            .select({ organizationId: member.organizationId })
+            .from(member)
+            .where(eq(member.userId, session.userId))
+            .orderBy(asc(member.createdAt))
+            .limit(1);
+          if (!earliest) return { data: session };
+          return {
+            data: { ...session, activeOrganizationId: earliest.organizationId },
+          };
+        },
+      },
+    },
+  },
+  // organization() must precede any future customSession() — see
+  // better-auth issue #3233 (activeOrganizationId is type-erased otherwise).
+  // Role-based permissions are intentionally left at Better Auth defaults
+  // (any member can read+write team data) until MYMR-69 wires hasPermission
+  // checks into the data layer.
   plugins: [
     jwt(),
-    organization({
-      ac,
-      roles: { owner, admin, member },
-    }),
+    organization(),
     oauthProvider({
       loginPage: "/sign-in",
       consentPage: "/consent",
@@ -67,6 +89,19 @@ export const auth = betterAuth({
       validAudiences: process.env.BETTER_AUTH_URL
         ? [process.env.BETTER_AUTH_URL, `${process.env.BETTER_AUTH_URL}/api/mcp`]
         : ["http://localhost:3000", "http://localhost:3000/api/mcp"],
+      // consentReferenceId runs at consent time with the authenticated session,
+      // so it captures activeOrganizationId for clients registered via
+      // unauthenticated DCR. clientReference (registration-time) does not work
+      // here because Claude Code's DCR has no session.
+      postLogin: {
+        page: "/onboarding/team",
+        consentReferenceId: ({ session }) =>
+          (session?.activeOrganizationId as string | undefined) ?? undefined,
+        shouldRedirect: () => false,
+      },
+      customAccessTokenClaims: ({ referenceId }) => ({
+        active_org: referenceId ?? null,
+      }),
       silenceWarnings: { oauthAuthServerConfig: true },
     }),
   ],
