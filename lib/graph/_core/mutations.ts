@@ -37,6 +37,7 @@ import {
   ForbiddenError,
   assertProjectAccess,
   assertTaskAccess,
+  isUuid,
 } from "@/lib/auth/authorization";
 
 /** Emit a change event to all connected SSE clients via the in-memory event bus. */
@@ -652,7 +653,10 @@ export async function createEdge(
   }
 
   if (data.edgeType === "depends_on") {
-    const chain = await getDependencyChain(data.targetTaskId);
+    const chain = await getDependencyChain(
+      data.targetTaskId,
+      targetTask.projectId,
+    );
     const wouldCycle = chain.some((node) => node.id === data.sourceTaskId);
     if (wouldCycle) {
       throw new Error(
@@ -687,18 +691,30 @@ export async function createEdge(
 
 /**
  * Internal helper: fetch an edge by id then assert the caller can reach it
- * via the parent project. Throws ForbiddenError if missing or cross-team.
+ * via the parent project. Both the missing-edge case and a cross-team task
+ * surface as a `ForbiddenError` tagged with `resource: "edge"` so the tool
+ * layer can render an edge-specific recovery hint without re-querying.
  * @param edgeId - UUID of the edge.
  * @param ctx - Resolved auth context.
  * @returns The edge row.
  */
 async function loadAuthorizedEdge(edgeId: string, ctx: AuthContext) {
+  if (!isUuid(edgeId)) {
+    throw new ForbiddenError("Forbidden", "edge", edgeId);
+  }
   const [edge] = await db
     .select()
     .from(taskEdges)
     .where(eq(taskEdges.id, edgeId));
-  if (!edge) throw new ForbiddenError();
-  await assertTaskAccess(edge.sourceTaskId, ctx);
+  if (!edge) throw new ForbiddenError("Forbidden", "edge", edgeId);
+  try {
+    await assertTaskAccess(edge.sourceTaskId, ctx);
+  } catch (err) {
+    if (err instanceof ForbiddenError) {
+      throw new ForbiddenError("Forbidden", "edge", edgeId);
+    }
+    throw err;
+  }
   return edge;
 }
 
@@ -741,7 +757,11 @@ export async function updateEdge(
       );
 
     if (updates.edgeType === "depends_on") {
-      const chain = await getDependencyChain(existing.targetTaskId);
+      const targetTask = await assertTaskAccess(existing.targetTaskId, ctx);
+      const chain = await getDependencyChain(
+        existing.targetTaskId,
+        targetTask.projectId,
+      );
       if (chain.some((node) => node.id === existing.sourceTaskId)) {
         throw new Error(
           "Circular dependency: changing this edge type would create a cycle.",

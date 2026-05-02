@@ -70,7 +70,7 @@ export async function buildAgentContext(
   }
 
   const [deps, downstream, upstreamEdgeNotes] = await Promise.all([
-    getDependencyChain(taskId, 2),
+    getDependencyChain(taskId, task.projectId, 2),
     // getDownstream is public — caller already asserted; pass ctx through
     getDownstream(ctx, taskId, 2),
     fetchEdgeNotesBySource(task.projectId, taskId),
@@ -92,7 +92,9 @@ export async function buildAgentContext(
       })
       .from(tasks)
       .innerJoin(projects, eq(tasks.projectId, projects.id))
-      .where(sql`${tasks.id} IN ${depIds}`);
+      .where(
+        sql`${tasks.id} IN ${depIds} AND ${tasks.projectId} = ${task.projectId}`,
+      );
 
     const depMap = new Map(
       depTasks.map((dt) => [

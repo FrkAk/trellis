@@ -4,9 +4,6 @@
  * handlers do validation, authorization, and routing.
  */
 
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { taskEdges } from "@/lib/db/schema";
 import {
   createProject,
   updateProject,
@@ -61,11 +58,7 @@ import {
 } from "./format-responses";
 import { findVariant, normalizeTags } from "./tag-similarity";
 import type { AuthContext } from "@/lib/auth/context";
-import {
-  ForbiddenError,
-  assertProjectAccess,
-  assertTaskAccess,
-} from "@/lib/auth/authorization";
+import { ForbiddenError } from "@/lib/auth/authorization";
 
 /**
  * Build variant-warning hints for proposed tags against existing project tags.
@@ -240,90 +233,36 @@ function stateHint(state: TaskState): string {
 }
 
 // ---------------------------------------------------------------------------
-// Access-aware existence guards — return actionable error or null (pass)
+// Error translation — data-layer asserts throw, this maps to actionable hints
 // ---------------------------------------------------------------------------
 
 /**
- * Verify the caller can access the project. Returns a fail result with a
- * recovery hint when not, or null when the caller is authorized.
- * Maps ForbiddenError to "not found" to avoid leaking team membership.
- * @param id - Project UUID to check.
- * @param ctx - Resolved auth context.
- */
-async function requireProjectAccess(
-  id: string,
-  ctx: AuthContext,
-): Promise<ToolResult | null> {
-  try {
-    await assertProjectAccess(id, ctx);
-    return null;
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      return fail(
-        `Project '${id}' not found. Run mymir_project action='list' to see available projects.`,
-      );
-    }
-    throw e;
-  }
-}
-
-/**
- * Verify the caller can access the task.
- * @param id - Task UUID to check.
- * @param ctx - Resolved auth context.
- */
-async function requireTaskAccess(
-  id: string,
-  ctx: AuthContext,
-): Promise<ToolResult | null> {
-  try {
-    await assertTaskAccess(id, ctx);
-    return null;
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      return fail(
-        `Task '${id}' not found. Run mymir_query type='search' to find tasks, or type='list' with your projectId.`,
-      );
-    }
-    throw e;
-  }
-}
-
-/**
- * Verify the caller can access the edge by joining through the source task.
- * @param id - Edge UUID to check.
- * @param ctx - Resolved auth context.
- */
-async function requireEdgeAccess(
-  id: string,
-  ctx: AuthContext,
-): Promise<ToolResult | null> {
-  const notFoundMessage = `Edge '${id}' not found. Run mymir_query type='edges' with a taskId to see current edges.`;
-  const [edge] = await db
-    .select({ sourceTaskId: taskEdges.sourceTaskId })
-    .from(taskEdges)
-    .where(eq(taskEdges.id, id))
-    .limit(1);
-  if (!edge) return fail(notFoundMessage);
-  try {
-    await assertTaskAccess(edge.sourceTaskId, ctx);
-    return null;
-  } catch (e) {
-    if (e instanceof ForbiddenError) return fail(notFoundMessage);
-    throw e;
-  }
-}
-
-/**
- * Translate a thrown ForbiddenError to a generic tool failure. Other
- * errors fall through unchanged for catch-all logging.
+ * Translate a thrown ForbiddenError to a resource-specific tool failure with
+ * a recovery hint. The data-layer assertions tag the error with `resource`
+ * and `resourceId`, so this layer does not re-query the database.
  * @param e - Caught error.
  */
 function translateError(e: unknown): ToolResult {
   if (e instanceof ForbiddenError) {
-    return fail(
-      "Resource not found in your team. Run mymir_project action='list' to see your team's projects.",
-    );
+    const id = e.resourceId ?? "";
+    switch (e.resource) {
+      case "project":
+        return fail(
+          `Project '${id}' not found. Run mymir_project action='list' to see available projects.`,
+        );
+      case "task":
+        return fail(
+          `Task '${id}' not found. Run mymir_query type='search' to find tasks, or type='list' with your projectId.`,
+        );
+      case "edge":
+        return fail(
+          `Edge '${id}' not found. Run mymir_query type='edges' with a taskId to see current edges.`,
+        );
+      default:
+        return fail(
+          "Resource not found in your team. Run mymir_project action='list' to see your team's projects.",
+        );
+    }
   }
   return fail(e instanceof Error ? e.message : String(e));
 }
@@ -498,8 +437,6 @@ export async function handleProject(
             "update requires at least one of: title, description, status, categories, identifier.",
           );
         }
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
         const changes: ProjectUpdate = {};
         if (p.title !== undefined) changes.title = p.title;
         if (p.description !== undefined) changes.description = p.description;
@@ -543,8 +480,6 @@ export async function handleTask(
     switch (p.action) {
       case "create": {
         if (!p.projectId) return fail("projectId required for create");
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
         if (!p.title) return fail("title required for create");
         if (!p.description)
           return fail(
@@ -648,8 +583,6 @@ export async function handleTask(
             "update requires at least one of: title, description, status, acceptanceCriteria, decisions, tags, category, files, implementationPlan, executionRecord.",
           );
         }
-        const notFound = await requireTaskAccess(p.taskId, ctx);
-        if (notFound) return notFound;
         let preExistingTags: string[] = [];
         let priorStatus: string | undefined;
         if (p.tags && p.tags.length > 0) {
@@ -742,8 +675,6 @@ export async function handleTask(
       }
       case "delete": {
         if (!p.taskId) return fail("taskId required for delete");
-        const notFound = await requireTaskAccess(p.taskId, ctx);
-        if (notFound) return notFound;
         if (p.preview !== false) {
           const result = await deleteTaskPreview(ctx, p.taskId);
           return ok({
@@ -755,8 +686,6 @@ export async function handleTask(
       }
       case "reorder": {
         if (!p.taskId) return fail("taskId required for reorder");
-        const notFound = await requireTaskAccess(p.taskId, ctx);
-        if (notFound) return notFound;
         if (p.order === undefined)
           return fail("order required for reorder (0-based position)");
         return ok(await reorderTask(ctx, p.taskId, p.order));
@@ -786,10 +715,6 @@ export async function handleEdge(
           return fail(
             "edgeType required for create (depends_on or relates_to)",
           );
-        const sourceMissing = await requireTaskAccess(p.sourceTaskId, ctx);
-        if (sourceMissing) return sourceMissing;
-        const targetMissing = await requireTaskAccess(p.targetTaskId, ctx);
-        if (targetMissing) return targetMissing;
         const edge = await createEdge(ctx, {
           sourceTaskId: p.sourceTaskId,
           targetTaskId: p.targetTaskId,
@@ -814,8 +739,6 @@ export async function handleEdge(
             "update requires at least one of: edgeType, note. " +
               "To remove the edge, use action='remove'.",
           );
-        const notFound = await requireEdgeAccess(p.edgeId, ctx);
-        if (notFound) return notFound;
         return ok(
           await updateEdge(ctx, p.edgeId, {
             edgeType: p.edgeType as EdgeType | undefined,
@@ -825,16 +748,10 @@ export async function handleEdge(
       }
       case "remove": {
         if (p.edgeId) {
-          const notFound = await requireEdgeAccess(p.edgeId, ctx);
-          if (notFound) return notFound;
           await removeEdge(ctx, p.edgeId);
           return ok({ removed: p.edgeId });
         }
         if (p.sourceTaskId && p.targetTaskId && p.edgeType) {
-          const sourceMissing = await requireTaskAccess(p.sourceTaskId, ctx);
-          if (sourceMissing) return sourceMissing;
-          const targetMissing = await requireTaskAccess(p.targetTaskId, ctx);
-          if (targetMissing) return targetMissing;
           const edge = await findEdgeByNodes(
             ctx,
             p.sourceTaskId,
@@ -880,8 +797,6 @@ export async function handleQuery(
         if (!hasQuery && tagFilter.length === 0) {
           return fail("query or tags required for search");
         }
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
 
         const variantHints =
           tagFilter.length > 0
@@ -899,8 +814,6 @@ export async function handleQuery(
       }
       case "list": {
         if (!p.projectId) return fail("projectId required for list");
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
         return ok(formatTaskList(await getProjectTasksSlim(ctx, p.projectId)));
       }
       case "edges": {
@@ -908,14 +821,10 @@ export async function handleQuery(
           return fail(
             "taskId required for edges. Use type='search' to find task IDs.",
           );
-        const notFound = await requireTaskAccess(p.taskId, ctx);
-        if (notFound) return notFound;
         return ok(formatDetailedEdges(await getTaskEdgesDetailed(ctx, p.taskId)));
       }
       case "overview": {
         if (!p.projectId) return fail("projectId required for overview");
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
         const overview = await buildProjectOverview(ctx, p.projectId);
         return ok(overview ? formatOverview(overview) : "Project not found.");
       }
@@ -937,18 +846,16 @@ export async function handleContext(
   ctx: AuthContext,
 ): Promise<ToolResult> {
   try {
-    const notFound = await requireTaskAccess(p.taskId, ctx);
-    if (notFound) return notFound;
     switch (p.depth) {
       case "summary":
         return ok(formatSummary(await buildSummaryContext(ctx, p.taskId)));
       case "working": {
         if (!p.projectId)
           return fail("projectId required for working depth");
-        const projectMissing = await requireProjectAccess(p.projectId, ctx);
-        if (projectMissing) return projectMissing;
+        // fetchTask asserts task access; the projectId comparison protects
+        // against passing a different project's UUID alongside our own task.
         const task = await fetchTask(ctx, p.taskId);
-        if (task && task.projectId !== p.projectId) {
+        if (task.projectId !== p.projectId) {
           return fail(
             `Task '${p.taskId}' belongs to project '${task.projectId}', not '${p.projectId}'. ` +
               `Run mymir_query type='search' to find the correct projectId.`,
@@ -981,14 +888,10 @@ export async function handleAnalyze(
     switch (p.type) {
       case "ready": {
         if (!p.projectId) return fail("projectId required for ready");
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
         return ok(formatReadyTasks(await getReadyTasks(ctx, p.projectId)));
       }
       case "blocked": {
         if (!p.projectId) return fail("projectId required for blocked");
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
         return ok(formatBlockedTasks(await getBlockedTasks(ctx, p.projectId)));
       }
       case "downstream": {
@@ -996,20 +899,14 @@ export async function handleAnalyze(
           return fail(
             "taskId required for downstream analysis. Use mymir_query type='search' to find it.",
           );
-        const notFound = await requireTaskAccess(p.taskId, ctx);
-        if (notFound) return notFound;
         return ok(formatDownstream(await getDownstream(ctx, p.taskId)));
       }
       case "critical_path": {
         if (!p.projectId) return fail("projectId required for critical_path");
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
         return ok(formatCriticalPath(await getCriticalPath(ctx, p.projectId)));
       }
       case "plannable": {
         if (!p.projectId) return fail("projectId required for plannable");
-        const notFound = await requireProjectAccess(p.projectId, ctx);
-        if (notFound) return notFound;
         return ok(
           formatPlannableTasks(await getPlannableTasks(ctx, p.projectId)),
         );

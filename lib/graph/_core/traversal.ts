@@ -52,14 +52,20 @@ type DependencyNode = {
 
 /**
  * Follow `depends_on` edges recursively up to maxDepth. Internal —
- * caller asserted task access first; depth-limited walk stays within
- * the same project's edge set.
+ * caller asserted task access first.
+ *
+ * Defense-in-depth: every step joins `tasks` and filters on `projectId` so
+ * a stale or hand-crafted cross-project edge cannot pull tasks from another
+ * project (and therefore another team) into the result.
+ *
  * @param taskId - UUID of the starting task.
+ * @param projectId - UUID of the project the starting task belongs to.
  * @param maxDepth - Maximum traversal depth (default 10).
  * @returns Array of dependency tasks with depth.
  */
 export async function getDependencyChain(
   taskId: string,
+  projectId: string,
   maxDepth = 10,
 ): Promise<DependencyNode[]> {
   const rows = await db.execute<{
@@ -68,11 +74,13 @@ export async function getDependencyChain(
   }>(sql`
     WITH RECURSIVE dep_chain AS (
       SELECT
-        ${taskEdges.targetTaskId} AS id,
+        e.target_task_id AS id,
         1 AS depth
-      FROM ${taskEdges}
-      WHERE ${taskEdges.sourceTaskId} = ${taskId}
-        AND ${taskEdges.edgeType} = 'depends_on'
+      FROM ${taskEdges} e
+      INNER JOIN ${tasks} t ON t.id = e.target_task_id
+      WHERE e.source_task_id = ${taskId}
+        AND e.edge_type = 'depends_on'
+        AND t.project_id = ${projectId}
 
       UNION ALL
 
@@ -81,7 +89,9 @@ export async function getDependencyChain(
         dc.depth + 1 AS depth
       FROM ${taskEdges} e
       INNER JOIN dep_chain dc ON e.source_task_id = dc.id
+      INNER JOIN ${tasks} t ON t.id = e.target_task_id
       WHERE e.edge_type = 'depends_on'
+        AND t.project_id = ${projectId}
         AND dc.depth < ${maxDepth}
     )
     SELECT DISTINCT id, MIN(depth) AS depth
@@ -158,8 +168,12 @@ export type DownstreamNode = {
 };
 
 /**
- * Find tasks that depend on this task. Edges are project-scoped, so all
- * downstream tasks share the root task's project.
+ * Find tasks that depend on this task.
+ *
+ * Defense-in-depth: walks only edges whose source task lives in the same
+ * project as the starting task, so a stale or hand-crafted cross-project
+ * edge cannot pull dependents from another team into the result.
+ *
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the starting task.
  * @param maxDepth - Maximum traversal depth (default 10).
@@ -170,7 +184,8 @@ export async function getDownstream(
   taskId: string,
   maxDepth = 10,
 ): Promise<DownstreamNode[]> {
-  await assertTaskAccess(taskId, ctx);
+  const rootTask = await assertTaskAccess(taskId, ctx);
+  const projectId = rootTask.projectId;
 
   const rows = await db.execute<{
     id: string;
@@ -178,11 +193,13 @@ export async function getDownstream(
   }>(sql`
     WITH RECURSIVE downstream AS (
       SELECT
-        ${taskEdges.sourceTaskId} AS id,
+        e.source_task_id AS id,
         1 AS depth
-      FROM ${taskEdges}
-      WHERE ${taskEdges.targetTaskId} = ${taskId}
-        AND ${taskEdges.edgeType} = 'depends_on'
+      FROM ${taskEdges} e
+      INNER JOIN ${tasks} t ON t.id = e.source_task_id
+      WHERE e.target_task_id = ${taskId}
+        AND e.edge_type = 'depends_on'
+        AND t.project_id = ${projectId}
 
       UNION ALL
 
@@ -191,7 +208,9 @@ export async function getDownstream(
         ds.depth + 1 AS depth
       FROM ${taskEdges} e
       INNER JOIN downstream ds ON e.target_task_id = ds.id
+      INNER JOIN ${tasks} t ON t.id = e.source_task_id
       WHERE e.edge_type = 'depends_on'
+        AND t.project_id = ${projectId}
         AND ds.depth < ${maxDepth}
     )
     SELECT DISTINCT id, MIN(depth) AS depth
@@ -215,7 +234,9 @@ export async function getDownstream(
     })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(sql`${tasks.id} IN ${ids}`);
+    .where(
+      sql`${tasks.id} IN ${ids} AND ${tasks.projectId} = ${projectId}`,
+    );
 
   const infoMap = new Map<string, { taskRef: string; title: string }>();
   for (const t of taskRows) {

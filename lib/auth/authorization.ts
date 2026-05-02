@@ -11,13 +11,37 @@ import {
 import { member } from "@/lib/db/auth-schema";
 import type { AuthContext } from "@/lib/auth/context";
 
+/** Resource kind a {@link ForbiddenError} refers to. */
+export type ForbiddenResource = "project" | "task" | "edge";
+
+/** Strict UUID v1-v5 shape. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Reject obviously malformed ids before issuing a parameterized SQL query.
+ * Postgres raises `22P02 invalid_text_representation` for non-UUID input on
+ * a `uuid` column, which would otherwise surface as a 500 instead of a 404.
+ * @param id - Candidate UUID string.
+ * @returns True when the input matches the UUID shape.
+ */
+export function isUuid(id: string): boolean {
+  return UUID_PATTERN.test(id);
+}
+
 /**
  * Thrown when the caller is authenticated but not authorized for the target
  * resource. Default-deny: helpers throw this so the application layer
  * cannot accidentally bypass the check by ignoring a boolean return value.
+ *
+ * `resource` and `resourceId` let callers translate the error into a
+ * resource-specific recovery hint without re-querying the database.
  */
 export class ForbiddenError extends Error {
-  constructor(message = "Forbidden") {
+  constructor(
+    message = "Forbidden",
+    public readonly resource?: ForbiddenResource,
+    public readonly resourceId?: string,
+  ) {
     super(message);
     this.name = "ForbiddenError";
   }
@@ -43,6 +67,9 @@ export async function assertProjectAccess(
   projectId: string,
   ctx: AuthContext,
 ): Promise<Project> {
+  if (!isUuid(projectId)) {
+    throw new ForbiddenError("Forbidden", "project", projectId);
+  }
   const [row] = await db
     .select(getTableColumns(projects))
     .from(projects)
@@ -60,7 +87,7 @@ export async function assertProjectAccess(
       ),
     )
     .limit(1);
-  if (!row) throw new ForbiddenError();
+  if (!row) throw new ForbiddenError("Forbidden", "project", projectId);
   return row;
 }
 
@@ -78,6 +105,9 @@ export async function assertTaskAccess(
   taskId: string,
   ctx: AuthContext,
 ): Promise<Task> {
+  if (!isUuid(taskId)) {
+    throw new ForbiddenError("Forbidden", "task", taskId);
+  }
   const [row] = await db
     .select(getTableColumns(tasks))
     .from(tasks)
@@ -96,6 +126,6 @@ export async function assertTaskAccess(
       ),
     )
     .limit(1);
-  if (!row) throw new ForbiddenError();
+  if (!row) throw new ForbiddenError("Forbidden", "task", taskId);
   return row;
 }

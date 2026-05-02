@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { getProject } from '@/lib/graph/queries';
 import { requireMembership } from '@/lib/auth/membership';
+import { ForbiddenError } from '@/lib/auth/authorization';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
 import { notFound, redirect } from 'next/navigation';
 
@@ -19,11 +20,15 @@ interface LayoutProps {
 export default async function ProjectLayout({ children, params }: LayoutProps) {
   await requireMembership();
   const { projectId } = await params;
-  const project = await getProject(projectId);
 
-  if (!project) {
-    notFound();
+  let project: Awaited<ReturnType<typeof getProject>>;
+  try {
+    project = await getProject(projectId);
+  } catch (err) {
+    if (err instanceof ForbiddenError) notFound();
+    throw err;
   }
+
   if (project.status === 'brainstorming' || project.status === 'decomposing') {
     redirect('/');
   }

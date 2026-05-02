@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
  * Onboarding page for teams (Better Auth organizations). When the caller
  * already has memberships, sets the earliest as active and bounces home.
  * Otherwise renders a form to create a team or accept an invitation by id.
+ * If the bounce fails, render an inline error rather than redirecting to
+ * `/`, which would loop back through `requireMembership`.
  * @returns Server-rendered onboarding UI.
  */
 export default async function OnboardingTeamPage() {
@@ -26,18 +28,26 @@ export default async function OnboardingTeamPage() {
     .limit(1);
 
   if (earliest) {
-    if (session.session.activeOrganizationId !== earliest.organizationId) {
-      const reqHeaders = await headers();
-      try {
-        await auth.api.setActiveOrganization({
-          body: { organizationId: earliest.organizationId },
-          headers: reqHeaders,
-        });
-      } catch (err) {
-        console.error("setActiveOrganization on onboarding bounce failed", err);
-      }
+    if (session.session.activeOrganizationId === earliest.organizationId) {
+      redirect("/");
     }
-    redirect("/");
+
+    const reqHeaders = await headers();
+    let activated = false;
+    try {
+      await auth.api.setActiveOrganization({
+        body: { organizationId: earliest.organizationId },
+        headers: reqHeaders,
+      });
+      activated = true;
+    } catch (err) {
+      console.error("setActiveOrganization on onboarding bounce failed", err);
+    }
+
+    if (activated) {
+      redirect("/");
+    }
+    return <BounceFailedState />;
   }
 
   return (
@@ -53,6 +63,33 @@ export default async function OnboardingTeamPage() {
           </p>
         </div>
         <OnboardingForm />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Error state shown when the onboarding bounce path could not activate the
+ * caller's existing team. Refreshing retries the activation; if it keeps
+ * failing the underlying error is in the server logs.
+ */
+function BounceFailedState() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center px-4">
+      <div className="w-full max-w-md space-y-4 text-center">
+        <h1 className="text-2xl font-semibold text-text-primary">
+          Could not activate your team
+        </h1>
+        <p className="text-sm text-text-muted">
+          Something went wrong while switching to your team. Refresh to try
+          again — if the problem persists, contact support.
+        </p>
+        <a
+          href="/onboarding/team"
+          className="inline-block rounded-md bg-accent px-4 py-2 text-sm font-medium text-text-primary"
+        >
+          Refresh
+        </a>
       </div>
     </div>
   );
