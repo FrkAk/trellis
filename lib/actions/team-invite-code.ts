@@ -9,7 +9,7 @@ import { teamInviteCodes } from "@/lib/db/team-schema";
 import { requireSession } from "@/lib/auth/session";
 import { getAuthContext, NoActiveTeamError } from "@/lib/auth/context";
 import { isOrgAdmin } from "@/lib/auth/org-permissions";
-import { generateInviteCode, isInviteCode } from "@/lib/auth/invite-code";
+import { generateInviteCode, INVITE_CODE_PATTERN } from "@/lib/auth/invite-code";
 import { mapBetterAuthError } from "@/lib/actions/team-errors";
 
 /** Public-facing metadata for a team invite code. Hides internal fields. */
@@ -36,7 +36,6 @@ export type InviteCodeResult =
 
 type JoinFailureCode =
   | "unauthorized"
-  | "invalid_input"
   | "invalid_code"
   | "already_member"
   | "membership_limit_reached"
@@ -67,7 +66,9 @@ const FORBIDDEN_MSG = "Only team admins can manage invite codes.";
 const NOT_FOUND_MSG = "No invite code exists for this team yet.";
 const UNKNOWN_MSG = "Something went wrong. Please try again.";
 
-const joinSchema = z.object({ code: z.string() });
+const joinSchema = z.object({
+  code: z.string().trim().regex(INVITE_CODE_PATTERN),
+});
 
 /**
  * Resolve auth context for an admin-only invite-code action. Mapping:
@@ -269,18 +270,11 @@ export async function joinTeamByCodeAction(input: {
   if (!parsed.success) {
     return {
       ok: false,
-      code: "invalid_input",
-      message: GENERIC_INVALID_CODE_MSG,
-    };
-  }
-  const code = parsed.data.code.trim();
-  if (!isInviteCode(code)) {
-    return {
-      ok: false,
       code: "invalid_code",
       message: GENERIC_INVALID_CODE_MSG,
     };
   }
+  const { code } = parsed.data;
 
   const [reserved] = await db
     .update(teamInviteCodes)
@@ -337,7 +331,7 @@ export async function joinTeamByCodeAction(input: {
     await db
       .update(teamInviteCodes)
       .set({
-        useCount: sql`${teamInviteCodes.useCount} - 1`,
+        useCount: sql`GREATEST(${teamInviteCodes.useCount} - 1, 0)`,
         updatedAt: sql`NOW()`,
       })
       .where(eq(teamInviteCodes.id, reserved.id));

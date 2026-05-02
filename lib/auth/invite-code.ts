@@ -27,13 +27,3 @@ export function generateInviteCode(): string {
   }
   return out;
 }
-
-/**
- * Cheap shape check. Reject malformed input before hitting the DB so
- * an attacker can't probe latency for valid-vs-invalid characters.
- * @param value - Untrusted input.
- * @returns True when value is a string matching the invite-code shape.
- */
-export function isInviteCode(value: unknown): value is string {
-  return typeof value === "string" && INVITE_CODE_PATTERN.test(value);
-}

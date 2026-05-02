@@ -16,21 +16,10 @@ export const dynamic = "force-dynamic";
  * If the bounce fails, render an inline error rather than redirecting to
  * `/`, which would loop back through `requireMembership`.
  *
- * `?join=1` bypasses the bounce so an already-onboarded user can reach
- * the form to join a second team. TODO(MYMR-68 → MYMR-70): remove this
- * dev escape hatch once the team-settings UI surfaces a "Join another
- * team" entry point.
- *
  * @returns Server-rendered onboarding UI.
  */
-export default async function OnboardingTeamPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ join?: string }>;
-}) {
+export default async function OnboardingTeamPage() {
   const session = await requireSession();
-  const { join } = await searchParams;
-  const allowReentry = join === "1";
 
   const [earliest] = await db
     .select({ organizationId: member.organizationId })
@@ -39,7 +28,7 @@ export default async function OnboardingTeamPage({
     .orderBy(asc(member.createdAt))
     .limit(1);
 
-  if (earliest && !allowReentry) {
+  if (earliest) {
     if (session.session.activeOrganizationId === earliest.organizationId) {
       redirect("/");
     }

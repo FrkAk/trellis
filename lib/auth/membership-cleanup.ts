@@ -15,7 +15,7 @@ import {
  * Called from:
  * - `organizationHooks.afterRemoveMember` (admin removes another member)
  * - `leaveTeamAction` directly (Better Auth's `leaveOrganization` does NOT
- *   fire any organization hook — see `crud-members.mjs:350-380`)
+ *   fire any organization hook, so the call site must invoke cleanup itself)
  * - `organizationHooks.beforeDeleteOrganization` (per-member loop before
  *   the org row is deleted; member rows then cascade)
  *
