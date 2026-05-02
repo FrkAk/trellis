@@ -15,6 +15,13 @@
       "when": 1777756105734,
       "tag": "0001_gifted_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777764287147,
+      "tag": "0002_fat_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

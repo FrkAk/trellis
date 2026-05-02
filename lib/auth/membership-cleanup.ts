@@ -30,26 +30,31 @@ export async function clearOrgMembershipArtifacts(
   userId: string,
   orgId: string,
 ): Promise<void> {
-  await db
-    .update(session)
-    .set({ activeOrganizationId: null })
-    .where(
-      and(eq(session.userId, userId), eq(session.activeOrganizationId, orgId)),
-    );
-  await db
-    .delete(oauthAccessToken)
-    .where(
-      and(
-        eq(oauthAccessToken.userId, userId),
-        eq(oauthAccessToken.referenceId, orgId),
-      ),
-    );
-  await db
-    .delete(oauthRefreshToken)
-    .where(
-      and(
-        eq(oauthRefreshToken.userId, userId),
-        eq(oauthRefreshToken.referenceId, orgId),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await tx
+      .update(session)
+      .set({ activeOrganizationId: null })
+      .where(
+        and(
+          eq(session.userId, userId),
+          eq(session.activeOrganizationId, orgId),
+        ),
+      );
+    await tx
+      .delete(oauthAccessToken)
+      .where(
+        and(
+          eq(oauthAccessToken.userId, userId),
+          eq(oauthAccessToken.referenceId, orgId),
+        ),
+      );
+    await tx
+      .delete(oauthRefreshToken)
+      .where(
+        and(
+          eq(oauthRefreshToken.userId, userId),
+          eq(oauthRefreshToken.referenceId, orgId),
+        ),
+      );
+  });
 }

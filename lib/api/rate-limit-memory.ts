@@ -7,12 +7,17 @@ import type { RateLimitBackend, RateLimitResult } from "./rate-limit";
 export class MemoryRateLimitBackend implements RateLimitBackend {
   private windows = new Map<string, number[]>();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private maxWindowMs: number;
 
   /**
    * Initialize the backend and start the periodic cleanup timer.
-   * @param maxWindowMs - Maximum rate limit window in ms, used for stale entry cleanup.
+   * @param maxWindowMs - Initial maximum window in ms used for stale entry
+   *   cleanup. Grows monotonically: any `check()` call with a larger window
+   *   bumps it, so callers don't have to register up-front and the cleaner
+   *   can never wrongly evict a still-live timestamp.
    */
-  constructor(private maxWindowMs: number) {
+  constructor(maxWindowMs: number) {
+    this.maxWindowMs = maxWindowMs;
     this.cleanupTimer = setInterval(() => this.cleanup(), 60_000);
     if (this.cleanupTimer?.unref) this.cleanupTimer.unref();
   }
@@ -31,6 +36,7 @@ export class MemoryRateLimitBackend implements RateLimitBackend {
   ): Promise<RateLimitResult> {
     const now = Date.now();
     const windowMs = windowSeconds * 1000;
+    if (windowMs > this.maxWindowMs) this.maxWindowMs = windowMs;
     let timestamps = this.windows.get(key) ?? [];
 
     timestamps = timestamps.filter((t) => now - t < windowMs);

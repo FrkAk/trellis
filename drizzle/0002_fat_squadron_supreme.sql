@@ -1,0 +1,1 @@
+ALTER TABLE "team_invite_code" ADD CONSTRAINT "team_invite_code_default_role_check" CHECK ("team_invite_code"."default_role" IN ('member', 'admin'));

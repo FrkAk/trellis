@@ -55,6 +55,12 @@ async function getActionClientIp(): Promise<string> {
  * from `lib/api/rate-limit.ts` so route- and action-level limits share
  * the same memory map.
  *
+ * Both buckets are consulted (and incremented) atomically — when only
+ * one rejects, the other has already counted the attempt. That tightens
+ * the surviving bucket slightly under sustained overload, which is the
+ * intended behavior: a caller who keeps hammering is throttled by both
+ * dimensions, not just the one that tripped first.
+ *
  * @param config - Rate-limit policy for this action.
  * @param userId - Caller's user id, or `null` for unauth flows.
  * @returns `ok: true` to proceed, otherwise `retryAfter` seconds.

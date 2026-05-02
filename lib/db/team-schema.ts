@@ -1,4 +1,13 @@
-import { pgTable, uuid, text, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organization, user } from "@/lib/db/auth-schema";
 
 /**
@@ -41,7 +50,13 @@ export const teamInviteCodes = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("team_invite_code_code_idx").on(t.code)],
+  (t) => [
+    index("team_invite_code_code_idx").on(t.code),
+    check(
+      "team_invite_code_default_role_check",
+      sql`${t.defaultRole} IN ('member', 'admin')`,
+    ),
+  ],
 );
 
 export type TeamInviteCode = typeof teamInviteCodes.$inferSelect;

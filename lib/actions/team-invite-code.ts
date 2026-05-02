@@ -207,6 +207,19 @@ export async function regenerateTeamInviteCodeAction(): Promise<InviteCodeResult
       .returning();
     return { ok: true, data: toMetadata(created) };
   } catch (err) {
+    if ((err as { code?: string } | null)?.code === "23505") {
+      const [retried] = await db
+        .update(teamInviteCodes)
+        .set({
+          code: newCode,
+          useCount: 0,
+          revokedAt: null,
+          updatedAt: sql`NOW()`,
+        })
+        .where(eq(teamInviteCodes.organizationId, activeOrgId))
+        .returning();
+      if (retried) return { ok: true, data: toMetadata(retried) };
+    }
     console.error("regenerateTeamInviteCodeAction failed", err);
     return { ok: false, code: "unknown", message: UNKNOWN_MSG };
   }
