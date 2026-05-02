@@ -51,13 +51,13 @@ export default async function OnboardingTeamPage() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
+    <div className="flex min-h-[100dvh] items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="mb-8">
+          <h1 className="mb-1 text-2xl font-semibold text-text-primary">
             Pick a team
           </h1>
-          <p className="mt-2 text-sm text-text-muted">
+          <p className="text-sm text-text-muted">
             Mymir is team-scoped. Create a team to start a fresh workspace, or
             paste an invitation id from someone who shared theirs with you.
           </p>
@@ -75,18 +75,20 @@ export default async function OnboardingTeamPage() {
  */
 function BounceFailedState() {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-4 text-center">
-        <h1 className="text-2xl font-semibold text-text-primary">
-          Could not activate your team
-        </h1>
-        <p className="text-sm text-text-muted">
-          Something went wrong while switching to your team. Refresh to try
-          again — if the problem persists, contact support.
-        </p>
+    <div className="flex min-h-[100dvh] items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md text-center">
+        <div className="mb-8">
+          <h1 className="mb-1 text-2xl font-semibold text-text-primary">
+            Could not activate your team
+          </h1>
+          <p className="text-sm text-text-muted">
+            Something went wrong while switching to your team. Refresh to try
+            again — if the problem persists, contact support.
+          </p>
+        </div>
         <a
           href="/onboarding/team"
-          className="inline-block rounded-md bg-accent px-4 py-2 text-sm font-medium text-text-primary"
+          className="inline-flex min-h-10 items-center justify-center rounded-full border border-border-strong bg-transparent px-6 py-2 text-sm font-semibold text-text-primary shadow-[var(--shadow-button)] transition-opacity hover:opacity-60"
         >
           Refresh
         </a>

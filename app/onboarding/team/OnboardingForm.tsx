@@ -1,42 +1,53 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Button } from "@/components/shared/Button";
+import { TabSwitcher } from "@/components/shared/TabSwitcher";
 import { acceptInvitation, createTeam } from "./actions";
+
+const INPUT_CLASS =
+  "w-full rounded-lg border border-border-strong bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
+
+const LABEL_CLASS = "mb-1 block text-xs font-medium text-text-secondary";
+
+const HELP_CLASS = "mt-1 block text-xs text-text-muted";
+
+const TABS = [
+  { id: "create", label: "Create team" },
+  { id: "join", label: "Accept invitation" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
 
 /**
  * Onboarding form — lets the signed-in user create a new team or accept an
  * invitation by id. Both branches dispatch to server actions in `./actions.ts`,
  * which call Better Auth's organization API and `setActiveOrganization`.
+ * @returns Card-shaped form panel with create/join tabs.
  */
 export function OnboardingForm() {
-  const [tab, setTab] = useState<"create" | "join">("create");
+  const [tab, setTab] = useState<TabId>("create");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Switch tabs and clear any stale error from the previous tab.
+   * @param next - Tab id to activate.
+   */
+  function handleTabChange(next: string) {
+    setTab(next as TabId);
+    setError(null);
+  }
+
   return (
-    <div className="rounded-xl border border-border-strong/60 bg-surface-raised/40 p-5">
-      <div className="mb-4 flex gap-2">
-        <button
-          type="button"
-          className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === "create" ? "bg-accent text-text-primary" : "text-text-muted"}`}
-          onClick={() => {
-            setTab("create");
-            setError(null);
-          }}
-        >
-          Create team
-        </button>
-        <button
-          type="button"
-          className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === "join" ? "bg-accent text-text-primary" : "text-text-muted"}`}
-          onClick={() => {
-            setTab("join");
-            setError(null);
-          }}
-        >
-          Accept invitation
-        </button>
-      </div>
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-card)]">
+      <TabSwitcher
+        tabs={[...TABS]}
+        activeTab={tab}
+        onTabChange={handleTabChange}
+        stretch
+        className="mb-5"
+      />
 
       {tab === "create" ? (
         <form
@@ -48,20 +59,20 @@ export function OnboardingForm() {
               if (!result.ok) setError(result.message);
             });
           }}
-          className="space-y-3"
+          className="space-y-4"
         >
-          <label className="block text-sm">
-            <span className="mb-1 block text-text-secondary">Team name</span>
+          <label className="block">
+            <span className={LABEL_CLASS}>Team name</span>
             <input
               name="name"
               required
               maxLength={64}
               placeholder="Acme Robotics"
-              className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text-primary"
+              className={INPUT_CLASS}
             />
           </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-text-secondary">URL slug</span>
+          <label className="block">
+            <span className={LABEL_CLASS}>URL slug</span>
             <input
               name="slug"
               required
@@ -69,19 +80,20 @@ export function OnboardingForm() {
               maxLength={32}
               pattern="[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
               placeholder="acme-robotics"
-              className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-mono text-text-primary"
+              className={`${INPUT_CLASS} font-mono`}
             />
-            <span className="mt-1 block text-xs text-text-muted">
+            <span className={HELP_CLASS}>
               Lowercase letters, digits, hyphens. 2–32 characters.
             </span>
           </label>
-          <button
+          <Button
             type="submit"
-            disabled={pending}
-            className="w-full rounded-md bg-accent px-3 py-2 text-sm font-medium text-text-primary disabled:opacity-60"
+            variant="primary"
+            isLoading={pending}
+            className="w-full"
           >
-            {pending ? "Creating…" : "Create team"}
-          </button>
+            Create team
+          </Button>
         </form>
       ) : (
         <form
@@ -92,32 +104,38 @@ export function OnboardingForm() {
               if (!result.ok) setError(result.message);
             });
           }}
-          className="space-y-3"
+          className="space-y-4"
         >
-          <label className="block text-sm">
-            <span className="mb-1 block text-text-secondary">Invitation id</span>
+          <label className="block">
+            <span className={LABEL_CLASS}>Invitation id</span>
             <input
               name="invitationId"
               required
               placeholder="00000000-0000-0000-0000-000000000000"
-              className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-mono text-text-primary"
+              className={`${INPUT_CLASS} font-mono`}
             />
-            <span className="mt-1 block text-xs text-text-muted">
+            <span className={HELP_CLASS}>
               Ask the team owner for the invitation id (UUID).
             </span>
           </label>
-          <button
+          <Button
             type="submit"
-            disabled={pending}
-            className="w-full rounded-md bg-accent px-3 py-2 text-sm font-medium text-text-primary disabled:opacity-60"
+            variant="primary"
+            isLoading={pending}
+            className="w-full"
           >
-            {pending ? "Joining…" : "Accept invitation"}
-          </button>
+            Accept invitation
+          </Button>
         </form>
       )}
 
       {error && (
-        <p className="mt-3 text-sm text-red-400">{error}</p>
+        <p
+          role="alert"
+          className="mt-4 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger"
+        >
+          {error}
+        </p>
       )}
     </div>
   );
