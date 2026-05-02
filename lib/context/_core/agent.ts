@@ -1,3 +1,5 @@
+import "server-only";
+
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
@@ -17,6 +19,11 @@ import { assertTaskAccess } from "@/lib/auth/authorization";
 
 /**
  * Build lean, position-optimized context for external coding agents.
+ *
+ * Sections ordered by U-shaped attention: start/end get highest recall, middle
+ * lowest. No token budget — controlled content is compact, implPlan is critical
+ * and never truncated.
+ *
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
  * @returns Formatted context string.
@@ -25,10 +32,7 @@ export async function buildAgentContext(
   ctx: AuthContext,
   taskId: string,
 ): Promise<string> {
-  await assertTaskAccess(taskId, ctx);
-
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) return "# Task not found";
+  const task = await assertTaskAccess(taskId, ctx);
 
   const [project] = await db
     .select({ identifier: projects.identifier })
@@ -69,7 +73,7 @@ export async function buildAgentContext(
     getDependencyChain(taskId, 2),
     // getDownstream is public — caller already asserted; pass ctx through
     getDownstream(ctx, taskId, 2),
-    fetchEdgeNotesBySource(taskId),
+    fetchEdgeNotesBySource(task.projectId, taskId),
   ]);
 
   if (deps.length > 0) {
@@ -149,8 +153,11 @@ export async function buildAgentContext(
 
   if (downstream.length > 0) {
     const [downstreamEdgeNotes, downstreamSummaries] = await Promise.all([
-      fetchEdgeNotesByTarget(taskId),
-      fetchTaskSummaries(downstream.map((d) => d.id)),
+      fetchEdgeNotesByTarget(task.projectId, taskId),
+      fetchTaskSummaries(
+        task.projectId,
+        downstream.map((d) => d.id),
+      ),
     ]);
     const summaryMap = new Map(downstreamSummaries.map((s) => [s.id, s]));
     const downLines: string[] = [];

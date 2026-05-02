@@ -1,3 +1,5 @@
+import "server-only";
+
 import { eq, or, and, asc, sql, ilike } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
@@ -24,13 +26,11 @@ import {
  * Fetch a full task row by ID, scoped to the caller's active team.
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
- * @returns The full task row, or undefined.
+ * @returns The full task row.
  * @throws ForbiddenError when the task is not in the active team.
  */
 export async function fetchTask(ctx: AuthContext, taskId: string) {
-  await assertTaskAccess(taskId, ctx);
-  const [row] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  return row;
+  return assertTaskAccess(taskId, ctx);
 }
 
 /**
@@ -72,13 +72,7 @@ export async function findEdgeByNodes(
  * @throws ForbiddenError when the project is cross-team.
  */
 export async function getProject(ctx: AuthContext, projectId: string) {
-  await assertProjectAccess(projectId, ctx);
-
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId));
-  if (!project) return undefined;
+  const project = await assertProjectAccess(projectId, ctx);
 
   const projectTasks = await db
     .select()
@@ -143,13 +137,7 @@ export async function getProjectTasksSlim(
   ctx: AuthContext,
   projectId: string,
 ): Promise<TaskSlim[]> {
-  await assertProjectAccess(projectId, ctx);
-
-  const [proj] = await db
-    .select({ identifier: projects.identifier })
-    .from(projects)
-    .where(eq(projects.id, projectId));
-  if (!proj) return [];
+  const project = await assertProjectAccess(projectId, ctx);
 
   const rows = await db
     .select({
@@ -165,7 +153,7 @@ export async function getProjectTasksSlim(
     .where(eq(tasks.projectId, projectId))
     .orderBy(asc(tasks.order));
 
-  return enrichWithTaskRef(rows, asIdentifier(proj.identifier)).map((t) => ({
+  return enrichWithTaskRef(rows, asIdentifier(project.identifier)).map((t) => ({
     id: t.id,
     taskRef: t.taskRef,
     title: t.title,
@@ -321,6 +309,11 @@ export type TaskState =
 
 /**
  * Derive the actionable state for a single task using effective deps.
+ *
+ * Cancelled tasks short-circuit. For active tasks, dep readiness is checked
+ * against the *effective* dependency set — cancelled middles are walked
+ * through, and the wall is the next active prerequisite.
+ *
  * @param task - Task with status, description, and acceptanceCriteria.
  * @param graph - Effective dependency graph for the project.
  * @returns Derived TaskState.
@@ -368,6 +361,11 @@ function deriveTaskState(
 /**
  * Derive states for a batch of tasks in one project. Internal helper —
  * caller is responsible for asserting project access first.
+ *
+ * Builds the effective dependency graph once and reuses it for every task in
+ * the subset, so dep readiness reflects transitive blocking through cancelled
+ * middles rather than just direct edges.
+ *
  * @param projectId - UUID of the project.
  * @param taskSubset - Tasks to derive states for.
  * @returns Map of taskId → TaskState.
@@ -421,13 +419,7 @@ export async function searchTasks(
   query?: string,
   tags?: string[],
 ): Promise<SearchResult[]> {
-  await assertProjectAccess(projectId, ctx);
-
-  const [proj] = await db
-    .select({ identifier: projects.identifier })
-    .from(projects)
-    .where(eq(projects.id, projectId));
-  if (!proj) return [];
+  const project = await assertProjectAccess(projectId, ctx);
 
   const trimmedQuery = query?.trim() ?? "";
   const tagFilter = normalizeTags(tags);
@@ -438,7 +430,7 @@ export async function searchTasks(
   if (trimmedQuery.length > 0) {
     const refMatch = trimmedQuery.match(TASK_REF_PATTERN);
     const seqClause =
-      refMatch && refMatch[1].toUpperCase() === proj.identifier
+      refMatch && refMatch[1].toUpperCase() === project.identifier
         ? eq(tasks.sequenceNumber, Number(refMatch[2]))
         : null;
 
@@ -500,7 +492,7 @@ export async function searchTasks(
   const trimmed = matchingTasks.slice(0, 20);
   const stateMap = await deriveTaskStates(projectId, trimmed);
 
-  const identifier = asIdentifier(proj.identifier);
+  const identifier = asIdentifier(project.identifier);
   return enrichWithTaskRef(trimmed, identifier).map((t) => ({
     id: t.id,
     taskRef: t.taskRef,
@@ -608,20 +600,27 @@ export async function getTaskEdgesDetailed(
 
 /**
  * Fetch edge notes for outgoing depends_on edges from a task. Internal —
- * caller must assert task access before invoking.
+ * caller must assert task access before invoking. The `projectId` filter
+ * guarantees the connected (target) task is in the same project, so a
+ * stale or hand-crafted edge to a task in another project cannot leak a
+ * note into context output.
+ * @param projectId - UUID of the project the source task belongs to.
  * @param taskId - UUID of the source task.
  * @returns Map of target task ID to edge note.
  */
 export async function fetchEdgeNotesBySource(
+  projectId: string,
   taskId: string,
 ): Promise<Map<string, string>> {
   const rows = await db
     .select({ targetTaskId: taskEdges.targetTaskId, note: taskEdges.note })
     .from(taskEdges)
+    .innerJoin(tasks, eq(tasks.id, taskEdges.targetTaskId))
     .where(
       and(
         eq(taskEdges.sourceTaskId, taskId),
         eq(taskEdges.edgeType, "depends_on"),
+        eq(tasks.projectId, projectId),
       ),
     );
   const map = new Map<string, string>();
@@ -633,20 +632,25 @@ export async function fetchEdgeNotesBySource(
 
 /**
  * Fetch edge notes for incoming depends_on edges to a task. Internal —
- * caller must assert task access before invoking.
+ * caller must assert task access before invoking. See `fetchEdgeNotesBySource`
+ * for the projectId-filter rationale.
+ * @param projectId - UUID of the project the target task belongs to.
  * @param taskId - UUID of the target task.
  * @returns Map of source task ID to edge note.
  */
 export async function fetchEdgeNotesByTarget(
+  projectId: string,
   taskId: string,
 ): Promise<Map<string, string>> {
   const rows = await db
     .select({ sourceTaskId: taskEdges.sourceTaskId, note: taskEdges.note })
     .from(taskEdges)
+    .innerJoin(tasks, eq(tasks.id, taskEdges.sourceTaskId))
     .where(
       and(
         eq(taskEdges.targetTaskId, taskId),
         eq(taskEdges.edgeType, "depends_on"),
+        eq(tasks.projectId, projectId),
       ),
     );
   const map = new Map<string, string>();
@@ -662,12 +666,17 @@ export async function fetchEdgeNotesByTarget(
 
 /**
  * Fetch taskRef, title, status, and description for multiple tasks by ID.
- * Internal — caller must have already asserted access on the originating task,
- * and downstream task ids reachable from it stay in the same project.
+ * Internal — caller must have already asserted access on the originating task.
+ * The `projectId` filter is defense in depth: if a future caller passes an
+ * id list that crosses projects, the SQL ignores out-of-project rows.
+ * @param projectId - UUID of the project the tasks belong to.
  * @param taskIds - Array of task UUIDs.
  * @returns Array of task summaries with composed taskRef.
  */
-export async function fetchTaskSummaries(taskIds: string[]) {
+export async function fetchTaskSummaries(
+  projectId: string,
+  taskIds: string[],
+) {
   if (taskIds.length === 0) return [];
   const rows = await db
     .select({
@@ -680,7 +689,9 @@ export async function fetchTaskSummaries(taskIds: string[]) {
     })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(sql`${tasks.id} IN ${taskIds}`);
+    .where(
+      and(eq(tasks.projectId, projectId), sql`${tasks.id} IN ${taskIds}`),
+    );
   return rows.map((r) => ({
     id: r.id,
     taskRef: composeTaskRef(asIdentifier(r.identifier), r.sequenceNumber),

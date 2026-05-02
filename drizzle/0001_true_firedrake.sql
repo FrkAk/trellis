@@ -1,3 +1,9 @@
+-- One-shot single-tenant→multi-tenant lift. ASSUMES the deployment is
+-- single-tenant: every existing user gets owner role on the seeded "Mymir"
+-- team and every existing project is assigned to it. If the user table
+-- contains accounts that should NOT inherit access (test rigs, ex-employees),
+-- audit and prune memberships before applying. Subsequent deployments
+-- (no rows in projects) skip the seed entirely.
 ALTER TABLE "projects" ADD COLUMN "organization_id" uuid;--> statement-breakpoint
 INSERT INTO "neon_auth"."organization" ("id", "name", "slug", "createdAt")
 SELECT gen_random_uuid(), 'Mymir', 'mymir', now()

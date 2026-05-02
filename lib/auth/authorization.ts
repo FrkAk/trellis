@@ -1,8 +1,13 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, getTableColumns } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, tasks } from "@/lib/db/schema";
+import {
+  projects,
+  tasks,
+  type Project,
+  type Task,
+} from "@/lib/db/schema";
 import { member } from "@/lib/db/auth-schema";
 import type { AuthContext } from "@/lib/auth/context";
 
@@ -19,13 +24,17 @@ export class ForbiddenError extends Error {
 }
 
 /**
- * Verify the caller can access the project. The project must belong to
- * the caller's active organization AND the caller must hold a membership
- * row in that organization. A single SQL JOIN performs both checks
- * atomically so the predicate cannot be split.
+ * Verify the caller can access the project and return its full row. The
+ * project must belong to the caller's active organization AND the caller
+ * must hold a membership row in that organization. A single SQL JOIN
+ * performs both checks atomically so the predicate cannot be split.
+ *
+ * Returning the row lets callers reuse it without a second `SELECT` by
+ * primary key — the post-assert refetch was a defense-in-depth gap.
  *
  * @param projectId - UUID of the project to authorize.
  * @param ctx - Resolved auth context (user id + active org id).
+ * @returns The full project row.
  * @throws ForbiddenError if the project does not belong to the active org
  *   or the user is not a member of that org. The same error is thrown
  *   when the project does not exist, to avoid leaking org membership.
@@ -33,9 +42,9 @@ export class ForbiddenError extends Error {
 export async function assertProjectAccess(
   projectId: string,
   ctx: AuthContext,
-): Promise<void> {
+): Promise<Project> {
   const [row] = await db
-    .select({ id: projects.id })
+    .select(getTableColumns(projects))
     .from(projects)
     .innerJoin(
       member,
@@ -52,24 +61,25 @@ export async function assertProjectAccess(
     )
     .limit(1);
   if (!row) throw new ForbiddenError();
+  return row;
 }
 
 /**
- * Verify the caller can access the task. Joins through the parent project
- * to confirm the task's project belongs to the caller's active org and
- * the caller is a member of that org.
+ * Verify the caller can access the task and return its full row. Joins
+ * through the parent project to confirm the task's project belongs to the
+ * caller's active org and the caller is a member of that org.
  *
  * @param taskId - UUID of the task to authorize.
  * @param ctx - Resolved auth context.
- * @returns The parent projectId so callers can avoid a second lookup.
+ * @returns The full task row.
  * @throws ForbiddenError on missing task or cross-team access.
  */
 export async function assertTaskAccess(
   taskId: string,
   ctx: AuthContext,
-): Promise<{ projectId: string }> {
+): Promise<Task> {
   const [row] = await db
-    .select({ projectId: tasks.projectId })
+    .select(getTableColumns(tasks))
     .from(tasks)
     .innerJoin(projects, eq(projects.id, tasks.projectId))
     .innerJoin(
@@ -87,5 +97,5 @@ export async function assertTaskAccess(
     )
     .limit(1);
   if (!row) throw new ForbiddenError();
-  return { projectId: row.projectId };
+  return row;
 }

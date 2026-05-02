@@ -5,7 +5,6 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { asc, eq } from "drizzle-orm";
-import { ac, owner, admin, member as memberRole } from "@/lib/auth/permissions";
 import * as authSchema from "@/lib/db/auth-schema";
 import { member } from "@/lib/db/auth-schema";
 
@@ -76,12 +75,12 @@ export const auth = betterAuth({
   },
   // organization() must precede any future customSession() — see
   // better-auth issue #3233 (activeOrganizationId is type-erased otherwise).
+  // Role-based permissions are intentionally left at Better Auth defaults
+  // (any member can read+write team data) until MYMR-69 wires hasPermission
+  // checks into the data layer.
   plugins: [
     jwt(),
-    organization({
-      ac,
-      roles: { owner, admin, member: memberRole },
-    }),
+    organization(),
     oauthProvider({
       loginPage: "/sign-in",
       consentPage: "/consent",

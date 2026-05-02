@@ -1,11 +1,20 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { z } from "zod/v4";
 import { createMcpServer } from "@/lib/mcp/create-server";
 import { serverClient } from "@/lib/auth/server-client";
-import type { AuthContext } from "@/lib/auth/context";
+import { makeAuthContext, type AuthContext } from "@/lib/auth/context";
 
 const baseUrl = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 const origin = new URL(baseUrl).origin;
 const resourceMetadataUrl = `${origin}/.well-known/oauth-protected-resource`;
+
+/** Shape we require from a verified MCP access token payload. */
+const accessTokenClaimsSchema = z
+  .object({
+    sub: z.string().min(1),
+    active_org: z.string().min(1),
+  })
+  .passthrough();
 
 /**
  * Verify a JWT Bearer token from the Authorization header and return the
@@ -35,21 +44,16 @@ async function verifyMcpAuth(request: Request) {
 }
 
 /**
- * Resolve the MCP auth context from a verified JWT payload. The payload
- * must carry `sub` (user id) and `active_org` (organization id stamped
- * via `oauthProvider.customAccessTokenClaims`).
+ * Resolve the MCP auth context from a verified JWT payload. Requires `sub`
+ * (user id) and `active_org` (organization id stamped via
+ * `oauthProvider.customAccessTokenClaims` in lib/auth.ts).
  * @param payload - Decoded JWT payload.
  * @returns AuthContext or null when claims are missing.
  */
-function authContextFromPayload(
-  payload: Record<string, unknown>,
-): AuthContext | null {
-  const userId = payload.sub;
-  const activeOrgId = payload.active_org;
-  if (typeof userId !== "string" || typeof activeOrgId !== "string") {
-    return null;
-  }
-  return { userId, activeOrgId };
+function authContextFromPayload(payload: unknown): AuthContext | null {
+  const parsed = accessTokenClaimsSchema.safeParse(payload);
+  if (!parsed.success) return null;
+  return makeAuthContext(parsed.data.sub, parsed.data.active_org);
 }
 
 /**
@@ -102,7 +106,7 @@ async function runMcpRequest(request: Request) {
   const payload = await verifyMcpAuth(request);
   if (!payload) return unauthorized();
 
-  const ctx = authContextFromPayload(payload as Record<string, unknown>);
+  const ctx = authContextFromPayload(payload);
   if (!ctx) return noActiveTeam();
 
   const server = createMcpServer(ctx);

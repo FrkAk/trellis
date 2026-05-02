@@ -46,7 +46,7 @@ import {
 } from "@/lib/graph/_core/traversal";
 import type { EdgeType, Decision } from "@/lib/types";
 import { parseIdentifier } from "@/lib/graph/identifier";
-import type { ProjectUpdate } from "@/lib/graph/_core/mutations";
+import type { ProjectUpdate, TaskUpdate } from "@/lib/graph/_core/mutations";
 import {
   formatSummary,
   formatSearchResults,
@@ -322,7 +322,7 @@ async function requireEdgeAccess(
 function translateError(e: unknown): ToolResult {
   if (e instanceof ForbiddenError) {
     return fail(
-      "Forbidden: not a member of this resource's team. Run mymir_project action='list' to see your team's projects.",
+      "Resource not found in your team. Run mymir_project action='list' to see your team's projects.",
     );
   }
   return fail(e instanceof Error ? e.message : String(e));
@@ -665,7 +665,7 @@ export async function handleTask(
           const existing = await fetchTask(ctx, p.taskId);
           if (existing) priorStatus = existing.status;
         }
-        const changes: Record<string, unknown> = {};
+        const changes: TaskUpdate = {};
         if (p.title !== undefined) changes.title = p.title;
         if (p.description !== undefined) changes.description = p.description;
         if (p.status !== undefined) changes.status = p.status;
@@ -926,7 +926,8 @@ export async function handleQuery(
 }
 
 /**
- * Handle mymir_context actions.
+ * Handle mymir_context actions. Returns structured data for summary depth,
+ * formatted string for other depths.
  * @param p - Validated context params. projectId required for working depth.
  * @param ctx - Resolved auth context.
  * @returns Tool result.

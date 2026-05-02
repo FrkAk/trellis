@@ -3,24 +3,17 @@
 import { getAuthContext } from "@/lib/auth/context";
 import * as core from "@/lib/graph/_core/mutations";
 import type { Identifier } from "@/lib/graph/identifier";
-import type { EdgeType } from "@/lib/types";
 import type { NewTaskEdge } from "@/lib/db/schema";
 
 export type {
   CreateProjectInput,
   ProjectUpdate,
   CreateTaskInput,
+  TaskUpdate,
 } from "@/lib/graph/_core/mutations";
 
-/**
- * Server action wrapper — create a project bound to the caller's active team.
- * @param data - Project fields (excluding organizationId; resolved from session).
- * @returns The created project row.
- */
-export async function createProject(data: core.CreateProjectInput) {
-  const ctx = await getAuthContext();
-  return core.createProject(ctx, data);
-}
+// Wrappers exist on demand for client-component callers. MCP and route
+// handlers import lib/graph/_core/mutations directly with their own ctx.
 
 /**
  * Server action wrapper — update a project's fields.
@@ -78,7 +71,7 @@ export async function createTask(data: core.CreateTaskInput) {
  */
 export async function updateTask(
   taskId: string,
-  changes: Record<string, unknown>,
+  changes: core.TaskUpdate,
   overwriteArrays = false,
 ) {
   const ctx = await getAuthContext();
@@ -96,27 +89,6 @@ export async function deleteTask(taskId: string) {
 }
 
 /**
- * Server action wrapper — preview a task deletion without applying it.
- * @param taskId - UUID of the task.
- * @returns Summary of the task and edge impact.
- */
-export async function deleteTaskPreview(taskId: string) {
-  const ctx = await getAuthContext();
-  return core.deleteTaskPreview(ctx, taskId);
-}
-
-/**
- * Server action wrapper — reorder a task within its project.
- * @param taskId - UUID of the task.
- * @param newOrder - The desired order position.
- * @returns The updated task row.
- */
-export async function reorderTask(taskId: string, newOrder: number) {
-  const ctx = await getAuthContext();
-  return core.reorderTask(ctx, taskId, newOrder);
-}
-
-/**
  * Server action wrapper — create an edge between two tasks.
  * @param data - Edge fields to insert.
  * @returns The created edge.
@@ -124,20 +96,6 @@ export async function reorderTask(taskId: string, newOrder: number) {
 export async function createEdge(data: Omit<NewTaskEdge, "id">) {
   const ctx = await getAuthContext();
   return core.createEdge(ctx, data);
-}
-
-/**
- * Server action wrapper — update an edge's type and/or note.
- * @param edgeId - UUID of the edge.
- * @param updates - Fields to update.
- * @returns The updated edge.
- */
-export async function updateEdge(
-  edgeId: string,
-  updates: { edgeType?: EdgeType; note?: string },
-) {
-  const ctx = await getAuthContext();
-  return core.updateEdge(ctx, edgeId, updates);
 }
 
 /**

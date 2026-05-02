@@ -1,11 +1,9 @@
+import "server-only";
+
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects, taskEdges } from "@/lib/db/schema";
-import {
-  asIdentifier,
-  composeTaskRef,
-  type Identifier,
-} from "@/lib/graph/identifier";
+import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
 import { buildEffectiveDepGraph } from "@/lib/graph/effective-deps";
 import { deriveTaskStates } from "@/lib/graph/_core/queries";
 import type { AuthContext } from "@/lib/auth/context";
@@ -13,21 +11,6 @@ import {
   assertProjectAccess,
   assertTaskAccess,
 } from "@/lib/auth/authorization";
-
-/**
- * Fetch a project's identifier prefix for composing taskRefs.
- * @param projectId - UUID of the project.
- * @returns Identifier string, or null if project not found.
- */
-async function getProjectIdentifier(
-  projectId: string,
-): Promise<Identifier | null> {
-  const [row] = await db
-    .select({ identifier: projects.identifier })
-    .from(projects)
-    .where(eq(projects.id, projectId));
-  return row ? asIdentifier(row.identifier) : null;
-}
 
 // ---------------------------------------------------------------------------
 // Ancestor traversal — internal helper
@@ -268,6 +251,12 @@ export type ReadyTask = {
 
 /**
  * Find all tasks whose dependencies are fully satisfied.
+ *
+ * A task is ready when its status is "planned" and every active task in its
+ * effective dependency set is `done`. Cancelled tasks are transparent — they
+ * don't satisfy a dep on their own, but the walk continues through them to
+ * find the next active prerequisite (which is the actual wall).
+ *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns Array of ready tasks.
@@ -276,10 +265,8 @@ export async function getReadyTasks(
   ctx: AuthContext,
   projectId: string,
 ): Promise<ReadyTask[]> {
-  await assertProjectAccess(projectId, ctx);
-
-  const identifier = await getProjectIdentifier(projectId);
-  if (!identifier) return [];
+  const project = await assertProjectAccess(projectId, ctx);
+  const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);
   const ready: ReadyTask[] = [];
@@ -321,19 +308,21 @@ export type PlannableTask = {
 };
 
 /**
- * Find draft tasks that are plannable now.
+ * Find draft tasks that are plannable now: have a description, at least one
+ * acceptance criterion, AND every effective dep is done. Delegates the
+ * readiness logic to `deriveTaskStates` so this analyzer agrees with
+ * search-result `state` and `mymir_analyze type='blocked'`.
+ *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
- * @returns Array of plannable tasks.
+ * @returns Array of plannable tasks (state === 'plannable' from deriveTaskStates).
  */
 export async function getPlannableTasks(
   ctx: AuthContext,
   projectId: string,
 ): Promise<PlannableTask[]> {
-  await assertProjectAccess(projectId, ctx);
-
-  const identifier = await getProjectIdentifier(projectId);
-  if (!identifier) return [];
+  const project = await assertProjectAccess(projectId, ctx);
+  const identifier = asIdentifier(project.identifier);
 
   const allTasks = await db
     .select({
@@ -383,6 +372,12 @@ export type BlockedTask = {
 
 /**
  * Find all active tasks with at least one effective dependency that is not done.
+ *
+ * Blockers are reported at the *effective* level: if A depends on B and B is
+ * cancelled with an unsatisfied dep C, A is reported as blocked by C (not B).
+ * Cancelled tasks are transparent — they never appear as blockers and are
+ * never themselves listed as blocked.
+ *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @returns Array of blocked tasks with their effective blockers.
@@ -391,10 +386,8 @@ export async function getBlockedTasks(
   ctx: AuthContext,
   projectId: string,
 ): Promise<BlockedTask[]> {
-  await assertProjectAccess(projectId, ctx);
-
-  const identifier = await getProjectIdentifier(projectId);
-  if (!identifier) return [];
+  const project = await assertProjectAccess(projectId, ctx);
+  const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);
   const blocked: BlockedTask[] = [];
@@ -445,18 +438,28 @@ export type CriticalPathTask = {
 
 /**
  * Find the longest chain of effective `depends_on` edges across active tasks.
+ *
+ * Operates on the effective dependency graph — cancelled tasks are transparent,
+ * so a chain `A → B → C` where B is cancelled is treated as the active chain
+ * `A → C` (and contributes length 2, not 3). This avoids the orphan-bug where
+ * tasks above a cancelled middle would be excluded from the chain entirely.
+ *
+ * Algorithm: Kahn's topological sort over active tasks (deps first) followed
+ * by DP `longest[node] = 1 + max(longest[dep])`, then backtrack from the
+ * highest-`longest` node to recover the chain in root-first order.
+ *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
- * @returns Ordered array of active tasks forming the longest effective chain.
+ * @returns Ordered array of active tasks forming the longest effective chain
+ *   (foundational task first, topmost dependent last). Empty when no active
+ *   tasks exist or a cycle is detected.
  */
 export async function getCriticalPath(
   ctx: AuthContext,
   projectId: string,
 ): Promise<CriticalPathTask[]> {
-  await assertProjectAccess(projectId, ctx);
-
-  const identifier = await getProjectIdentifier(projectId);
-  if (!identifier) return [];
+  const project = await assertProjectAccess(projectId, ctx);
+  const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);
   if (graph.activeTasks.size === 0) return [];

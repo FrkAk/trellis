@@ -1,6 +1,8 @@
+import "server-only";
+
 import { eq, asc, sql, or } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, tasks, taskEdges } from "@/lib/db/schema";
+import { tasks, taskEdges } from "@/lib/db/schema";
 import type { EdgeType } from "@/lib/types";
 import {
   asIdentifier,
@@ -61,14 +63,8 @@ export type ProjectOverview = {
 export async function buildProjectOverview(
   ctx: AuthContext,
   projectId: string,
-): Promise<ProjectOverview | undefined> {
-  await assertProjectAccess(projectId, ctx);
-
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId));
-  if (!project) return undefined;
+): Promise<ProjectOverview> {
+  const project = await assertProjectAccess(projectId, ctx);
 
   const allTasks = await db
     .select()

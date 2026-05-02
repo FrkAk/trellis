@@ -1,3 +1,5 @@
+import "server-only";
+
 import { eq, or, and, sql, gt, gte, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -8,7 +10,12 @@ import {
   type NewTask,
   type NewTaskEdge,
 } from "@/lib/db/schema";
-import type { Decision, EdgeType, HistoryEntry } from "@/lib/types";
+import type {
+  Decision,
+  EdgeType,
+  HistoryEntry,
+  TaskStatus,
+} from "@/lib/types";
 import { getDependencyChain } from "@/lib/graph/_core/traversal";
 import { dbEvents } from "@/lib/events";
 import {
@@ -121,6 +128,11 @@ async function pickAvailableIdentifier(
 
 /**
  * Insert a new project bound to the caller's active team.
+ *
+ * If `identifier` is omitted, it is derived from the title and auto-suffixed on
+ * collision under a transaction-scoped advisory lock. If provided, collision
+ * surfaces the DB unique-violation error.
+ *
  * @param ctx - Resolved auth context — provides activeOrgId for the new project.
  * @param data - Project fields. Identifier optional.
  * @returns The created project row.
@@ -215,6 +227,13 @@ export async function deleteProject(ctx: AuthContext, projectId: string) {
 
 /**
  * Rename a project's identifier under the shared identifier advisory lock.
+ *
+ * Holding {@link IDENTIFIER_LOCK_KEY} serializes this rename with concurrent
+ * `createProject` auto-suffix allocation, closing the select-then-insert
+ * window. The unique index on `projects.identifier` still surfaces a `23505`
+ * if the target is already taken by a project outside the lock-protected
+ * critical section (e.g. a direct SQL rename).
+ *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project to rename.
  * @param identifier - New identifier (already shape-validated).
@@ -251,6 +270,11 @@ export type CreateTaskInput = Omit<NewTask, "id" | "sequenceNumber">;
 
 /**
  * Insert a new task under a project owned by the caller's active team.
+ *
+ * Uses a transaction-scoped PostgreSQL advisory lock keyed on the project UUID
+ * to serialize concurrent task creation and prevent sequence_number collisions.
+ * Computes order (append-to-end when unset) and sequenceNumber inside the lock.
+ *
  * @param ctx - Resolved auth context.
  * @param data - Task fields. sequenceNumber assigned internally.
  * @returns Task summary with composed taskRef.
@@ -358,21 +382,64 @@ export async function createTask(ctx: AuthContext, data: CreateTaskInput) {
 // Update task
 // ---------------------------------------------------------------------------
 
+/** Fields callers must not change via updateTask — managed internally or set on create. */
+const PROTECTED_TASK_FIELDS = [
+  "id",
+  "projectId",
+  "sequenceNumber",
+  "history",
+  "createdAt",
+  "updatedAt",
+] as const;
+
 /**
- * Update a task and append a history entry.
+ * Whitelist of fields callers may pass to {@link updateTask}. The strict type
+ * prevents typed callers from supplying protected fields at compile time;
+ * the runtime PROTECTED_TASK_FIELDS strip below is a belt-and-suspenders
+ * defense against callers using `as any` or routing through `Record<string,
+ * unknown>`.
+ *
+ * `decisions` and `acceptanceCriteria` are typed `unknown[]` because the
+ * normalization below accepts strings or partial objects and shapes them
+ * into the canonical {@link Decision}/{@link AcceptanceCriterion} forms.
+ */
+export type TaskUpdate = {
+  title?: string;
+  description?: string;
+  status?: TaskStatus;
+  category?: string | null;
+  order?: number;
+  executionRecord?: string | null;
+  implementationPlan?: string | null;
+  tags?: string[];
+  files?: string[];
+  decisions?: unknown[];
+  acceptanceCriteria?: unknown[];
+};
+
+/**
+ * Update a task and append a history entry. Protected fields (id, projectId,
+ * sequenceNumber, history, createdAt, updatedAt) are stripped before the
+ * write so a malformed input cannot reassign a task across projects or
+ * forge timestamps.
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task to update.
- * @param changes - Partial fields to update.
+ * @param input - Partial fields to update.
  * @param overwriteArrays - When true, replace array fields instead of appending.
  * @returns The updated row.
  */
 export async function updateTask(
   ctx: AuthContext,
   taskId: string,
-  changes: Record<string, unknown>,
+  input: TaskUpdate,
   overwriteArrays = false,
 ) {
-  await assertTaskAccess(taskId, ctx);
+  const current = await assertTaskAccess(taskId, ctx);
+
+  let changes: Record<string, unknown> = { ...input };
+  for (const key of PROTECTED_TASK_FIELDS) {
+    if (key in changes) delete changes[key];
+  }
 
   if (Array.isArray(changes.acceptanceCriteria)) {
     changes.acceptanceCriteria = (
@@ -412,18 +479,7 @@ export async function updateTask(
 
   changes = await formatTaskMarkdownFields(changes);
 
-  const [current] = await db
-    .select({
-      status: tasks.status,
-      history: tasks.history,
-      decisions: tasks.decisions,
-      acceptanceCriteria: tasks.acceptanceCriteria,
-      files: tasks.files,
-    })
-    .from(tasks)
-    .where(eq(tasks.id, taskId));
-
-  if (!overwriteArrays && current) {
+  if (!overwriteArrays) {
     if (Array.isArray(changes.decisions)) {
       const existing = (current.decisions ?? []) as Record<string, unknown>[];
       const incoming = changes.decisions as Record<string, unknown>[];
@@ -459,17 +515,17 @@ export async function updateTask(
   }
 
   const isStatusChange =
-    "status" in changes && current?.status !== changes.status;
+    "status" in changes && current.status !== changes.status;
   const entry = makeHistoryEntry({
     type: isStatusChange ? "status_change" : "refined",
     label: isStatusChange
-      ? `Status: ${current?.status} → ${changes.status}`
+      ? `Status: ${current.status} → ${changes.status}`
       : "Task updated",
     description: `Updated task fields: ${Object.keys(changes).join(", ")}.`,
     actor: "ai",
   });
 
-  const existingHistory = (current?.history ?? []) as HistoryEntry[];
+  const existingHistory = current.history;
 
   const [updated] = await db
     .update(tasks)
@@ -528,13 +584,7 @@ export async function deleteTask(ctx: AuthContext, taskId: string) {
  * @returns Summary of the task and edge impact.
  */
 export async function deleteTaskPreview(ctx: AuthContext, taskId: string) {
-  await assertTaskAccess(taskId, ctx);
-
-  const [task] = await db
-    .select({ id: tasks.id, title: tasks.title })
-    .from(tasks)
-    .where(eq(tasks.id, taskId));
-  if (!task) return null;
+  const task = await assertTaskAccess(taskId, ctx);
 
   const edgeRows = await db
     .select({ id: taskEdges.id })
@@ -574,30 +624,17 @@ export async function createEdge(
     );
   }
 
-  await assertTaskAccess(data.sourceTaskId, ctx);
-  await assertTaskAccess(data.targetTaskId, ctx);
+  const [sourceTask, targetTask] = await Promise.all([
+    assertTaskAccess(data.sourceTaskId, ctx),
+    assertTaskAccess(data.targetTaskId, ctx),
+  ]);
+
+  if (sourceTask.projectId !== targetTask.projectId) {
+    throw new Error("Cannot create edge between tasks in different projects.");
+  }
 
   if (typeof data.note === "string" && data.note.trim()) {
     data = { ...data, note: (await formatMarkdown(data.note)) ?? data.note };
-  }
-
-  const [sourceTask, targetTask] = await Promise.all([
-    db
-      .select({ projectId: tasks.projectId })
-      .from(tasks)
-      .where(eq(tasks.id, data.sourceTaskId))
-      .then((r) => r[0]),
-    db
-      .select({ projectId: tasks.projectId })
-      .from(tasks)
-      .where(eq(tasks.id, data.targetTaskId))
-      .then((r) => r[0]),
-  ]);
-  if (!sourceTask || !targetTask) {
-    throw new Error("Task not found: source or target task does not exist.");
-  }
-  if (sourceTask.projectId !== targetTask.projectId) {
-    throw new Error("Cannot create edge between tasks in different projects.");
   }
 
   const [existing] = await db
@@ -787,10 +824,7 @@ export async function reorderTask(
   taskId: string,
   newOrder: number,
 ) {
-  await assertTaskAccess(taskId, ctx);
-
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) throw new Error(`Task ${taskId} not found.`);
+  const task = await assertTaskAccess(taskId, ctx);
 
   const oldOrder = task.order;
   if (oldOrder === newOrder) return task;

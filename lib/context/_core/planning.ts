@@ -1,3 +1,5 @@
+import "server-only";
+
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
@@ -17,6 +19,12 @@ import { assertTaskAccess } from "@/lib/auth/authorization";
 
 /**
  * Build planning-optimized context for a task.
+ *
+ * Supplies the project-level breadth a planner can't derive from reading code
+ * alone: project description, upstream execution records, and downstream task
+ * specs. Sections ordered by U-shaped attention. No token budget — all content
+ * included as-is.
+ *
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
  * @returns Formatted planning context string.
@@ -25,10 +33,7 @@ export async function buildPlanningContext(
   ctx: AuthContext,
   taskId: string,
 ): Promise<string> {
-  await assertTaskAccess(taskId, ctx);
-
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) return "# Task not found";
+  const task = await assertTaskAccess(taskId, ctx);
 
   const [project] = await db
     .select({
@@ -81,7 +86,7 @@ export async function buildPlanningContext(
   const [deps, downstream, upstreamEdgeNotes] = await Promise.all([
     getDependencyChain(taskId, 2),
     getDownstream(ctx, taskId, 2),
-    fetchEdgeNotesBySource(taskId),
+    fetchEdgeNotesBySource(task.projectId, taskId),
   ]);
 
   if (deps.length > 0) {
@@ -149,8 +154,11 @@ export async function buildPlanningContext(
 
   if (downstream.length > 0) {
     const [downstreamEdgeNotes, downstreamSummaries] = await Promise.all([
-      fetchEdgeNotesByTarget(taskId),
-      fetchTaskSummaries(downstream.map((d) => d.id)),
+      fetchEdgeNotesByTarget(task.projectId, taskId),
+      fetchTaskSummaries(
+        task.projectId,
+        downstream.map((d) => d.id),
+      ),
     ]);
     const summaryMap = new Map(downstreamSummaries.map((s) => [s.id, s]));
     const downLines: string[] = [];

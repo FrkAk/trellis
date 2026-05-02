@@ -1,6 +1,8 @@
+import "server-only";
+
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { tasks, projects } from "@/lib/db/schema";
+import { projects } from "@/lib/db/schema";
 import type { EdgeType, AcceptanceCriterion, Decision } from "@/lib/types";
 import { getTaskEdgesDetailed } from "@/lib/graph/_core/queries";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
@@ -44,10 +46,7 @@ export async function buildSummaryContext(
   ctx: AuthContext,
   taskId: string,
 ): Promise<SummaryContext> {
-  await assertTaskAccess(taskId, ctx);
-
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) return emptyContext();
+  const task = await assertTaskAccess(taskId, ctx);
 
   const [project] = await db
     .select({ title: projects.title, identifier: projects.identifier })
@@ -109,21 +108,3 @@ function buildEdgeCount(edges: EdgeDetail[]): Record<EdgeType, number> {
   return counts;
 }
 
-/**
- * Return an empty summary context for missing tasks.
- * @returns Empty SummaryContext.
- */
-function emptyContext(): SummaryContext {
-  return {
-    node: { taskRef: "", title: "", status: "", description: "" },
-    parent: null,
-    edgeCount: {
-      depends_on: 0,
-      relates_to: 0,
-    },
-    edges: [],
-    acceptanceCriteriaCount: 0,
-    decisionsCount: 0,
-    hasImplementationPlan: false,
-  };
-}

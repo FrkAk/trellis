@@ -11,6 +11,7 @@ import { updateTask } from '@/lib/graph/mutations';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import type { Task, TaskEdge } from '@/lib/db/schema';
+import type { TaskStatus } from '@/lib/types';
 
 interface DetailPanelProps {
   /** @param taskId - UUID of the selected task. */
@@ -42,7 +43,7 @@ interface DetailPanelProps {
 }
 
 /** Status lifecycle for tasks. */
-const STATUS_FLOW = ['draft', 'planned', 'in_progress', 'done'];
+const STATUS_FLOW: readonly TaskStatus[] = ['draft', 'planned', 'in_progress', 'done'];
 
 /** Status display labels. */
 const STATUS_LABELS: Record<string, string> = {
@@ -126,17 +127,17 @@ export function DetailPanel({
     return () => document.removeEventListener('mousedown', handler);
   }, [categoryOpen]);
 
-  const handleRestoreStatus = useCallback(async (prevStatus: string) => {
+  const handleRestoreStatus = useCallback(async (prevStatus: TaskStatus) => {
     await updateTask(taskId, { status: prevStatus });
     onGraphChange?.();
   }, [taskId, onGraphChange]);
 
-  const { canUndo: canUndoStatus, push: pushStatusUndo, undo: undoStatus } = useUndo<string>({
+  const { canUndo: canUndoStatus, push: pushStatusUndo, undo: undoStatus } = useUndo<TaskStatus>({
     onUndo: handleRestoreStatus,
     resetOn: taskId,
   });
 
-  const handleStatusChange = useCallback(async (newStatus: string) => {
+  const handleStatusChange = useCallback(async (newStatus: TaskStatus) => {
     pushStatusUndo(task.status);
     await updateTask(taskId, { status: newStatus });
     onGraphChange?.();

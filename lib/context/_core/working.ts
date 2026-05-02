@@ -1,3 +1,5 @@
+import "server-only";
+
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tasks, projects } from "@/lib/db/schema";
@@ -28,6 +30,11 @@ type WorkingContext = {
 
 /**
  * Build full working context for a task. 1-hop traversal.
+ *
+ * Sections ordered by U-shaped attention: header + description + criteria at
+ * start, edges + siblings in middle. No token budget — all content included
+ * as-is. Used by MCP for `mymir_context depth='working'`.
+ *
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
  * @param projectId - UUID of the project (for taskRef and sibling lookup).
@@ -38,12 +45,7 @@ export async function buildWorkingContext(
   taskId: string,
   projectId: string,
 ): Promise<WorkingContext> {
-  await assertTaskAccess(taskId, ctx);
-
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!task) {
-    return { node: {}, taskRef: "", ancestors: [], edges: [], siblings: [] };
-  }
+  const task = await assertTaskAccess(taskId, ctx);
 
   const [projectRow, ancestors, detailedEdges, siblings] = await Promise.all([
     db
