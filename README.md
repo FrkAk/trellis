@@ -34,7 +34,7 @@ bun install
 cp .env.local.example .env.local
 ```
 
-**Bring your own AI.** Mymir is a context and project management tool, so no API key is required to use it. For the best experience, however, drive Mymir from whichever coding agent you already reach for (Claude Code, Codex, Gemini CLI). The web app is complementary for anyone who wants to refine a ticket from the browser. Drop a provider key into `.env.local` to enable that chat. The web chat shares the same Mymir tool set as the CLI agents but runs in the browser with no access to your local files, so it cannot run or explore your source, which makes it less powerful than a CLI agent. Still, you can use a Gemini 3.1 Flash (preview) key from [Google AI Studio](https://aistudio.google.com/), which offers generous usage limits for free. For heavier project work, Claude Opus, GPT, or Gemini Pro give the best results.
+**Bring your own coding agent.** Mymir works directly inside the coding agent you already use: Claude Code, Codex, Cursor, or Gemini CLI. Brainstorm, decompose, and project activation happen there. The web app is for refining specs, planning, and tracking progress on `active` projects from the browser.
 
 Add your credentials to `.env.local` (see `.env.local.example` for the full list):
 
@@ -45,12 +45,6 @@ DATABASE_URL=postgresql://mymir:mymir@localhost:5432/mymir
 # Better Auth: session secret (openssl rand -base64 32) and callback origin
 BETTER_AUTH_SECRET=generate-a-random-secret-at-least-32-chars
 BETTER_AUTH_URL=http://localhost:3000
-
-# LLM provider: configure at least one for web app chat access
-GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
-# ANTHROPIC_API_KEY=your-anthropic-key
-# OPENAI_API_KEY=your-openai-key
-# OLLAMA_BASE_URL=http://localhost:11434
 ```
 
 Spin up Postgres and push the schema:
@@ -237,7 +231,7 @@ It also means we ship faster. Community contributions, bug reports, and ideas ma
 
 ## Stack
 
-Next.js 16, TypeScript 6, React 19, PostgreSQL, Drizzle ORM, Vercel AI SDK, Tailwind CSS v4, Motion
+Next.js 16, TypeScript 6, React 19, PostgreSQL, Drizzle ORM, Tailwind CSS v4, Motion
 
 ---
 
