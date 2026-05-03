@@ -234,6 +234,71 @@ export type ProjectListOrganization = {
   slug: string;
 };
 
+/** Team entry returned by {@link listUserTeams}. */
+export type UserTeamEntry = {
+  /** Team UUID — pass to `mymir_project create organizationId='...'`. */
+  id: string;
+  /** Display name shown in the home grid and settings. */
+  name: string;
+  /** URL-friendly slug. */
+  slug: string;
+  /** Caller's `member.role` (owner / admin / member). */
+  role: string;
+  /** Number of projects in this team the caller has access to. */
+  projectCount: number;
+};
+
+/**
+ * Fetch every team the caller belongs to, decorated with the caller's role
+ * and a project count. Sorted by membership creation order so the team the
+ * caller joined first surfaces first — matches the session-init heuristic
+ * in `lib/auth.ts` and gives stable ordering across repeated calls.
+ *
+ * Empty teams (no projects) are included — that's the entire point of this
+ * action; `getProjectList` cannot surface them.
+ *
+ * @param ctx - Resolved auth context.
+ * @returns Array of teams with role and project counts.
+ */
+export async function listUserTeams(
+  ctx: AuthContext,
+): Promise<UserTeamEntry[]> {
+  const memberships = await db
+    .select({
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+      role: member.role,
+    })
+    .from(member)
+    .innerJoin(organization, eq(organization.id, member.organizationId))
+    .where(eq(member.userId, ctx.userId))
+    .orderBy(asc(member.createdAt));
+
+  if (memberships.length === 0) return [];
+
+  const counts = await db
+    .select({
+      organizationId: projects.organizationId,
+      total: sql<number>`count(*)::int`.as("total"),
+    })
+    .from(projects)
+    .where(
+      sql`${projects.organizationId} IN ${memberships.map((m) => m.id)}`,
+    )
+    .groupBy(projects.organizationId);
+
+  const countByOrg = new Map(counts.map((c) => [c.organizationId, c.total]));
+
+  return memberships.map((m) => ({
+    id: m.id,
+    name: m.name,
+    slug: m.slug,
+    role: m.role,
+    projectCount: countByOrg.get(m.id) ?? 0,
+  }));
+}
+
 /** Project entry returned by {@link getProjectList}. */
 export type ProjectListEntry = typeof projects.$inferSelect & {
   /** The team that owns this project. */

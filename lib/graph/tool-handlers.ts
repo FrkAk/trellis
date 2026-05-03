@@ -18,6 +18,7 @@ import {
 } from "@/lib/graph/_core/mutations";
 import {
   getProjectList,
+  listUserTeams,
   searchTasks,
   getProjectTasksSlim,
   getTaskEdgesDetailed,
@@ -268,7 +269,7 @@ function translateError(e: unknown): ToolResult {
   if (e instanceof MultiTeamAmbiguityError) {
     const list = e.teams.map((t) => `${t.name} (${t.id})`).join(", ");
     return fail(
-      `organizationId required: caller is a member of multiple teams. Pick one and call again with organizationId='<uuid>'. Teams: ${list}. Ask the user which team this project belongs to before calling again.`,
+      `organizationId required: multi-team account. Teams: ${list}. Ask the user which team, then retry with organizationId='<uuid>'. (mymir_project action='teams' returns the same list anytime, with role + projectCount.)`,
     );
   }
   if (e instanceof NoTeamMembershipError) {
@@ -293,7 +294,7 @@ function translateError(e: unknown): ToolResult {
         );
       case "team":
         return fail(
-          `organizationId '${id}' is not a team you belong to. Trigger the team-list rejection by calling create without organizationId, then ask the user to pick from that list before retrying.`,
+          `organizationId '${id}' is not a team you belong to. Run mymir_project action='teams' to see valid ids, then ask the user which team before retrying.`,
         );
       default:
         return fail(
@@ -311,12 +312,12 @@ function translateError(e: unknown): ToolResult {
 /** Tool descriptions shared between MCP and web app. */
 export const DESCRIPTIONS = {
   mymir_project:
-    "Manage projects across every team you belong to. " +
-    "list=all projects with task counts, progress, and team metadata. " +
+    "Projects + teams across every membership the caller has. " +
+    "list=projects with task counts, progress, team metadata (skips empty teams). " +
+    "teams=every membership (id, name, slug, role, projectCount) — call before create or when list misses a team. " +
     "create=new project (REQUIRES organizationId in multi-team accounts; auto-resolves for single-team; rejected with team list inline otherwise). " +
     "select=confirm working project (returns projectId — pass it on every subsequent call; stateless server). " +
-    "update=change title, description, status, categories, or identifier. " +
-    "Always list+select at session start.",
+    "update=change title, description, status, categories, or identifier.",
   mymir_task:
     "Create, update, delete, or reorder tasks. " +
     "Status lifecycle: draft → planned → in_progress → done. " +
@@ -355,9 +356,9 @@ export const DESCRIPTIONS = {
 // Param types
 // ---------------------------------------------------------------------------
 
-/** Params for mymir_project (handler covers list/create/update; MCP handles select separately). */
+/** Params for mymir_project (handler covers list/create/update/teams; MCP handles select separately). */
 export type ProjectParams = {
-  action: "list" | "create" | "update";
+  action: "list" | "create" | "update" | "teams";
   projectId?: string;
   title?: string;
   description?: string;
@@ -443,6 +444,8 @@ export async function handleProject(
     switch (p.action) {
       case "list":
         return ok(await getProjectList(ctx));
+      case "teams":
+        return ok(await listUserTeams(ctx));
       case "create": {
         if (!p.title) return fail("title required for create (2-5 words, verb-noun preferred)");
         let parsedIdentifier;

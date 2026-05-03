@@ -15,23 +15,25 @@ description: >
 
 # Mymir — Context Network for Coding Projects
 
-Invokable as `/mymir`. You have access to 6 Mymir MCP tools (prefixed `mymir_`) for managing project context across sessions.
+Invokable as `/mymir`. You have access to 6 Mymir MCP tools (prefixed `mymir_`) for managing project context and teams across sessions.
 
 ## Multi-Team Awareness
 
-Your account spans every team you're a member of. There is no "active" team:
+Account spans every membership. No "active" team:
 
-- Read tools (list / search / context / analyze / overview) span every team you belong to.
-- Writes either name an explicit `organizationId` or auto-resolve when you're in exactly one team.
-- `mymir_project action='list'` returns each project's `organization.id` and `organization.name` — that's how you discover the user's team set when there are projects already.
-- `mymir_project action='create'` REQUIRES `organizationId` when the user belongs to more than one team. The server rejects ambiguous creates with the team list inline; ask the user before retrying.
-- Cross-team probes (passing an id you don't own) return a 404-shaped error — never trust an id you didn't get from a list/search/context call.
+- Read tools (list / teams / search / context / analyze / overview) span every team.
+- Writes name `organizationId` or auto-resolve when there's exactly one membership.
+- `mymir_project action='teams'` → every membership (id, name, slug, role, projectCount). Canonical team discovery. Includes empty teams.
+- `mymir_project action='list'` → projects with `organization.id`/`name`. Skips teams with zero projects — pair with `teams` for the full set.
+- `mymir_project action='create'` REQUIRES `organizationId` in multi-team accounts; server rejects ambiguous creates with the team list inline. Ask the user, don't default.
+- Cross-team probes (an id you don't own) return 404-shaped. Only trust ids from list/teams/search/context.
 
 ## First Use in Session
 
-1. `mymir_project` with `action='list'` → see existing projects across every team you belong to
-2. `mymir_project` with `action='select'` → confirm working project (note the projectId — pass it explicitly on every call)
-3. Then use other tools as needed, always passing projectId explicitly
+1. `mymir_project` `action='list'` → projects across every team.
+2. `mymir_project` `action='teams'` → every membership. Run when `list` is empty, before `create`, or when the user mentions a team `list` didn't surface.
+3. `mymir_project` `action='select'` → confirm working project (note the projectId; pass it on every call).
+4. Then other tools as needed.
 
 ## Data Model
 
@@ -53,7 +55,7 @@ Task titles: verb+noun format (e.g., "Implement JWT auth", "Fix login redirect")
 
 | Tool | Actions/Types | Purpose |
 |------|---------------|---------|
-| `mymir_project` | list, create, select, update | Manage projects |
+| `mymir_project` | list, teams, create, select, update | Manage projects + discover teams |
 | `mymir_task` | create, update, delete, reorder | Manage tasks |
 | `mymir_edge` | create, update, remove | Manage dependency edges |
 | `mymir_query` | search, list, edges, overview | Find and browse data |
@@ -213,10 +215,10 @@ Stay concise — same density as before, just use markdown structure so the UI r
 3. `mymir_task` `action='update'` → save changes
 
 ### Create a project
-1. `mymir_project action='list'` → see existing projects with team metadata (`organization.id`, `organization.name`).
-2. **If the user is a member of more than one team and didn't say which, ASK BEFORE CREATING.** The server will refuse the create with the team list inline if `organizationId` is missing in a multi-team account — don't try to default.
-3. `mymir_project action='create' title='<verb+noun>' description='<3-5 sentences>' organizationId='<team-uuid>'` (omit `organizationId` only when the user is in exactly one team).
-4. Then run "Create a task" repeatedly to populate the project, or hand to `mymir:decompose` for a full breakdown.
+1. `mymir_project action='teams'` → every membership with role + projectCount. Run even when `list` showed projects — empty teams are invisible to `list`.
+2. **Multi-team account + user didn't pick → ASK BEFORE CREATING.** Server rejects ambiguous creates with the team list inline; don't default.
+3. `mymir_project action='create' title='<verb+noun>' description='<3-5 sentences>' organizationId='<team-uuid>'` (omit `organizationId` only when single-team).
+4. Then run "Create a task" repeatedly, or hand to `mymir:decompose` for a full breakdown.
 
 ### Create a task
 0. Check `mymir_query type='overview'` Tag vocabulary section for existing tags to reuse.

@@ -49,14 +49,16 @@ const INSTRUCTIONS = [
   "Mymir is a persistent context network for coding projects. Tracks tasks, dependencies, decisions, and execution records across sessions.",
   "",
   "## Multi-Team Awareness",
-  "Your account spans every team you're a member of. There is no 'active' team — read tools return data across all teams; writes either name a team explicitly (`organizationId`) or auto-resolve when you're in only one team.",
-  "- `mymir_project action='list'` returns each project's `organization.id` and `organization.name`. Use this to enumerate the user's team set; the tool result also surfaces team metadata when projects exist in more than one team.",
-  "- Cross-team probes (passing an id you don't have access to) return a 404-shaped error — never trust an id you didn't get from a list/search.",
+  "Account spans every membership. No 'active' team. Read tools span all teams; writes name `organizationId` or auto-resolve when there's only one membership.",
+  "- `mymir_project action='teams'` → every membership (id, name, slug, role, projectCount). Canonical team-discovery call. Includes empty teams.",
+  "- `mymir_project action='list'` → projects with `organization.id`/`name`. Skips teams with zero projects — pair with `teams` for the full set.",
+  "- Cross-team probes (an id you don't own) return 404-shaped. Only trust ids returned by list/teams/search/context.",
   "",
   "## Session Start",
-  "1. `mymir_project action='list'` → see all projects across every team you belong to.",
-  "2. `mymir_project action='select' projectId='...'` → confirm the working project (note the projectId; pass it explicitly on every subsequent call).",
-  "3. There is no server-side session state. Pass projectId on every call.",
+  "1. `mymir_project action='list'` → projects across every team you belong to.",
+  "2. `mymir_project action='teams'` → every membership (run when `list` is empty, before `create`, or when the user mentions a team you haven't seen).",
+  "3. `mymir_project action='select' projectId='...'` → confirm the working project. Pass projectId on every subsequent call.",
+  "4. No server-side session state.",
   "",
   "## Find Work",
   "- `mymir_analyze type='ready'` → unblocked tasks (pick from these first).",
@@ -79,10 +81,10 @@ const INSTRUCTIONS = [
   "3. `mymir_task action='update' taskId='...' implementationPlan='<full plan>' status='planned'`.",
   "",
   "## Create a Project",
-  "1. `mymir_project action='list'` → see existing teams via project metadata. Note each `organization.id` / `organization.name`.",
-  "2. If the user is a member of more than one team and didn't say which, ASK BEFORE CREATING. The server will reject the create with the team list inline if `organizationId` is missing in a multi-team account — don't rely on a default.",
-  "3. `mymir_project action='create' title='...' description='...' organizationId='<team-uuid>'` (omit `organizationId` only when the user is in exactly one team).",
-  "4. After create, run the create-a-task workflow to populate the project.",
+  "1. `mymir_project action='teams'` → every membership with role + projectCount (covers empty teams `list` misses).",
+  "2. Multi-team account + user didn't pick → ASK BEFORE CREATING. Server rejects ambiguous creates with the team list inline; don't default.",
+  "3. `mymir_project action='create' title='...' description='...' organizationId='<team-uuid>'` (omit `organizationId` only when single-team).",
+  "4. Then run the create-a-task workflow to populate the project.",
   "",
   "## Create a Task",
   "1. `mymir_task action='create' projectId='...' title='<verb+noun>' description='<2-4 sentences>' acceptanceCriteria=[...] tags=[...]`.",
@@ -120,8 +122,8 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
     {
       description: DESCRIPTIONS.mymir_project,
       inputSchema: z.object({
-        action: z.enum(["list", "create", "select", "update"])
-          .describe("list=all projects across every team you belong to. create=new project (requires organizationId in multi-team accounts). select=confirm working project (returns projectId). update=modify fields."),
+        action: z.enum(["list", "teams", "create", "select", "update"])
+          .describe("list=projects across every team you belong to (skips empty teams). teams=every membership (id, name, slug, role, projectCount) — call before create or when list misses a team. create=new project (requires organizationId in multi-team accounts). select=confirm working project (returns projectId). update=modify fields."),
         projectId: z.string().optional()
           .describe("Project UUID. Required for select and update."),
         title: z.string().optional()
@@ -153,7 +155,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
         }
         const { action, ...rest } = params;
         const result = await handleProject(
-          { action: action as "list" | "create" | "update", ...rest },
+          { action: action as "list" | "teams" | "create" | "update", ...rest },
           ctx,
         );
         return toMcp(result);
