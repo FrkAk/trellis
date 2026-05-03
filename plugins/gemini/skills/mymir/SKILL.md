@@ -17,9 +17,19 @@ description: >
 
 Invokable as `/mymir`. You have access to 6 Mymir MCP tools (prefixed `mymir_`) for managing project context across sessions.
 
+## Multi-Team Awareness
+
+Your account spans every team you're a member of. There is no "active" team:
+
+- Read tools (list / search / context / analyze / overview) span every team you belong to.
+- Writes either name an explicit `organizationId` or auto-resolve when you're in exactly one team.
+- `mymir_project action='list'` returns each project's `organization.id` and `organization.name` — that's how you discover the user's team set when there are projects already.
+- `mymir_project action='create'` REQUIRES `organizationId` when the user belongs to more than one team. The server rejects ambiguous creates with the team list inline; ask the user before retrying.
+- Cross-team probes (passing an id you don't own) return a 404-shaped error — never trust an id you didn't get from a list/search/context call.
+
 ## First Use in Session
 
-1. `mymir_project` with `action='list'` → see existing projects
+1. `mymir_project` with `action='list'` → see existing projects across every team you belong to
 2. `mymir_project` with `action='select'` → confirm working project (note the projectId — pass it explicitly on every call)
 3. Then use other tools as needed, always passing projectId explicitly
 
@@ -201,6 +211,12 @@ Stay concise — same density as before, just use markdown structure so the UI r
 1. `mymir_context` `depth='working'` → understand current state
 2. Help improve description, acceptance criteria, decisions, dependencies
 3. `mymir_task` `action='update'` → save changes
+
+### Create a project
+1. `mymir_project action='list'` → see existing projects with team metadata (`organization.id`, `organization.name`).
+2. **If the user is a member of more than one team and didn't say which, ASK BEFORE CREATING.** The server will refuse the create with the team list inline if `organizationId` is missing in a multi-team account — don't try to default.
+3. `mymir_project action='create' title='<verb+noun>' description='<3-5 sentences>' organizationId='<team-uuid>'` (omit `organizationId` only when the user is in exactly one team).
+4. Then run "Create a task" repeatedly to populate the project, or hand to `mymir:decompose` for a full breakdown.
 
 ### Create a task
 0. Check `mymir_query type='overview'` Tag vocabulary section for existing tags to reuse.

@@ -34,8 +34,6 @@ interface SettingsViewProps {
     email: string;
     createdAt: Date | string;
   };
-  /** Active org id from the session, or null if the user has no team yet. */
-  activeOrganizationId: string | null;
   /** Initial OAuth device sessions, fetched server-side. */
   initialSessions: OAuthSessionView[];
   /** Initial team memberships, fetched server-side. */
@@ -51,7 +49,6 @@ interface SettingsViewProps {
  */
 export function SettingsView({
   user,
-  activeOrganizationId,
   initialSessions,
   initialTeams,
 }: SettingsViewProps) {
@@ -95,7 +92,6 @@ export function SettingsView({
           {tab === 'teams' && (
             <TeamsTab
               initialTeams={initialTeams}
-              activeOrganizationId={activeOrganizationId}
               userName={user.name}
             />
           )}

@@ -46,55 +46,65 @@ function toMcp(result: ToolResult) {
 }
 
 const INSTRUCTIONS = [
-  "Mymir is a persistent context network for coding projects. It tracks tasks, dependencies, decisions, and implementation records across sessions.",
+  "Mymir is a persistent context network for coding projects. Tracks tasks, dependencies, decisions, and execution records across sessions.",
+  "",
+  "## Multi-Team Awareness",
+  "Your account spans every team you're a member of. There is no 'active' team — read tools return data across all teams; writes either name a team explicitly (`organizationId`) or auto-resolve when you're in only one team.",
+  "- `mymir_project action='list'` returns each project's `organization.id` and `organization.name`. Use this to enumerate the user's team set; the tool result also surfaces team metadata when projects exist in more than one team.",
+  "- Cross-team probes (passing an id you don't have access to) return a 404-shaped error — never trust an id you didn't get from a list/search.",
   "",
   "## Session Start",
-  "1. `mymir_project action='list'` → pick a project → `action='select' projectId='...'` → note the projectId",
-  "2. `mymir_query type='overview' projectId='...'` → see all tasks, progress, and dependencies",
-  "3. Pass projectId explicitly on every subsequent call — there is no server-side session state.",
+  "1. `mymir_project action='list'` → see all projects across every team you belong to.",
+  "2. `mymir_project action='select' projectId='...'` → confirm the working project (note the projectId; pass it explicitly on every subsequent call).",
+  "3. There is no server-side session state. Pass projectId on every call.",
   "",
   "## Find Work",
-  "- `mymir_analyze type='ready'` → unblocked tasks (pick from these first)",
-  "- If none ready: `mymir_analyze type='plannable'` → draft tasks that need implementation plans",
-  "- `mymir_analyze type='critical_path'` → prioritize tasks on the bottleneck chain",
+  "- `mymir_analyze type='ready'` → unblocked tasks (pick from these first).",
+  "- If none ready: `mymir_analyze type='plannable'` → draft tasks ready for planning.",
+  "- `mymir_analyze type='critical_path'` → prioritize tasks on the bottleneck chain.",
   "",
   "## Implement a Task",
-  "1. Claim: `mymir_task action='update' status='in_progress'` (prevents double-assignment)",
-  "2. Get context: `mymir_context depth='agent'` (multi-hop deps + execution records)",
-  "3. Do the work",
-  "4. Record: `mymir_task action='update' status='done'` with ALL of:",
-  "   - `executionRecord`: 3-5 sentences on what was built (function names, file paths, endpoints)",
-  "   - `decisions`: one-liner per technical choice (CHOICE + WHY)",
-  "   - `files`: every file created or modified",
+  "1. Claim: `mymir_task action='update' taskId='...' status='in_progress'` (prevents double-assignment).",
+  "2. Get context: `mymir_context taskId='...' depth='agent'` (multi-hop deps + execution records).",
+  "3. Do the work.",
+  "4. Record: `mymir_task action='update' taskId='...' status='done'` with ALL of:",
+  "   - `executionRecord`: 3-5 sentences on what was built (function names, file paths, endpoints).",
+  "   - `decisions`: one-liner per technical choice (CHOICE + WHY).",
+  "   - `files`: every file created or modified.",
   "   These feed downstream tasks — skipping them breaks the context chain.",
   "",
   "## Plan a Draft Task",
-  "1. `mymir_context depth='planning'` → spec, prerequisites, related work",
-  "2. Write detailed plan (file paths, line numbers, specific changes, verification steps)",
-  "3. `mymir_task action='update' implementationPlan='<full plan>' status='planned'`",
+  "1. `mymir_context taskId='...' depth='planning'` → spec, prerequisites, related work.",
+  "2. Write detailed plan (file paths, line numbers, specific changes, verification steps).",
+  "3. `mymir_task action='update' taskId='...' implementationPlan='<full plan>' status='planned'`.",
+  "",
+  "## Create a Project",
+  "1. `mymir_project action='list'` → see existing teams via project metadata. Note each `organization.id` / `organization.name`.",
+  "2. If the user is a member of more than one team and didn't say which, ASK BEFORE CREATING. The server will reject the create with the team list inline if `organizationId` is missing in a multi-team account — don't rely on a default.",
+  "3. `mymir_project action='create' title='...' description='...' organizationId='<team-uuid>'` (omit `organizationId` only when the user is in exactly one team).",
+  "4. After create, run the create-a-task workflow to populate the project.",
   "",
   "## Create a Task",
-  "1. `mymir_task action='create'` with title (verb+noun), description, acceptanceCriteria, tags",
-  "2. `mymir_edge action='create'` to connect it into the graph",
-  "3. `mymir_query type='edges'` to verify edges look correct",
+  "1. `mymir_task action='create' projectId='...' title='<verb+noun>' description='<2-4 sentences>' acceptanceCriteria=[...] tags=[...]`.",
+  "2. `mymir_edge action='create' sourceTaskId='...' targetTaskId='...' edgeType='depends_on|relates_to' note='<why>'` to wire dependencies.",
+  "3. `mymir_query type='edges' taskId='...'` to verify edges look correct.",
   "",
   "## Edges (Dependencies & Relationships)",
-  "Edges are what make Mymir a context *network* — they drive ready/blocked analysis, critical path, and agent context propagation.",
-  "- `depends_on`: source CANNOT start without target done first (source needs target's code, APIs, or decisions)",
-  "- `relates_to`: tasks share context but neither blocks the other",
+  "Edges drive ready/blocked analysis, critical path, and agent context propagation.",
+  "- `depends_on`: source CANNOT start without target done first (source needs target's code, APIs, or decisions).",
+  "- `relates_to`: tasks share context but neither blocks the other.",
   "- When in doubt: removing target makes source impossible → depends_on. Just harder → relates_to.",
   "- Always include a `note` explaining WHY the relationship exists — notes propagate to downstream agent context.",
-  "- After completing a task: `mymir_query type='edges'` + `mymir_analyze type='downstream'` → check if downstream task descriptions, edge notes, or dependencies need updating based on decisions made.",
+  "- After completing a task: `mymir_query type='edges'` + `mymir_analyze type='downstream'` → check whether downstream descriptions, edge notes, or dependencies need updating based on decisions made.",
   "",
-  "## Hints",
-  "Tool responses may include `_hints` with contextual guidance — always read and follow them.",
+  "## Hints & Errors",
+  "Tool responses may include `_hints` with contextual guidance — always read and follow them. Errors are token-dense and self-correcting: when an action is rejected, the message names the next tool to call (often with the team or task list inline). Re-read the error and act on it before falling back to asking the user for help.",
   "",
   "## Full Workflows",
   "Invoke `/mymir` skill for: dispatching to multiple agents, propagating changes through the graph, resuming sessions, refining tasks, and complex dependency management.",
   "",
   "## Remote Mode",
-  "This is a stateless HTTP endpoint — no session state is persisted server-side.",
-  "The `select` action on mymir_project returns a confirmation but does not set server state — always pass projectId explicitly on subsequent calls.",
+  "This is a stateless HTTP endpoint. No session state is persisted server-side. The `select` action on `mymir_project` returns a confirmation but does not set server state — always pass projectId explicitly on subsequent calls.",
 ].join("\n");
 
 /**
@@ -102,7 +112,7 @@ const INSTRUCTIONS = [
  * auth context. Each tool handler receives `ctx` as its second arg so
  * authorization and team scoping happen inside the data layer.
  * @param server - Any object with a registerTool method (McpServer or mock).
- * @param ctx - Resolved auth context (user id + active org id).
+ * @param ctx - Resolved auth context (user id only — team scope per call).
  */
 export function registerAllTools(server: McpServer, ctx: AuthContext): void {
   server.registerTool(
@@ -111,19 +121,21 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       description: DESCRIPTIONS.mymir_project,
       inputSchema: z.object({
         action: z.enum(["list", "create", "select", "update"])
-          .describe("list=get all, create=new, select=confirm working project, update=modify"),
+          .describe("list=all projects across every team you belong to. create=new project (requires organizationId in multi-team accounts). select=confirm working project (returns projectId). update=modify fields."),
         projectId: z.string().optional()
-          .describe("Project UUID. Required for select and update"),
+          .describe("Project UUID. Required for select and update."),
         title: z.string().optional()
-          .describe("Project name (2-5 words). Required for create"),
+          .describe("Project name (2-5 words, verb-noun preferred). Required for create."),
         description: z.string().optional()
-          .describe("3-5 sentence brief: problem, user, features, tech direction, constraints"),
+          .describe("3-5 sentence brief: problem, user, features, tech direction, constraints."),
         status: z.enum(["brainstorming", "decomposing", "active", "archived"]).optional()
-          .describe("Lifecycle: brainstorming → decomposing → active → archived. Settable on create (defaults to 'brainstorming') and on update."),
+          .describe("Lifecycle: brainstorming → decomposing → active → archived. Settable on create (defaults to 'brainstorming') or update."),
         categories: z.array(z.string()).optional()
-          .describe("Task categories for this project (e.g. ['backend', 'frontend', 'mcp']). Determines drawer grouping in the UI."),
+          .describe("Task categories for this project (e.g. ['backend', 'frontend', 'mcp']). Drives drawer grouping in the UI."),
         identifier: identifierSchema.optional()
-          .describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, ...). 2-12 chars, uppercase alphanumeric, unique. Auto-derived from title on create if omitted. On update: renames all existing task refs — external references (PR titles, docs) no longer resolve."),
+          .describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, …). 2-12 chars, uppercase alphanumeric, unique per team. Auto-derived from title on create when omitted. On update: renames every existing task ref — external references (PR titles, docs) no longer resolve."),
+        organizationId: z.string().optional()
+          .describe("Target team UUID for create. REQUIRED when you're a member of more than one team — the create is rejected with the team list inline otherwise. Auto-resolved when you belong to exactly one team. Membership is verified server-side; non-member targets return 'forbidden'."),
       }),
       annotations: {
         title: "Manage Project",
@@ -136,10 +148,9 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
     async (params) => {
       try {
         if (params.action === "select") {
-          if (!params.projectId) return err("projectId required for select. Call with action='list' first to get IDs.");
+          if (!params.projectId) return err("projectId required for select. Call mymir_project action='list' first to enumerate your projects.");
           return json({ selected: params.projectId, _hints: ["Stateless mode — pass this projectId explicitly on every subsequent call."] });
         }
-        // select returns early above; narrow for handleProject
         const { action, ...rest } = params;
         const result = await handleProject(
           { action: action as "list" | "create" | "update", ...rest },
@@ -158,42 +169,42 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       description: DESCRIPTIONS.mymir_task,
       inputSchema: z.object({
         action: z.enum(["create", "update", "delete", "reorder"])
-          .describe("create=new task, update=modify fields, delete=remove, reorder=change position"),
+          .describe("create=new task. update=modify fields (pass only what changed). delete=remove (preview by default). reorder=change position."),
         taskId: z.string().optional()
-          .describe("Task UUID. Required for update/delete/reorder"),
+          .describe("Task UUID. Required for update/delete/reorder."),
         projectId: z.string().optional()
-          .describe("Project UUID. Required for create"),
+          .describe("Project UUID. Required for create. Project's team scope is inherited."),
         title: z.string().optional()
-          .describe("Short task name. Required for create"),
+          .describe("Verb+noun, short. Required for create (e.g. 'Implement JWT auth')."),
         description: z.string().optional()
-          .describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create"),
+          .describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create."),
         status: z.enum(["draft", "planned", "in_progress", "done", "cancelled"]).optional()
-          .describe("Task lifecycle: draft → planned → in_progress → done; `cancelled` = terminal abandoned work with executionRecord rationale. Cancelled deps are transparent: pass through to active prerequisites, never satisfy by themselves. Excluded from progress and critical path."),
+          .describe("Lifecycle: draft → planned → in_progress → done. cancelled = terminal abandoned work; populate executionRecord with rationale. Cancelled deps are transparent — dependents stay blocked through the cancelled task's own unsatisfied deps. Excluded from progress and critical path."),
         acceptanceCriteria: z.array(
           z.union([
             z.string(),
             z.object({ id: z.string().optional(), text: z.string(), checked: z.boolean().optional() }),
           ]),
         ).optional()
-          .describe("2-4 testable done conditions. Pass strings for new criteria, or objects with {text, checked} to set check state."),
+          .describe("2-4 testable done conditions. Pass strings for new criteria, or objects with {text, checked} to set check state on existing rows."),
         decisions: z.array(z.string()).optional()
-          .describe("Key technical decisions and constraints"),
+          .describe("Technical choices and constraints — one-liner per decision (CHOICE + WHY)."),
         tags: z.array(z.string()).optional()
-          .describe("Kebab-case. Every task carries exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), >=1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces the task touches), and exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Check mymir_query type='overview' before coining new."),
+          .describe("Kebab-case. Every task carries: exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces touched), exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Run mymir_query type='overview' before coining new tags."),
         category: z.string().optional()
-          .describe("Drawer group for this task. Should match a project category. Run mymir_project to see available categories."),
+          .describe("Drawer group for this task. Should match a project category. Run mymir_project action='list' or mymir_query type='overview' to see available categories."),
         files: z.array(z.string()).optional()
-          .describe("File paths this task touches"),
+          .describe("Every file path this task touches (relative to repo root)."),
         implementationPlan: z.string().optional()
-          .describe("Implementation plan written during planning phase"),
+          .describe("Implementation plan written during planning phase. Markdown."),
         executionRecord: z.string().optional()
-          .describe("Summary of what was built during implementation"),
+          .describe("Summary of what was built during implementation. 3-5 sentences with concrete details (function names, file paths, endpoints). Markdown."),
         order: z.number().int().optional()
-          .describe("0-based position. For create: initial order. For reorder: new position"),
+          .describe("0-based position. For create: initial order. For reorder: new position."),
         preview: z.boolean().optional().default(true)
-          .describe("For delete only: true=show impact (default), false=actually delete"),
+          .describe("Delete only: true=show impact (default), false=actually delete."),
         overwriteArrays: z.boolean().optional().default(false)
-          .describe("For update only: true=replace decisions/acceptanceCriteria/files entirely. Default false=append to existing"),
+          .describe("Update only: true=replace decisions/acceptanceCriteria/files entirely. Default false=append."),
       }),
       annotations: {
         title: "Manage Task",
@@ -219,17 +230,17 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       description: DESCRIPTIONS.mymir_edge,
       inputSchema: z.object({
         action: z.enum(["create", "update", "remove"])
-          .describe("create=new edge, update=modify, remove=delete"),
+          .describe("create=new edge. update=modify type or note. remove=delete by edgeId or by source+target+type."),
         edgeId: z.string().optional()
-          .describe("Edge UUID. Required for update. For remove: use this OR source+target+type"),
+          .describe("Edge UUID. Required for update. For remove: use this OR sourceTaskId+targetTaskId+edgeType."),
         sourceTaskId: z.string().optional()
-          .describe("Source task UUID. Required for create. For remove: alternative to edgeId"),
+          .describe("Source task UUID. Required for create. Alternative key for remove."),
         targetTaskId: z.string().optional()
-          .describe("Target task UUID. Required for create. For remove: alternative to edgeId"),
+          .describe("Target task UUID. Required for create. Alternative key for remove."),
         edgeType: z.enum(["depends_on", "relates_to"]).optional()
-          .describe("depends_on = source needs target done first. relates_to = informational link"),
+          .describe("depends_on = source needs target done first. relates_to = informational link, neither blocks the other. Required for create."),
         note: z.string().optional()
-          .describe("Why this relationship exists — propagates to agent context for downstream tasks"),
+          .describe("Why this relationship exists — propagates to agent context for downstream tasks. Strongly recommended on create."),
       }),
       annotations: {
         title: "Manage Edge",
@@ -255,15 +266,15 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       description: DESCRIPTIONS.mymir_query,
       inputSchema: z.object({
         type: z.enum(["search", "list", "edges", "overview"])
-          .describe("search=find by taskRef, name, or tag, list=all tasks, edges=task relationships, overview=project structure"),
+          .describe("search=find tasks by taskRef, title, or tag (case-insensitive, up to 20). list=all tasks ordered by position. edges=relationships on a task. overview=full project structure with progress + tag vocab."),
         query: z.string().optional()
-          .describe("Search string for type='search' — matches taskRef, title substring, or tag substring. Optional when `tags` is provided."),
+          .describe("Search string for type='search'. Matches taskRef, title substring, or tag substring. Optional when `tags` is provided."),
         tags: z.array(z.string()).optional()
-          .describe("Filter to tasks containing ANY of these exact tags (OR-within). Combine with `query` to narrow further. Pick from the Tag vocabulary in `mymir_query type='overview'`."),
+          .describe("Filter to tasks containing ANY of these exact tags (OR-within). Combine with `query` to narrow further. Pick from the Tag vocabulary in `type='overview'`."),
         taskId: z.string().optional()
-          .describe("Task UUID for type='edges'"),
+          .describe("Task UUID for type='edges'."),
         projectId: z.string().optional()
-          .describe("Project UUID. Required for search/list/overview"),
+          .describe("Project UUID. Required for search/list/overview."),
       }),
       annotations: {
         title: "Query Tasks",
@@ -288,11 +299,11 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
     {
       description: DESCRIPTIONS.mymir_context,
       inputSchema: z.object({
-        taskId: z.string().describe("Task UUID"),
+        taskId: z.string().describe("Task UUID."),
         depth: z.enum(["summary", "working", "agent", "planning"]).default("working")
-          .describe("summary=quick, working=detailed, agent=multi-hop for coding, planning=spec for pre-implementation"),
+          .describe("summary=quick (status, edge counts). working=detailed (criteria, decisions, 1-hop edges, siblings). agent=multi-hop deps + execution records (use BEFORE coding). planning=spec for pre-implementation (project description, prereqs, acceptance criteria, downstream specs)."),
         projectId: z.string().optional()
-          .describe("Project UUID. Required for 'working' depth"),
+          .describe("Project UUID. Required for 'working' depth."),
       }),
       annotations: {
         title: "Get Task Context",
@@ -318,11 +329,11 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       description: DESCRIPTIONS.mymir_analyze,
       inputSchema: z.object({
         type: z.enum(["ready", "blocked", "downstream", "critical_path", "plannable"])
-          .describe("ready=unblocked work, blocked=waiting tasks, downstream=impact, critical_path=bottleneck, plannable=draft tasks ready for planning"),
+          .describe("ready=unblocked work to start. blocked=waiting tasks with blocker details. downstream=transitive dependents (impact analysis before changes). critical_path=longest dep chain (project bottleneck). plannable=draft tasks with description+criteria, ready for planning."),
         taskId: z.string().optional()
-          .describe("Task UUID. Required for 'downstream'"),
+          .describe("Task UUID. Required for 'downstream'."),
         projectId: z.string().optional()
-          .describe("Project UUID. Required for ready/blocked/critical_path/plannable"),
+          .describe("Project UUID. Required for ready/blocked/critical_path/plannable."),
       }),
       annotations: {
         title: "Analyze Graph",
@@ -346,14 +357,19 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
 
 /**
  * Create a stateless MCP server bound to the caller's auth context.
- * Tool calls are scoped to `ctx.activeOrgId` so cross-team data is
- * never visible to this client.
+ *
+ * Read tools (`list`, queries, context) span every team the caller is a
+ * member of. Writes either name an explicit `organizationId` (membership-
+ * checked) or auto-resolve when the caller belongs to exactly one team.
+ * Multi-team callers must pass `organizationId` on `mymir_project create`;
+ * the server returns a hard error with the team list inline otherwise.
+ *
  * @param ctx - Resolved auth context derived from the OAuth JWT.
  * @returns Configured McpServer instance.
  */
 export function createMcpServer(ctx: AuthContext): McpServer {
   const server = new McpServer(
-    { name: "mymir", version: "1.3.2" },
+    { name: "mymir", version: "1.4.0" },
     { instructions: INSTRUCTIONS },
   );
   registerAllTools(server, ctx);

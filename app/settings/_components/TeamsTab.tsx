@@ -15,82 +15,57 @@ import { TeamCard } from './TeamCard';
 interface TeamsTabProps {
   /** Initial team list, hydrated from the server component. */
   initialTeams: TeamView[];
-  /** Active org id from the session, or null if the user has no team yet. */
-  activeOrganizationId: string | null;
   /** Caller's display name — used to personalize the create-team placeholder. */
   userName?: string | null;
 }
 
 /**
- * Sort teams: active first, then by `createdAt` descending.
+ * Sort teams by `createdAt` descending — newest first. There is no
+ * "active" team to pin, so the list mirrors team creation order.
  */
-function sortTeams(list: TeamView[], activeId: string | null): TeamView[] {
-  return [...list].sort((a, b) => {
-    if (activeId) {
-      if (a.id === activeId) return -1;
-      if (b.id === activeId) return 1;
-    }
-    return b.createdAt.valueOf() - a.createdAt.valueOf();
-  });
+function sortTeams(list: TeamView[]): TeamView[] {
+  return [...list].sort(
+    (a, b) => b.createdAt.valueOf() - a.createdAt.valueOf(),
+  );
 }
 
 /**
- * Teams tab — lists every team the user belongs to with role badges,
- * an active-team rail, and a primary action per row (Switch or active
- * marker). A New-team panel slides in above the list when triggered.
+ * Teams tab — lists every team the user belongs to with role badges and
+ * a Manage link for admins/owners. A New-team panel slides in above the
+ * list when triggered. The workspace spans every team the user is a
+ * member of, so there is no team-switcher here.
  *
- * @param props - Hydrated teams list + active id.
+ * @param props - Hydrated teams list.
  * @returns Rendered tab body.
  */
-export function TeamsTab({ initialTeams, activeOrganizationId, userName }: TeamsTabProps) {
+export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
   const router = useRouter();
-  const [teams, setTeams] = useState<TeamView[]>(() =>
-    sortTeams(initialTeams, activeOrganizationId),
-  );
-  const [activeId, setActiveId] = useState<string | null>(activeOrganizationId);
+  const [teams, setTeams] = useState<TeamView[]>(() => sortTeams(initialTeams));
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [glowId, setGlowId] = useState<string | null>(null);
 
-  const refresh = useCallback(
-    async (activeOverride?: string | null) => {
-      const result = await listUserTeamsAction();
-      if (result.ok) {
-        const pinned = activeOverride !== undefined ? activeOverride : activeId;
-        setTeams(sortTeams(result.data, pinned));
-      }
-    },
-    [activeId],
-  );
-
-  const handleSwitch = useCallback(
-    (organizationId: string) => {
-      setError(null);
-      setActiveId(organizationId);
-      setTeams((prev) => sortTeams(prev, organizationId));
-      router.refresh();
-    },
-    [router],
-  );
+  const refresh = useCallback(async () => {
+    const result = await listUserTeamsAction();
+    if (result.ok) setTeams(sortTeams(result.data));
+  }, []);
 
   const handleLeft = useCallback(
     (organizationId: string) => {
       setError(null);
       setTeams((prev) => prev.filter((t) => t.id !== organizationId));
-      if (activeId === organizationId) setActiveId(null);
       router.refresh();
     },
-    [activeId, router],
+    [router],
   );
 
   const handleCreated = useCallback(
     async (organizationId: string) => {
       setCreating(false);
       setError(null);
-      setActiveId(organizationId);
       setGlowId(organizationId);
       window.setTimeout(() => setGlowId(null), 900);
-      await refresh(organizationId);
+      await refresh();
       router.refresh();
     },
     [refresh, router],
@@ -111,6 +86,12 @@ export function TeamsTab({ initialTeams, activeOrganizationId, userName }: Teams
           + New team
         </Button>
       </div>
+
+      {teams.length > 0 ? (
+        <p className="text-xs leading-relaxed text-text-muted">
+          You can browse and edit projects in every team you&apos;re a member of from the home grid. When your coding agent creates a project, it will ask which team it belongs to.
+        </p>
+      ) : null}
 
       {error ? (
         <div
@@ -162,9 +143,7 @@ export function TeamsTab({ initialTeams, activeOrganizationId, userName }: Teams
               <TeamCard
                 key={team.id}
                 team={team}
-                isActive={team.id === activeId}
                 glow={glowId === team.id}
-                onSwitch={handleSwitch}
                 onLeft={handleLeft}
                 onError={setError}
               />

@@ -10,6 +10,8 @@ import { removeMemberAction, updateMemberRoleAction } from '@/lib/actions/team';
 import type { MemberView } from '@/lib/actions/team-members-map';
 
 interface MemberRowProps {
+  /** Team UUID this row belongs to — required by role/remove actions. */
+  teamId: string;
   /** The member to render. */
   member: MemberView;
   /** Caller's user id — drives self-row detection. */
@@ -87,6 +89,7 @@ function resolveActions(args: {
  * @returns Animated list-item rendering one member.
  */
 export function MemberRow({
+  teamId,
   member,
   currentUserId,
   viewerRole,
@@ -138,7 +141,11 @@ export function MemberRow({
   const handleRoleChange = (next: 'member' | 'admin' | 'owner') => {
     setMenuOpen(false);
     startTransition(async () => {
-      const result = await updateMemberRoleAction({ memberId: member.id, role: next });
+      const result = await updateMemberRoleAction({
+        organizationId: teamId,
+        memberId: member.id,
+        role: next,
+      });
       if (result.ok) {
         onRoleChanged(member.id, next);
       } else {
@@ -151,7 +158,10 @@ export function MemberRow({
     setConfirmingRemove(false);
     setMenuOpen(false);
     startTransition(async () => {
-      const result = await removeMemberAction({ memberIdOrEmail: member.id });
+      const result = await removeMemberAction({
+        organizationId: teamId,
+        memberIdOrEmail: member.id,
+      });
       if (result.ok) {
         onRemoved(member.id);
       } else {

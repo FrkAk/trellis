@@ -11,7 +11,6 @@ const resourceMetadataUrl = `${origin}/.well-known/oauth-protected-resource`;
 /** Shape we require from a verified MCP access token payload. */
 const accessTokenClaimsSchema = z.looseObject({
   sub: z.uuid(),
-  active_org: z.uuid(),
 });
 
 /**
@@ -42,16 +41,17 @@ async function verifyMcpAuth(request: Request) {
 }
 
 /**
- * Resolve the MCP auth context from a verified JWT payload. Requires `sub`
- * (user id) and `active_org` (organization id stamped via
- * `oauthProvider.customAccessTokenClaims` in lib/auth.ts).
+ * Resolve the MCP auth context from a verified JWT payload. Requires only
+ * `sub` (user id) — team scope is resolved per call inside the data layer
+ * via membership JOINs, never via a token-bound active-org claim.
+ *
  * @param payload - Decoded JWT payload.
- * @returns AuthContext or null when claims are missing.
+ * @returns AuthContext or null when the subject claim is missing.
  */
 function authContextFromPayload(payload: unknown): AuthContext | null {
   const parsed = accessTokenClaimsSchema.safeParse(payload);
   if (!parsed.success) return null;
-  return makeAuthContext(parsed.data.sub, parsed.data.active_org);
+  return makeAuthContext(parsed.data.sub);
 }
 
 /**
@@ -77,35 +77,16 @@ function unauthorized() {
 }
 
 /**
- * MCP-spec 403 response when the OAuth token has no active team.
- * @returns 403 JSON-RPC error response.
- */
-function noActiveTeam() {
-  return Response.json(
-    {
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message:
-          "No active team selected. Sign in to the web app, pick a team, then re-authorize this MCP client.",
-      },
-      id: null,
-    },
-    { status: 403 },
-  );
-}
-
-/**
  * Authenticate the request and run an MCP transport request.
  * @param request - Incoming MCP request.
- * @returns MCP response, 401, or 403.
+ * @returns MCP response or 401.
  */
 async function runMcpRequest(request: Request) {
   const payload = await verifyMcpAuth(request);
   if (!payload) return unauthorized();
 
   const ctx = authContextFromPayload(payload);
-  if (!ctx) return noActiveTeam();
+  if (!ctx) return unauthorized();
 
   const server = createMcpServer(ctx);
   const transport = new WebStandardStreamableHTTPServerTransport({
@@ -117,18 +98,18 @@ async function runMcpRequest(request: Request) {
 
 /**
  * POST handler for MCP JSON-RPC messages via Streamable HTTP transport.
- * Requires valid JWT Bearer token with `active_org` claim.
+ * Requires a valid JWT Bearer token (subject claim only).
  * @param request - Incoming MCP JSON-RPC request.
- * @returns MCP JSON-RPC response, 401, or 403.
+ * @returns MCP JSON-RPC response or 401.
  */
 export async function POST(request: Request) {
   return runMcpRequest(request);
 }
 
 /**
- * GET handler for MCP SSE streams. Requires valid JWT Bearer token.
+ * GET handler for MCP SSE streams. Requires a valid JWT Bearer token.
  * @param request - Incoming request.
- * @returns SSE stream, 401, or 403.
+ * @returns SSE stream or 401.
  */
 export async function GET(request: Request) {
   return runMcpRequest(request);

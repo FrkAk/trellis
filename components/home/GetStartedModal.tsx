@@ -51,6 +51,9 @@ const README_SETUP_URL = 'https://github.com/FrkAk/mymir#how-to-set-it-up';
 const SECTION_LABEL_CLASS =
   'font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted';
 
+const MULTI_TEAM_HINT =
+  "If you belong to more than one team, your coding agent will ask which team a new project belongs to before creating it.";
+
 /**
  * Body for users who haven't created a project yet — emphasizes plugin
  * install commands across the four supported coding agents.
@@ -87,6 +90,7 @@ function FirstTimeBody() {
         <p className="font-mono text-xs leading-relaxed text-text-primary">
           ❯ Describe what you are building. The mymir skill picks up from there.
         </p>
+        <p className="text-xs leading-relaxed text-text-muted">{MULTI_TEAM_HINT}</p>
       </section>
 
       <p className="text-xs leading-relaxed text-text-muted">
@@ -124,6 +128,7 @@ function ReturningBody() {
         <p className="font-mono text-xs leading-relaxed text-text-primary">
           ❯ I want to build a real-time dashboard for server metrics
         </p>
+        <p className="text-xs leading-relaxed text-text-muted">{MULTI_TEAM_HINT}</p>
       </section>
 
       <p className="text-xs leading-relaxed text-text-muted">

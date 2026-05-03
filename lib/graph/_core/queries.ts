@@ -1,9 +1,9 @@
 import "server-only";
 
-import { eq, or, and, asc, sql, ilike } from "drizzle-orm";
+import { eq, or, and, asc, desc, sql, ilike, getTableColumns } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
-import { member } from "@/lib/db/auth-schema";
+import { member, organization } from "@/lib/db/auth-schema";
 import type { EdgeType } from "@/lib/types";
 import {
   asIdentifier,
@@ -223,25 +223,55 @@ export async function getTaskEdges(ctx: AuthContext, taskId: string) {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch all projects in the caller's active team, with task progress stats.
- * Filters via JOIN through `member` so users only see projects of orgs they
- * belong to AND that match the active team.
- * @param ctx - Resolved auth context.
- * @returns Array of projects with task counts and progress.
+ * Slim view of the project's owning team — only the fields the home grid
+ * and team chip need. Decorating each project with its own organization
+ * here saves the home page from a separate `organization` query keyed
+ * across many ids.
  */
-export async function getProjectList(ctx: AuthContext) {
+export type ProjectListOrganization = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+/** Project entry returned by {@link getProjectList}. */
+export type ProjectListEntry = typeof projects.$inferSelect & {
+  /** The team that owns this project. */
+  organization: ProjectListOrganization;
+  /** Caller's `member.role` in the owning team — used to derive per-card capabilities. */
+  memberRole: string;
+  /** Task counts for the progress bar. */
+  taskStats: {
+    total: number;
+    done: number;
+    inProgress: number;
+    cancelled: number;
+  };
+  /** Done / (total - cancelled), rounded to a percentage. */
+  progress: number;
+};
+
+/**
+ * Fetch every project in any team the caller is a member of, decorated
+ * with team metadata, the caller's role in that team, and task progress
+ * stats. Membership is the access boundary — the active organization is
+ * not part of the filter, so the home grid surfaces work across teams.
+ *
+ * @param ctx - Resolved auth context.
+ * @returns Array of projects with team, role, and task stats.
+ */
+export async function getProjectList(
+  ctx: AuthContext,
+): Promise<ProjectListEntry[]> {
   const allProjects = await db
     .select({
-      id: projects.id,
-      organizationId: projects.organizationId,
-      title: projects.title,
-      identifier: projects.identifier,
-      description: projects.description,
-      status: projects.status,
-      categories: projects.categories,
-      history: projects.history,
-      createdAt: projects.createdAt,
-      updatedAt: projects.updatedAt,
+      project: getTableColumns(projects),
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+      },
+      memberRole: member.role,
     })
     .from(projects)
     .innerJoin(
@@ -251,12 +281,12 @@ export async function getProjectList(ctx: AuthContext) {
         eq(member.userId, ctx.userId),
       ),
     )
-    .where(eq(projects.organizationId, ctx.activeOrgId))
-    .orderBy(asc(projects.createdAt));
+    .innerJoin(organization, eq(organization.id, projects.organizationId))
+    .orderBy(desc(projects.updatedAt));
 
   if (allProjects.length === 0) return [];
 
-  const projectIds = allProjects.map((p) => p.id);
+  const projectIds = allProjects.map((p) => p.project.id);
 
   const allTasks = await db
     .select({ status: tasks.status, projectId: tasks.projectId })
@@ -270,7 +300,7 @@ export async function getProjectList(ctx: AuthContext) {
     tasksByProject.set(t.projectId, list);
   }
 
-  return allProjects.map((project) => {
+  return allProjects.map(({ project, organization: org, memberRole }) => {
     const projTasks = tasksByProject.get(project.id) ?? [];
 
     const cancelled = projTasks.filter((t) => t.status === "cancelled").length;
@@ -284,6 +314,8 @@ export async function getProjectList(ctx: AuthContext) {
 
     return {
       ...project,
+      organization: org,
+      memberRole,
       taskStats,
       progress:
         denominator > 0

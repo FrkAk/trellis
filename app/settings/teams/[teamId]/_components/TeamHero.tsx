@@ -13,16 +13,14 @@ interface TeamHeroProps {
   teamId: string;
   /** Caller's role string, used for the badge. */
   memberRole: string;
-  /** True when this is the user's active session team. */
-  isActive: boolean;
   /** Total members in the team. */
   memberCount: number;
 }
 
 /**
  * Identity card for the per-team admin page. 56px gradient avatar +
- * name + slug + role chip + optional Active marker. Sits at the top of
- * the page as the visual anchor before the operational sections.
+ * name + slug + role chip. Sits at the top of the page as the visual
+ * anchor before the operational sections.
  *
  * @param props - Team identity slice.
  * @returns Level-1 card rendering team identity.
@@ -32,7 +30,6 @@ export function TeamHero({
   slug,
   teamId,
   memberRole,
-  isActive,
   memberCount,
 }: TeamHeroProps) {
   const gradient = teamAvatarGradient(teamId);
@@ -40,13 +37,6 @@ export function TeamHero({
 
   return (
     <section className="relative flex items-center gap-4 rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-card)]">
-      {isActive ? (
-        <span
-          aria-hidden="true"
-          className="absolute left-0 top-3 bottom-3 w-[2px] rounded-full bg-accent"
-        />
-      ) : null}
-
       <div
         aria-hidden="true"
         style={{ background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})` }}
@@ -64,12 +54,6 @@ export function TeamHero({
             {role.dot ? <span className={`h-1.5 w-1.5 rounded-full ${role.dot}`} /> : null}
             {role.label}
           </span>
-          {isActive ? (
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-accent/15 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-accent-light">
-              <span className="loading-dot h-1.5 w-1.5 rounded-full bg-accent" />
-              Active
-            </span>
-          ) : null}
         </div>
         <p className="mt-1 flex items-center gap-2 text-xs text-text-muted">
           <span className="font-mono">{slug}</span>

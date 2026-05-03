@@ -105,19 +105,19 @@ export const auth = betterAuth({
       validAudiences: process.env.BETTER_AUTH_URL
         ? [process.env.BETTER_AUTH_URL, `${process.env.BETTER_AUTH_URL}/api/mcp`]
         : ["http://localhost:3000", "http://localhost:3000/api/mcp"],
-      // consentReferenceId runs at consent time with the authenticated session,
-      // so it captures activeOrganizationId for clients registered via
-      // unauthenticated DCR. clientReference (registration-time) does not work
-      // here because Claude Code's DCR has no session.
+      // MCP tokens are intentionally org-agnostic. Team scope is resolved
+      // per request: read paths span every team the caller belongs to,
+      // writes either name an explicit `organizationId` (membership-checked)
+      // or auto-resolve when the caller is in exactly one team. There is no
+      // `active_org` claim — that conflated identity with destination and
+      // let stale tokens write into teams the user had been removed from.
+      // `consentReferenceId` returns undefined so BA does not stamp a
+      // referenceId on the token.
       postLogin: {
         page: "/onboarding/team",
-        consentReferenceId: ({ session }) =>
-          (session?.activeOrganizationId as string | undefined) ?? undefined,
+        consentReferenceId: () => undefined,
         shouldRedirect: () => false,
       },
-      customAccessTokenClaims: ({ referenceId }) => ({
-        active_org: referenceId ?? null,
-      }),
       silenceWarnings: { oauthAuthServerConfig: true },
     }),
   ],

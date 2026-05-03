@@ -1,5 +1,5 @@
 import { dbEvents } from '@/lib/events';
-import { getAuthContext, NoActiveTeamError } from '@/lib/auth/context';
+import { getAuthContext } from '@/lib/auth/context';
 import { ForbiddenError, assertProjectAccess } from '@/lib/auth/authorization';
 import { error } from '@/lib/api/response';
 import { acquireSSESlot, releaseSSESlot } from '@/lib/api/sse-limiter';
@@ -15,10 +15,7 @@ export async function GET(
   let ctx;
   try {
     ctx = await getAuthContext();
-  } catch (err) {
-    if (err instanceof NoActiveTeamError) {
-      return error('No active team selected', 403);
-    }
+  } catch {
     return error('Unauthorized', 401);
   }
 

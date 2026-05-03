@@ -45,7 +45,6 @@ export default async function SettingsPage() {
             email: session.user.email,
             createdAt: session.user.createdAt,
           }}
-          activeOrganizationId={session.session.activeOrganizationId ?? null}
           initialSessions={initialSessions}
           initialTeams={initialTeams}
         />

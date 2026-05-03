@@ -93,9 +93,12 @@ export type ProjectAccess = {
 
 /**
  * Verify the caller can access the project and return its row plus the
- * caller's role. The project must belong to the caller's active organization
- * AND the caller must hold a membership row in that organization. A single
- * SQL JOIN performs both checks atomically so the predicate cannot be split.
+ * caller's role. The caller must hold a membership row in the project's
+ * organization. A single SQL JOIN performs both checks atomically so the
+ * predicate cannot be split. The active organization is intentionally not
+ * part of the gate — users can read and write any project belonging to a
+ * team they're a member of, regardless of which team is currently selected
+ * as the default for new projects.
  *
  * When `required` is provided, the caller's role (read from the same JOIN)
  * is also evaluated against the requested project actions; insufficient
@@ -107,12 +110,12 @@ export type ProjectAccess = {
  * JOIN already loaded the value.
  *
  * @param projectId - UUID of the project to authorize.
- * @param ctx - Resolved auth context (user id + active org id).
+ * @param ctx - Resolved auth context.
  * @param required - Optional permission gate (e.g. `{ project: ["delete"] }`).
  * @returns The full project row and the caller's member role.
- * @throws ForbiddenError if the project does not belong to the active org
- *   or the user is not a member of that org. The same error is thrown
- *   when the project does not exist, to avoid leaking org membership.
+ * @throws ForbiddenError if the user is not a member of the project's
+ *   organization. The same error is thrown when the project does not
+ *   exist, to avoid leaking org membership.
  * @throws InsufficientRoleError when the caller is a member but their role
  *   does not grant every action in `required.project`.
  */
@@ -137,12 +140,7 @@ export async function assertProjectAccess(
         eq(member.userId, ctx.userId),
       ),
     )
-    .where(
-      and(
-        eq(projects.id, projectId),
-        eq(projects.organizationId, ctx.activeOrgId),
-      ),
-    )
+    .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) throw new ForbiddenError("Forbidden", "project", projectId);
   if (
@@ -156,8 +154,9 @@ export async function assertProjectAccess(
 
 /**
  * Verify the caller can access the task and return its full row. Joins
- * through the parent project to confirm the task's project belongs to the
- * caller's active org and the caller is a member of that org.
+ * through the parent project to confirm the caller is a member of the
+ * project's organization. The active organization is not part of the gate
+ * — membership in the resource's team is the boundary.
  *
  * @param taskId - UUID of the task to authorize.
  * @param ctx - Resolved auth context.
@@ -182,12 +181,7 @@ export async function assertTaskAccess(
         eq(member.userId, ctx.userId),
       ),
     )
-    .where(
-      and(
-        eq(tasks.id, taskId),
-        eq(projects.organizationId, ctx.activeOrgId),
-      ),
-    )
+    .where(eq(tasks.id, taskId))
     .limit(1);
   if (!row) throw new ForbiddenError("Forbidden", "task", taskId);
   return row;

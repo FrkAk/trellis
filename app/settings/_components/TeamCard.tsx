@@ -3,11 +3,9 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { motion } from 'motion/react';
-import { Button } from '@/components/shared/Button';
 import { initials } from '@/lib/ui/initials';
 import { teamAvatarGradient } from '@/lib/ui/team-avatar';
 import { formatAbsolute } from '@/lib/ui/relative-time';
-import { switchActiveTeamAction } from '@/lib/actions/team-switch';
 import { leaveTeamAction } from '@/lib/actions/team';
 import { getOrCreateTeamInviteCodeAction } from '@/lib/actions/team-invite-code';
 import type { TeamView } from '@/lib/actions/team-list';
@@ -16,12 +14,8 @@ import { InlineConfirm } from './InlineConfirm';
 interface TeamCardProps {
   /** Team membership row (id, name, role, memberCount, createdAt). */
   team: TeamView;
-  /** True when this is the user's active team for the current session. */
-  isActive: boolean;
   /** Briefly highlight this card on render — used after creation. */
   glow?: boolean;
-  /** Called after a successful Switch with the new active team id. */
-  onSwitch: (organizationId: string) => void;
   /** Called after a successful Leave to remove the row. */
   onLeft: (organizationId: string) => void;
   /** Surface a transient error from any team action. */
@@ -40,18 +34,17 @@ function roleStyle(role: string) {
 }
 
 /**
- * Single team row — avatar, name, role badge, active indicator, and the
- * primary action (Switch or active marker) plus an overflow menu with
- * Copy invite / Leave.
+ * Single team row — avatar, name, role badge, member count, and the
+ * primary action (Manage when admin/owner) plus an overflow menu with
+ * Copy invite / Leave. There is no "active" or "default" team concept —
+ * the workspace spans every team the user belongs to.
  *
  * @param props - Team card configuration.
  * @returns Animated, layout-aware row.
  */
 export function TeamCard({
   team,
-  isActive,
   glow,
-  onSwitch,
   onLeft,
   onError,
 }: TeamCardProps) {
@@ -82,17 +75,6 @@ export function TeamCard({
     };
   }, [menuOpen]);
 
-  const handleSwitch = () => {
-    startTransition(async () => {
-      const result = await switchActiveTeamAction({ organizationId: team.id });
-      if (result.ok) {
-        onSwitch(team.id);
-      } else {
-        onError(result.message);
-      }
-    });
-  };
-
   const handleLeave = async () => {
     setMenuOpen(false);
     const result = await leaveTeamAction({ organizationId: team.id });
@@ -122,13 +104,6 @@ export function TeamCard({
     });
   };
 
-  const containerClasses = [
-    'relative flex items-center gap-4 rounded-xl border p-5 transition-colors',
-    isActive
-      ? 'border-accent/30 bg-accent/5 shadow-[var(--shadow-card)]'
-      : 'border-border bg-surface shadow-[var(--shadow-card)] hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]',
-  ].join(' ');
-
   return (
     <motion.li
       layout
@@ -144,15 +119,8 @@ export function TeamCard({
       }
       exit={{ opacity: 0, y: -6, scale: 0.98 }}
       transition={{ duration: 0.25 }}
-      className={containerClasses}
+      className="relative flex items-center gap-4 rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-card)] transition-colors hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
     >
-      {isActive ? (
-        <span
-          aria-hidden="true"
-          className="absolute left-0 top-3 bottom-3 w-[2px] rounded-full bg-accent"
-        />
-      ) : null}
-
       <div
         aria-hidden="true"
         style={{ background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})` }}
@@ -170,12 +138,6 @@ export function TeamCard({
             {role.dot ? <span className={`h-1.5 w-1.5 rounded-full ${role.dot}`} /> : null}
             {role.label}
           </span>
-          {isActive ? (
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-accent/15 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-accent-light">
-              <span className="loading-dot h-1.5 w-1.5 rounded-full bg-accent" />
-              Active
-            </span>
-          ) : null}
         </div>
         <p className="mt-1 truncate text-xs text-text-muted">
           {team.memberCount} {team.memberCount === 1 ? 'member' : 'members'} ·{' '}
@@ -185,13 +147,7 @@ export function TeamCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {!isActive ? (
-          <Button variant="primary" size="sm" onClick={handleSwitch} isLoading={pending}>
-            Switch
-          </Button>
-        ) : null}
-
-        {isActive && isAdminOrOwner ? (
+        {isAdminOrOwner ? (
           <Link
             href={`/settings/teams/${team.id}`}
             className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs font-semibold text-text-primary shadow-[var(--shadow-button)] transition-opacity hover:opacity-60"
@@ -226,8 +182,9 @@ export function TeamCard({
                 <button
                   type="button"
                   role="menuitem"
+                  disabled={pending}
                   onClick={handleCopyInvite}
-                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5 shrink-0">
                     <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" />

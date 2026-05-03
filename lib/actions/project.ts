@@ -11,7 +11,7 @@ import {
 } from '@/lib/graph/mutations';
 import { deleteProject as deleteProjectCore } from '@/lib/graph/_core/mutations';
 import { ProjectNotFoundError } from '@/lib/graph/errors';
-import { getAuthContext, NoActiveTeamError } from '@/lib/auth/context';
+import { getAuthContext } from '@/lib/auth/context';
 import {
   ForbiddenError,
   InsufficientRoleError,
@@ -53,7 +53,6 @@ export type ProjectSettingsResult =
       ok: false;
       code:
         | 'unauthorized'
-        | 'no_active_team'
         | 'forbidden'
         | 'invalid_input'
         | 'invalid_identifier'
@@ -70,7 +69,6 @@ export type ProjectCategoryResult =
       ok: false;
       code:
         | 'unauthorized'
-        | 'no_active_team'
         | 'forbidden'
         | 'invalid_input'
         | 'not_found'
@@ -85,7 +83,6 @@ export type ProjectStatusResult =
       ok: false;
       code:
         | 'unauthorized'
-        | 'no_active_team'
         | 'forbidden'
         | 'invalid_input'
         | 'not_found'
@@ -100,7 +97,6 @@ export type ProjectDeleteResult =
       ok: false;
       code:
         | 'unauthorized'
-        | 'no_active_team'
         | 'forbidden'
         | 'invalid_input'
         | 'not_found'
@@ -109,24 +105,19 @@ export type ProjectDeleteResult =
     };
 
 const UNAUTHORIZED_MESSAGE = 'You must be signed in to perform this action.';
-const NO_ACTIVE_TEAM_MESSAGE =
-  'Pick a team before continuing — visit /onboarding/team to create or join one.';
 const FORBIDDEN_MESSAGE = "You don't have access to this project.";
 
 /**
  * Resolve auth context and translate auth failures into typed error results.
- * @returns The resolved AuthContext, or an error result variant.
+ * @returns The resolved AuthContext, or a typed `unauthorized` failure.
  */
 async function resolveAuthOrFail():
   Promise<{ ok: true; ctx: Awaited<ReturnType<typeof getAuthContext>> }
-    | { ok: false; code: 'unauthorized' | 'no_active_team'; message: string }> {
+    | { ok: false; code: 'unauthorized'; message: string }> {
   try {
     const ctx = await getAuthContext();
     return { ok: true, ctx };
-  } catch (err) {
-    if (err instanceof NoActiveTeamError) {
-      return { ok: false, code: 'no_active_team', message: NO_ACTIVE_TEAM_MESSAGE };
-    }
+  } catch {
     return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
   }
 }

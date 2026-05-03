@@ -1,4 +1,4 @@
-import { getAuthContext, NoActiveTeamError } from "@/lib/auth/context";
+import { getAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";
 import { ok, error } from "@/lib/api/response";
 import { buildAgentContext } from "@/lib/context/_core/agent";
@@ -13,10 +13,7 @@ export async function POST(req: Request) {
   let ctx;
   try {
     ctx = await getAuthContext();
-  } catch (err) {
-    if (err instanceof NoActiveTeamError) {
-      return error("No active team selected", 403);
-    }
+  } catch {
     return error("Unauthorized", 401);
   }
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { ProgressBar } from '@/components/shared/ProgressBar';
+import { TeamChip } from '@/components/shared/TeamChip';
 import { ProjectStatusModal, type CliManagedStatus } from '@/components/home/ProjectStatusModal';
 import { deleteProjectAction } from '@/lib/actions/project';
 
@@ -29,8 +30,14 @@ interface ProjectCardProps {
   tasksInProgress: number;
   /** @param lastActive - Relative time string. */
   lastActive: string;
-  /** @param canDelete - True when the active org member is allowed to delete projects. */
+  /** @param canDelete - True when the caller's role in the project's team grants delete. */
   canDelete: boolean;
+  /**
+   * @param team - Owning team. Rendered as a {@link TeamChip} on the meta row
+   *   so multi-team users can see which team a project belongs to without
+   *   leaving the home grid.
+   */
+  team?: { id: string; name: string };
 }
 
 /**
@@ -61,6 +68,7 @@ export function ProjectCard({
   tasksInProgress,
   lastActive,
   canDelete,
+  team,
 }: ProjectCardProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -165,20 +173,23 @@ export function ProjectCard({
       <ProgressBar value={progress} status={progress === 100 ? 'done' : 'in-progress'} className="mb-3" />
 
       <div className="flex flex-col gap-2">
-        <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
-          status === 'active' ? 'bg-done/15 text-done'
-          : status === 'decomposing' ? 'bg-progress/15 text-progress'
-          : status === 'brainstorming' ? 'bg-accent/15 text-accent'
-          : 'bg-draft/10 text-draft'
-        }`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${
-            status === 'active' ? 'bg-done'
-            : status === 'decomposing' ? 'bg-progress'
-            : status === 'brainstorming' ? 'bg-accent'
-            : 'bg-draft'
-          }`} />
-          {status === 'brainstorming' ? 'Idea' : status === 'decomposing' ? 'Building' : status === 'active' ? 'Active' : status}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
+            status === 'active' ? 'bg-done/15 text-done'
+            : status === 'decomposing' ? 'bg-progress/15 text-progress'
+            : status === 'brainstorming' ? 'bg-accent/15 text-accent'
+            : 'bg-draft/10 text-draft'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              status === 'active' ? 'bg-done'
+              : status === 'decomposing' ? 'bg-progress'
+              : status === 'brainstorming' ? 'bg-accent'
+              : 'bg-draft'
+            }`} />
+            {status === 'brainstorming' ? 'Idea' : status === 'decomposing' ? 'Building' : status === 'active' ? 'Active' : status}
+          </span>
+          {team ? <TeamChip team={team} /> : null}
+        </div>
         <div className="flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-text-muted">
           <span className="text-text-secondary">{identifier}</span>
           <span className="text-text-muted/40">·</span>
