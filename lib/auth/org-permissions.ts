@@ -11,8 +11,9 @@ import { auth } from "@/lib/auth";
  * the result into a typed `forbidden` failure.
  *
  * Probes `invitation:create` — both `owner` and `admin` hold this by
- * default; plain `member` does not. Forward-compatible with custom roles
- * configured via the organization plugin's `roles` option (MYMR-69).
+ * default; plain `member` does not. Compatible with the custom roles
+ * configured via the organization plugin's `roles` option (MYMR-69) since
+ * those preserve `invitation:create` in the admin/owner statements.
  *
  * @returns True when the caller may rotate / revoke invite codes.
  */

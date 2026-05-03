@@ -30,15 +30,6 @@ export async function updateProject(
 }
 
 /**
- * Server action wrapper — delete a project (cascade deletes children).
- * @param projectId - UUID of the project.
- */
-export async function deleteProject(projectId: string) {
-  const ctx = await getAuthContext();
-  return core.deleteProject(ctx, projectId);
-}
-
-/**
  * Server action wrapper — rename a project's identifier prefix.
  * @param projectId - UUID of the project.
  * @param identifier - New identifier (already shape-validated).

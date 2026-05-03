@@ -9,6 +9,7 @@ interface IdentifierSectionProps {
   projectId: string;
   identifier: string;
   taskCount: number;
+  canRename: boolean;
   onUpdated?: () => void;
 }
 
@@ -78,13 +79,25 @@ function identifierReducer(state: IdentifierState, action: IdentifierAction): Id
  * @param props - Section props.
  * @returns Identifier row with rename flow.
  */
-export function IdentifierSection({ projectId, identifier, taskCount, onUpdated }: IdentifierSectionProps) {
+export function IdentifierSection({ projectId, identifier, taskCount, canRename, onUpdated }: IdentifierSectionProps) {
   const [state, dispatch] = useReducer(identifierReducer, { kind: 'closed', initial: identifier });
   const submittingRef = useRef(false);
 
   useEffect(() => {
     dispatch({ type: 'sync_initial', initial: identifier });
   }, [identifier]);
+
+  if (!canRename) {
+    return (
+      <section className="space-y-1.5">
+        <label className={SECTION_LABEL_CLASS}>Identifier</label>
+        <div className="w-full rounded-lg border border-transparent px-3 py-2 font-mono text-xs text-text-primary">
+          {identifier}
+          <span className="ml-2 font-sans text-[11px] text-text-muted">renaming requires admin</span>
+        </div>
+      </section>
+    );
+  }
 
   /**
    * Normalize raw input to the identifier shape and dispatch the live edit.

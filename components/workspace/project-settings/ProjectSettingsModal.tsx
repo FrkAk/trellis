@@ -19,6 +19,8 @@ interface ProjectSettingsModalProps {
   project: { title: string; description: string; identifier: string; status: ProjectStatus; categories: string[] };
   /** @param taskCount - Number of tasks affected by an identifier rename. */
   taskCount: number;
+  /** @param canRename - True when the active org member is allowed to rename project identifiers. */
+  canRename: boolean;
   /** @param onUpdated - Fired after a successful update. Caller refetches. */
   onUpdated?: () => void;
 }
@@ -35,6 +37,7 @@ export function ProjectSettingsModal({
   projectId,
   project,
   taskCount,
+  canRename,
   onUpdated,
 }: ProjectSettingsModalProps) {
   return (
@@ -59,6 +62,7 @@ export function ProjectSettingsModal({
           projectId={projectId}
           identifier={project.identifier}
           taskCount={taskCount}
+          canRename={canRename}
           onUpdated={onUpdated}
         />
         <CategoriesSection

@@ -209,7 +209,11 @@ export type ProjectUpdate = Partial<
 >;
 
 /**
- * Update a project's fields.
+ * Update a project's fields. Intentionally NOT role-gated: members may
+ * edit title, description, categories, and toggle status (active ↔
+ * archived). Only `delete` and identifier `rename` require admin/owner —
+ * those gates live on {@link deleteProject} and
+ * {@link renameProjectIdentifier}.
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @param changes - Typed subset of project fields to update.
@@ -240,11 +244,13 @@ export async function updateProject(
 
 /**
  * Delete a project and all its children (cascade via DB foreign keys).
+ * Requires the caller's active-org role to grant `project:delete` (admin or
+ * owner); plain members trigger {@link InsufficientRoleError}.
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project to delete.
  */
 export async function deleteProject(ctx: AuthContext, projectId: string) {
-  await assertProjectAccess(projectId, ctx);
+  await assertProjectAccess(projectId, ctx, { project: ["delete"] });
   await db.delete(projects).where(eq(projects.id, projectId));
   notifyChange();
 }
@@ -270,7 +276,7 @@ export async function renameProjectIdentifier(
   projectId: string,
   identifier: Identifier,
 ) {
-  await assertProjectAccess(projectId, ctx);
+  await assertProjectAccess(projectId, ctx, { project: ["rename"] });
 
   const updated = await db.transaction(async (tx) => {
     await tx.execute(

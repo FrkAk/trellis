@@ -1,5 +1,7 @@
 import { getProjectList } from '@/lib/graph/queries';
 import { requireMembership } from '@/lib/auth/membership';
+import { getAuthContext } from '@/lib/auth/context';
+import { canPerformProjectActions } from '@/lib/auth/active-role';
 import { TopBar } from '@/components/layout/TopBar';
 import { PageShell } from '@/components/layout/PageShell';
 import { ProjectCard } from '@/components/home/ProjectCard';
@@ -17,7 +19,11 @@ export const dynamic = 'force-dynamic';
  */
 export default async function HomePage() {
   await requireMembership();
-  const projects = await getProjectList();
+  const ctx = await getAuthContext();
+  const [projects, canDelete] = await Promise.all([
+    getProjectList(),
+    canPerformProjectActions(ctx, ['delete']),
+  ]);
   const activeProject = projects.find((p) => p.status === 'active');
 
   return (
@@ -67,6 +73,7 @@ export default async function HomePage() {
               cancelledTasks={project.taskStats.cancelled}
               tasksInProgress={project.taskStats.inProgress}
               lastActive={project.updatedAt.toLocaleDateString()}
+              canDelete={canDelete}
             />
           ))}
         </div>

@@ -8,6 +8,7 @@ import { asc, eq } from "drizzle-orm";
 import * as authSchema from "@/lib/db/auth-schema";
 import { member } from "@/lib/db/auth-schema";
 import { clearOrgMembershipArtifacts } from "@/lib/auth/membership-cleanup";
+import { ac, owner, admin, member as memberRole } from "@/lib/auth/permissions";
 
 /**
  * Auth DB connection. Uses the same DATABASE_URL as the app.
@@ -76,12 +77,11 @@ export const auth = betterAuth({
   },
   // organization() must precede any future customSession() — see
   // better-auth issue #3233 (activeOrganizationId is type-erased otherwise).
-  // Role-based permissions are intentionally left at Better Auth defaults
-  // (any member can read+write team data) until MYMR-69 wires hasPermission
-  // checks into the data layer.
   plugins: [
     jwt(),
     organization({
+      ac,
+      roles: { owner, admin, member: memberRole },
       organizationHooks: {
         afterRemoveMember: async ({ member: removed, organization: org }) => {
           await clearOrgMembershipArtifacts(removed.userId, org.id);

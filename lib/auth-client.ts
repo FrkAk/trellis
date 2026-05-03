@@ -1,15 +1,20 @@
 import { createAuthClient } from "better-auth/react";
 import { organizationClient } from "better-auth/client/plugins";
 import { oauthProviderClient } from "@better-auth/oauth-provider/client";
+import { ac, owner, admin, member } from "@/lib/auth/permissions";
 
 /**
  * Better Auth client instance.
  * Auto-discovers API at /api/auth (same origin).
- * Includes organization and OAuth provider plugins. Role-based permissions
- * are deferred to MYMR-69; defaults are sufficient until then.
+ * Mirrors the server's access-control statement so
+ * `authClient.organization.checkRolePermission` evaluates the same project
+ * resource policy on the client.
  */
 export const authClient = createAuthClient({
-  plugins: [organizationClient(), oauthProviderClient()],
+  plugins: [
+    organizationClient({ ac, roles: { owner, admin, member } }),
+    oauthProviderClient(),
+  ],
 });
 
 export const { useSession, signIn, signUp, signOut } = authClient;

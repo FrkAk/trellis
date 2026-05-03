@@ -286,7 +286,7 @@ export async function getReadyTasks(
   ctx: AuthContext,
   projectId: string,
 ): Promise<ReadyTask[]> {
-  const project = await assertProjectAccess(projectId, ctx);
+  const { project } = await assertProjectAccess(projectId, ctx);
   const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);
@@ -342,7 +342,7 @@ export async function getPlannableTasks(
   ctx: AuthContext,
   projectId: string,
 ): Promise<PlannableTask[]> {
-  const project = await assertProjectAccess(projectId, ctx);
+  const { project } = await assertProjectAccess(projectId, ctx);
   const identifier = asIdentifier(project.identifier);
 
   const allTasks = await db
@@ -407,7 +407,7 @@ export async function getBlockedTasks(
   ctx: AuthContext,
   projectId: string,
 ): Promise<BlockedTask[]> {
-  const project = await assertProjectAccess(projectId, ctx);
+  const { project } = await assertProjectAccess(projectId, ctx);
   const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);
@@ -479,7 +479,7 @@ export async function getCriticalPath(
   ctx: AuthContext,
   projectId: string,
 ): Promise<CriticalPathTask[]> {
-  const project = await assertProjectAccess(projectId, ctx);
+  const { project } = await assertProjectAccess(projectId, ctx);
   const identifier = asIdentifier(project.identifier);
 
   const graph = await buildEffectiveDepGraph(projectId);

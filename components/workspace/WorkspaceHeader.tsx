@@ -21,6 +21,8 @@ interface WorkspaceHeaderProps {
   categories: string[];
   /** @param taskCount - Total number of tasks (drives rename warning copy). */
   taskCount: number;
+  /** @param canRename - True when the active org member is allowed to rename project identifiers. */
+  canRename: boolean;
   /** @param stageLabel - Optional stage label shown in TopBar center. */
   stageLabel?: string;
   /** @param taskStats - Optional task stats shown in TopBar center. */
@@ -42,6 +44,7 @@ export function WorkspaceHeader({
   status,
   categories,
   taskCount,
+  canRename,
   stageLabel,
   taskStats,
 }: WorkspaceHeaderProps) {
@@ -74,6 +77,7 @@ export function WorkspaceHeader({
         projectId={projectId}
         project={{ title: projectName, description, identifier, status, categories }}
         taskCount={taskCount}
+        canRename={canRename}
         onUpdated={handleUpdated}
       />
     </>

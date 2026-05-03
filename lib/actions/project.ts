@@ -9,9 +9,13 @@ import {
   updateProject,
   type ProjectUpdate,
 } from '@/lib/graph/mutations';
+import { deleteProject as deleteProjectCore } from '@/lib/graph/_core/mutations';
 import { ProjectNotFoundError } from '@/lib/graph/errors';
 import { getAuthContext, NoActiveTeamError } from '@/lib/auth/context';
-import { ForbiddenError } from '@/lib/auth/authorization';
+import {
+  ForbiddenError,
+  InsufficientRoleError,
+} from '@/lib/auth/authorization';
 
 /** Statuses the web app is allowed to set. Coding agents handle brainstorming/decomposing via MCP. */
 const WEB_ALLOWED_STATUSES = ['active', 'archived'] as const;
@@ -89,6 +93,21 @@ export type ProjectStatusResult =
       message: string;
     };
 
+/** Result of a project delete action. */
+export type ProjectDeleteResult =
+  | { ok: true }
+  | {
+      ok: false;
+      code:
+        | 'unauthorized'
+        | 'no_active_team'
+        | 'forbidden'
+        | 'invalid_input'
+        | 'not_found'
+        | 'unknown';
+      message: string;
+    };
+
 const UNAUTHORIZED_MESSAGE = 'You must be signed in to perform this action.';
 const NO_ACTIVE_TEAM_MESSAGE =
   'Pick a team before continuing — visit /onboarding/team to create or join one.';
@@ -109,6 +128,50 @@ async function resolveAuthOrFail():
       return { ok: false, code: 'no_active_team', message: NO_ACTIVE_TEAM_MESSAGE };
     }
     return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
+  }
+}
+
+/**
+ * Delete a project (cascades to tasks and edges via DB foreign keys).
+ * Surface a typed `forbidden` result for non-admins so the UI can render
+ * actionable copy without throwing through the client component.
+ * @param projectId - UUID of the project to delete.
+ * @returns Discriminated result.
+ */
+export async function deleteProjectAction(
+  projectId: string,
+): Promise<ProjectDeleteResult> {
+  const auth = await resolveAuthOrFail();
+  if (!auth.ok) return auth;
+
+  const idParsed = projectIdSchema.safeParse(projectId);
+  if (!idParsed.success) {
+    return { ok: false, code: 'invalid_input', message: 'Invalid project id.' };
+  }
+
+  try {
+    await deleteProjectCore(auth.ctx, idParsed.data);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof InsufficientRoleError) {
+      return {
+        ok: false,
+        code: 'forbidden',
+        message: 'Only team admins can delete projects.',
+      };
+    }
+    if (err instanceof ForbiddenError) {
+      return { ok: false, code: 'not_found', message: 'Project not found.' };
+    }
+    if (err instanceof ProjectNotFoundError) {
+      return { ok: false, code: 'not_found', message: 'Project not found.' };
+    }
+    console.error('deleteProjectAction failed', { projectId: idParsed.data, err });
+    return {
+      ok: false,
+      code: 'unknown',
+      message: 'Something went wrong. Please try again.',
+    };
   }
 }
 
@@ -197,6 +260,13 @@ export async function updateProjectSettings(
     }
     return { ok: true };
   } catch (err) {
+    if (err instanceof InsufficientRoleError) {
+      return {
+        ok: false,
+        code: 'forbidden',
+        message: 'Only team admins can rename project identifiers.',
+      };
+    }
     if (err instanceof ForbiddenError) {
       return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
     }

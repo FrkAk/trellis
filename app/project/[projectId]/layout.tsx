@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { getProject } from '@/lib/graph/queries';
 import { requireMembership } from '@/lib/auth/membership';
 import { ForbiddenError } from '@/lib/auth/authorization';
+import { roleHasProjectPermission } from '@/lib/auth/permissions';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
 import { notFound, redirect } from 'next/navigation';
 
@@ -33,6 +34,8 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
     redirect('/');
   }
 
+  const canRename = roleHasProjectPermission(project.memberRole, ['rename']);
+
   const doneCount = project.tasks.filter((t) => t.status === 'done').length;
   const totalCount = project.tasks.length;
   const cancelledCount = project.tasks.filter((t) => t.status === 'cancelled').length;
@@ -48,6 +51,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
         status={project.status}
         categories={project.categories}
         taskCount={totalCount}
+        canRename={canRename}
         stageLabel={`${totalCount} tasks`}
         taskStats={`${doneCount}/${activeCount} tasks done${cancelledCount > 0 ? `, ${cancelledCount} cancelled` : ''}`}
       />

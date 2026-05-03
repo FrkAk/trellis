@@ -58,7 +58,10 @@ import {
 } from "./format-responses";
 import { findVariant, normalizeTags } from "./tag-similarity";
 import type { AuthContext } from "@/lib/auth/context";
-import { ForbiddenError } from "@/lib/auth/authorization";
+import {
+  ForbiddenError,
+  InsufficientRoleError,
+} from "@/lib/auth/authorization";
 
 /**
  * Build variant-warning hints for proposed tags against existing project tags.
@@ -243,6 +246,11 @@ function stateHint(state: TaskState): string {
  * @param e - Caught error.
  */
 function translateError(e: unknown): ToolResult {
+  if (e instanceof InsufficientRoleError) {
+    return fail(
+      `Only team admins can ${e.primaryAction} projects. Ask a team admin to perform this action.`,
+    );
+  }
   if (e instanceof ForbiddenError) {
     const id = e.resourceId ?? "";
     switch (e.resource) {

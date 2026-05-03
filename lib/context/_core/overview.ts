@@ -64,7 +64,7 @@ export async function buildProjectOverview(
   ctx: AuthContext,
   projectId: string,
 ): Promise<ProjectOverview> {
-  const project = await assertProjectAccess(projectId, ctx);
+  const { project } = await assertProjectAccess(projectId, ctx);
 
   const allTasks = await db
     .select()
