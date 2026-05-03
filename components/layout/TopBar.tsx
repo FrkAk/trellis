@@ -47,7 +47,7 @@ export function TopBar({ projectName, stageLabel, taskStats, projectId, projectS
         {/* Left: Logo + breadcrumb */}
         <div className="flex items-center gap-3">
           <Link href="/" className="text-text-primary text-lg font-semibold tracking-tight no-underline">
-            Mymir
+            mymir
           </Link>
           {projectName && (
             <div className="hidden sm:flex items-center gap-2">

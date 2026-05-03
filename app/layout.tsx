@@ -11,7 +11,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Mymir",
+  title: "mymir",
   description: "A structure that supports organic growth. Track projects created by your coding agent.",
 };
 
