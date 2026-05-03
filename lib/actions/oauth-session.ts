@@ -17,39 +17,9 @@ import {
   teamFail,
   type TeamActionResult,
 } from '@/lib/actions/team-errors';
+import type { OAuthSessionView } from '@/lib/actions/oauth-session-types';
 
-/**
- * UI-facing shape of an active OAuth (MCP device) session.
- *
- * Two timestamps are reported:
- * - `authorizedAt` reads `authTime` — when the user first consented. It
- *   stays stable across refresh-token rotations.
- * - `lastActiveAt` reads the active row's own `createdAt` — every refresh
- *   rotation creates a new row, so this updates whenever the integration
- *   exchanges a refresh for a new access token. We do NOT aggregate
- *   `oauthAccessToken` because BA's provider deletes access tokens on
- *   each rotation, so that table is effectively empty for live clients.
- */
-export type OAuthSessionView = {
-  /** Refresh token id — stable identifier passed to revoke. */
-  id: string;
-  /** OAuth client id (string, not UUID — BA mints these via DCR). */
-  clientId: string;
-  /** Display name from oauthClient.name; falls back to clientId. */
-  clientName: string;
-  /** Active organization scope, if the token is org-scoped. */
-  organizationId: string | null;
-  /** Display name of the organization, if joinable. */
-  organizationName: string | null;
-  /** Granted OAuth scopes. */
-  scopes: string[];
-  /** When the user authorized this client (consent time). */
-  authorizedAt: Date;
-  /** When this refresh row was last rotated — proxy for "last active". */
-  lastActiveAt: Date;
-  /** When the refresh token expires (null = no expiry set). */
-  expiresAt: Date | null;
-};
+export type { OAuthSessionView } from '@/lib/actions/oauth-session-types';
 
 /**
  * List all active OAuth refresh tokens (device sessions) the caller owns.
