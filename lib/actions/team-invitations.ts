@@ -107,10 +107,10 @@ export async function listPendingInvitationsAction(input: {
  *
  * Defense-in-depth: we resolve the invitation's `organizationId` from
  * the DB and run `isOrgAdmin(invitationOrgId)` so the upstream check is
- * scoped to the invitation's own org rather than the caller's session
- * active org. A non-existent invitation surfaces a typed `not_found`
- * (preserving the "already cancelled in another tab" UX); BA reveals
- * the same existence signal, so this lookup adds no new info disclosure.
+ * scoped to the invitation's own team. A non-existent invitation
+ * surfaces a typed `not_found` (preserving the "already cancelled in
+ * another tab" UX); BA reveals the same existence signal, so this
+ * lookup adds no new info disclosure.
  *
  * @param input - `{ invitationId }` to cancel.
  * @returns Discriminated result.

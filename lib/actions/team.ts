@@ -156,9 +156,9 @@ function ownerLockKey(organizationId: string) {
 }
 
 /**
- * Create a new organization (team) for the signed-in user and set it as
- * the active org for the session. The caller does NOT need an active team
- * already — this is the bootstrap path used by onboarding.
+ * Create a new organization (team) for the signed-in user. The caller is
+ * added as `owner` of the new team. The caller does NOT need an existing
+ * team membership — this is the bootstrap path used by onboarding.
  *
  * @param input - `{ name, slug }` from the form.
  * @returns Discriminated result; `data.organizationId` on success.
@@ -300,8 +300,8 @@ export async function removeMemberAction(input: {
  *
  * Layered authorization:
  * 1. `isOrgAdmin(organizationId)` — target-scoped defense-in-depth so
- *    authz doesn't single-source from BA's error code shape and isn't
- *    bound to the caller's session active org.
+ *    authz doesn't single-source from BA's error code shape; the team
+ *    scope is the supplied id, never inferred from the session.
  * 2. Cross-team probe rejection — target's `member.organizationId` must
  *    match the supplied `organizationId`. Returns `forbidden` (404-shaped)
  *    so a probe cannot tell membership apart from non-existence.
@@ -506,15 +506,14 @@ export async function acceptEmailInvitationAction(input: {
  * the schema rejects an empty payload before we hit BA.
  *
  * Defense-in-depth: explicit `isOrgAdmin(organizationId)` check runs
- * first, scoped to the supplied target team rather than the caller's
- * session active org. A regular member or non-member of the target team
- * surfaces a typed `forbidden` before any BA call.
+ * first, scoped to the supplied target team. A regular member or
+ * non-member of the target team surfaces a typed `forbidden` before any
+ * BA call.
  *
  * BA's `updateOrganization` honors `body.organizationId` for both the
  * permission check and the underlying write — verified against
- * `better-auth@1.6.x crud-org.mjs:199-228`. A renamer who is admin of
- * team T but currently active on team U therefore renames T (the body
- * arg), not U.
+ * `better-auth@1.6.x crud-org.mjs:199-228`. The supplied team is always
+ * the rename target, regardless of any session-level org pointer.
  *
  * @param input - `{ organizationId, name?, slug? }`.
  * @returns Discriminated result.

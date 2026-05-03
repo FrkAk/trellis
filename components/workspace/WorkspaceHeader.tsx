@@ -23,7 +23,7 @@ interface WorkspaceHeaderProps {
   team: { id: string; name: string };
   /** @param taskCount - Total number of tasks (drives rename warning copy). */
   taskCount: number;
-  /** @param canRename - True when the active org member is allowed to rename project identifiers. */
+  /** @param canRename - True when the caller's role in the project's team grants identifier rename. */
   canRename: boolean;
   /** @param stageLabel - Optional stage label shown in TopBar center. */
   stageLabel?: string;

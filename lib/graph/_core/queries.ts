@@ -23,11 +23,12 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch a full task row by ID, scoped to the caller's active team.
+ * Fetch a full task row by ID. Membership in the task's team is the
+ * access boundary; cross-team probes raise `ForbiddenError`.
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
  * @returns The full task row.
- * @throws ForbiddenError when the task is not in the active team.
+ * @throws ForbiddenError when the caller is not a member of the task's team.
  */
 export async function fetchTask(ctx: AuthContext, taskId: string) {
   return assertTaskAccess(taskId, ctx);
@@ -349,8 +350,8 @@ export type ProjectListEntry = typeof projects.$inferSelect & {
 /**
  * Fetch every project in any team the caller is a member of, decorated
  * with team metadata, the caller's role in that team, and task progress
- * stats. Membership is the access boundary — the active organization is
- * not part of the filter, so the home grid surfaces work across teams.
+ * stats. Membership is the access boundary; the home grid surfaces work
+ * across every team without a per-session "active" filter.
  *
  * @param ctx - Resolved auth context.
  * @returns Array of projects with team, role, and task stats.

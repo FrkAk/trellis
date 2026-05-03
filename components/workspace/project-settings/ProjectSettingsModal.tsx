@@ -22,7 +22,7 @@ interface ProjectSettingsModalProps {
   team: { id: string; name: string };
   /** @param taskCount - Number of tasks affected by an identifier rename. */
   taskCount: number;
-  /** @param canRename - True when the active org member is allowed to rename project identifiers. */
+  /** @param canRename - True when the caller's role in the project's team grants identifier rename. */
   canRename: boolean;
   /** @param onUpdated - Fired after a successful update. Caller refetches. */
   onUpdated?: () => void;

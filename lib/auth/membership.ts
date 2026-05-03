@@ -50,7 +50,7 @@ export type TeamMembership = {
  * non-existence.
  *
  * @param teamId - UUID of the team to authorize.
- * @param ctx - Resolved auth context (user id + active org id).
+ * @param ctx - Resolved auth context.
  * @returns The full organization row and the caller's member role.
  * @throws ForbiddenError if the team does not exist or the user is not a
  *   member of it.

@@ -11,8 +11,8 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Settings page — three tabs (Profile / Devices / Teams) under the standard
- * page chrome. Renders even when the user has no active team so they can
- * recover by creating one without bouncing through `/onboarding/team`.
+ * page chrome. Renders even when the user has no team memberships yet so
+ * they can create one without bouncing through `/onboarding/team`.
  *
  * @returns Server-rendered settings shell with hydrated initial data.
  */

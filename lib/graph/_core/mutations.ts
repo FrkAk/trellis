@@ -123,8 +123,8 @@ function identifierLockKey(organizationId: string) {
  * Pick an identifier that's not already taken within an organization,
  * auto-suffixing on collision. Identifiers are unique per organization
  * (composite constraint `projects_org_identifier_unique`), so the scan
- * is scoped to the caller's active team — two teams can independently
- * use the same prefix.
+ * is scoped to the supplied team — two teams can independently use the
+ * same prefix.
  *
  * Must be called inside a transaction holding the identifier advisory
  * lock; otherwise the select-then-insert window is racy.
@@ -372,7 +372,9 @@ export async function renameProjectIdentifier(
 export type CreateTaskInput = Omit<NewTask, "id" | "sequenceNumber">;
 
 /**
- * Insert a new task under a project owned by the caller's active team.
+ * Insert a new task under a project the caller has access to. The
+ * project's team scope is verified by `assertProjectAccess` and inherited
+ * by the new task — task team scope is never derived from the session.
  *
  * Uses a transaction-scoped PostgreSQL advisory lock keyed on the project UUID
  * to serialize concurrent task creation and prevent sequence_number collisions.
