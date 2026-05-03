@@ -59,36 +59,57 @@ export class ForbiddenError extends Error {
  * checks still trigger; new call sites can branch on the subclass to
  * distinguish "not your team" (anti-enumeration → 404) from "wrong role"
  * (legitimate 403 with actionable copy).
+ *
+ * Carries the full required-action list so consumers can render an accurate
+ * message when more than one action was requested. `primaryAction` is the
+ * first entry — convenient for single-action UX where the message just says
+ * e.g. "Only team admins can delete projects."
  */
 export class InsufficientRoleError extends ForbiddenError {
   constructor(
-    public readonly requiredAction: ProjectAction,
+    public readonly requiredActions: readonly ProjectAction[],
     resource?: ForbiddenResource,
     resourceId?: string,
   ) {
     super("InsufficientRole", resource, resourceId);
     this.name = "InsufficientRoleError";
   }
+
+  /** First requested action — used for single-action user-facing copy. */
+  get primaryAction(): ProjectAction {
+    return this.requiredActions[0];
+  }
 }
 
+/** Result of a successful {@link assertProjectAccess} call. */
+export type ProjectAccess = {
+  /** The authorized project row. */
+  project: Project;
+  /** Caller's `member.role` string from the same JOIN. Reused by callers
+   * that need a follow-up capability check (e.g. "can rename") without
+   * issuing a second `member` lookup. */
+  memberRole: string;
+};
+
 /**
- * Verify the caller can access the project and return its full row. The
- * project must belong to the caller's active organization AND the caller
- * must hold a membership row in that organization. A single SQL JOIN
- * performs both checks atomically so the predicate cannot be split.
+ * Verify the caller can access the project and return its row plus the
+ * caller's role. The project must belong to the caller's active organization
+ * AND the caller must hold a membership row in that organization. A single
+ * SQL JOIN performs both checks atomically so the predicate cannot be split.
  *
  * When `required` is provided, the caller's role (read from the same JOIN)
  * is also evaluated against the requested project actions; insufficient
  * role surfaces as {@link InsufficientRoleError} so the caller can return
  * a typed 403 distinct from the membership-failure 404.
  *
- * Returning the row lets callers reuse it without a second `SELECT` by
- * primary key — the post-assert refetch was a defense-in-depth gap.
+ * Returning the role alongside the row lets downstream code derive UI
+ * capabilities (e.g. `canRename`) without a second `member` query — the
+ * JOIN already loaded the value.
  *
  * @param projectId - UUID of the project to authorize.
  * @param ctx - Resolved auth context (user id + active org id).
  * @param required - Optional permission gate (e.g. `{ project: ["delete"] }`).
- * @returns The full project row.
+ * @returns The full project row and the caller's member role.
  * @throws ForbiddenError if the project does not belong to the active org
  *   or the user is not a member of that org. The same error is thrown
  *   when the project does not exist, to avoid leaking org membership.
@@ -99,7 +120,7 @@ export async function assertProjectAccess(
   projectId: string,
   ctx: AuthContext,
   required?: { project: readonly ProjectAction[] },
-): Promise<Project> {
+): Promise<ProjectAccess> {
   if (!isUuid(projectId)) {
     throw new ForbiddenError("Forbidden", "project", projectId);
   }
@@ -128,13 +149,9 @@ export async function assertProjectAccess(
     required &&
     !roleHasProjectPermission(row.memberRole, required.project)
   ) {
-    throw new InsufficientRoleError(
-      required.project[0],
-      "project",
-      projectId,
-    );
+    throw new InsufficientRoleError(required.project, "project", projectId);
   }
-  return row.project;
+  return { project: row.project, memberRole: row.memberRole };
 }
 
 /**

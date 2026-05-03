@@ -148,16 +148,19 @@ export function ProjectCard({
           )}
         </div>
       )}
-      {deleteError && (
-        <div className="absolute left-3 right-3 top-3 rounded-md bg-danger/10 px-2 py-1 font-mono text-[10px] text-danger">
-          {deleteError}
-        </div>
-      )}
-
       <h3 className="mb-1 text-sm font-semibold text-text-primary pr-8">{title}</h3>
       <p className="mb-4 text-xs leading-relaxed text-text-muted line-clamp-2 flex-1">
         {description}
       </p>
+
+      {deleteError && (
+        <div
+          role="alert"
+          className="mb-3 rounded-md bg-danger/10 px-2 py-1 font-mono text-[10px] text-danger"
+        >
+          {deleteError}
+        </div>
+      )}
 
       <ProgressBar value={progress} status={progress === 100 ? 'done' : 'in-progress'} className="mb-3" />
 

@@ -72,7 +72,7 @@ export async function findEdgeByNodes(
  * @throws ForbiddenError when the project is cross-team.
  */
 export async function getProject(ctx: AuthContext, projectId: string) {
-  const project = await assertProjectAccess(projectId, ctx);
+  const { project, memberRole } = await assertProjectAccess(projectId, ctx);
 
   const projectTasks = await db
     .select()
@@ -94,7 +94,7 @@ export async function getProject(ctx: AuthContext, projectId: string) {
       );
   }
 
-  return { ...project, tasks: projectTasks, edges };
+  return { ...project, tasks: projectTasks, edges, memberRole };
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ export async function getProjectTasksSlim(
   ctx: AuthContext,
   projectId: string,
 ): Promise<TaskSlim[]> {
-  const project = await assertProjectAccess(projectId, ctx);
+  const { project } = await assertProjectAccess(projectId, ctx);
 
   const rows = await db
     .select({
@@ -419,7 +419,7 @@ export async function searchTasks(
   query?: string,
   tags?: string[],
 ): Promise<SearchResult[]> {
-  const project = await assertProjectAccess(projectId, ctx);
+  const { project } = await assertProjectAccess(projectId, ctx);
 
   const trimmedQuery = query?.trim() ?? "";
   const tagFilter = normalizeTags(tags);

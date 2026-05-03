@@ -93,7 +93,7 @@ export function IdentifierSection({ projectId, identifier, taskCount, canRename,
         <label className={SECTION_LABEL_CLASS}>Identifier</label>
         <div className="w-full rounded-lg border border-transparent px-3 py-2 font-mono text-xs text-text-primary">
           {identifier}
-          <span className="ml-2 font-sans text-[11px] text-text-muted">admin only</span>
+          <span className="ml-2 font-sans text-[11px] text-text-muted">renaming requires admin</span>
         </div>
       </section>
     );

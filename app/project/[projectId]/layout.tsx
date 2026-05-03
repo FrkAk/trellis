@@ -2,8 +2,7 @@ import { type ReactNode } from 'react';
 import { getProject } from '@/lib/graph/queries';
 import { requireMembership } from '@/lib/auth/membership';
 import { ForbiddenError } from '@/lib/auth/authorization';
-import { getAuthContext } from '@/lib/auth/context';
-import { canPerformProjectActions } from '@/lib/auth/active-role';
+import { roleHasProjectPermission } from '@/lib/auth/permissions';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
 import { notFound, redirect } from 'next/navigation';
 
@@ -35,8 +34,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
     redirect('/');
   }
 
-  const ctx = await getAuthContext();
-  const canRename = await canPerformProjectActions(ctx, ['rename']);
+  const canRename = roleHasProjectPermission(project.memberRole, ['rename']);
 
   const doneCount = project.tasks.filter((t) => t.status === 'done').length;
   const totalCount = project.tasks.length;

@@ -248,7 +248,7 @@ function stateHint(state: TaskState): string {
 function translateError(e: unknown): ToolResult {
   if (e instanceof InsufficientRoleError) {
     return fail(
-      `Only team admins can ${e.requiredAction} projects. Ask a team admin to perform this action.`,
+      `Only team admins can ${e.primaryAction} projects. Ask a team admin to perform this action.`,
     );
   }
   if (e instanceof ForbiddenError) {

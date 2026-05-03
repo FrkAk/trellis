@@ -73,7 +73,12 @@ export function roleHasProjectPermission(
     .filter(Boolean);
   for (const r of parts) {
     const def = ROLES[r as keyof typeof ROLES];
-    if (!def) continue;
+    if (!def) {
+      console.warn(
+        `[rbac] unknown role '${r}' in member.role; treating as no permissions. Add it to lib/auth/permissions.ts ROLES if intentional.`,
+      );
+      continue;
+    }
     const result = def.authorize({ project: [...actions] });
     if (result.success) return true;
   }

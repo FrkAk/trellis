@@ -209,7 +209,11 @@ export type ProjectUpdate = Partial<
 >;
 
 /**
- * Update a project's fields.
+ * Update a project's fields. Intentionally NOT role-gated: members may
+ * edit title, description, categories, and toggle status (active ↔
+ * archived). Only `delete` and identifier `rename` require admin/owner —
+ * those gates live on {@link deleteProject} and
+ * {@link renameProjectIdentifier}.
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @param changes - Typed subset of project fields to update.
