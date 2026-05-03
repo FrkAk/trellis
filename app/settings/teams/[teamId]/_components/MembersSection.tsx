@@ -45,8 +45,11 @@ export function MembersSection({
       <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
         Members · {members.length}
       </p>
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-card)]">
-        <motion.ul layout className="divide-y divide-border">
+      <div className="rounded-xl border border-border bg-surface shadow-[var(--shadow-card)]">
+        <motion.ul
+          layout
+          className="divide-y divide-border [&>li:first-child]:rounded-t-[11px] [&>li:last-child]:rounded-b-[11px]"
+        >
           <AnimatePresence initial={false}>
             {members.map((member) => (
               <MemberRow
