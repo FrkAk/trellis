@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/shared/Button';
@@ -190,6 +191,15 @@ export function TeamCard({
           </Button>
         ) : null}
 
+        {isActive && isAdminOrOwner ? (
+          <Link
+            href={`/settings/teams/${team.id}`}
+            className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs font-semibold text-text-primary shadow-[var(--shadow-button)] transition-opacity hover:opacity-60"
+          >
+            Manage
+          </Link>
+        ) : null}
+
         <div className="relative" ref={menuRef}>
           <button
             type="button"
@@ -227,6 +237,7 @@ export function TeamCard({
                 </button>
               ) : null}
               <InlineLeaveItem
+                teamId={team.id}
                 soleOwner={soleOwner}
                 teamName={team.name}
                 onLeave={handleLeave}
@@ -240,6 +251,8 @@ export function TeamCard({
 }
 
 interface InlineLeaveItemProps {
+  /** Team id — used for the sole-owner manage-redirect link. */
+  teamId: string;
   /** True when leaving would orphan the team (only-owner guard). */
   soleOwner: boolean;
   /** Team display name for the confirm prompt. */
@@ -250,24 +263,29 @@ interface InlineLeaveItemProps {
 
 /**
  * Menu-item wrapper around InlineConfirm so Leave gets a two-step
- * confirmation without leaving the menu's visual flow.
+ * confirmation without leaving the menu's visual flow. Sole-owner case
+ * is replaced with a link into the team-settings page where both
+ * recovery paths (promote-to-owner, delete-team) are surfaced.
  *
  * @param props - Configuration.
  * @returns Menu-item-styled trigger that morphs into a confirm row.
  */
-function InlineLeaveItem({ soleOwner, teamName, onLeave }: InlineLeaveItemProps) {
+function InlineLeaveItem({ teamId, soleOwner, teamName, onLeave }: InlineLeaveItemProps) {
   if (soleOwner) {
     return (
-      <button
-        type="button"
+      <Link
+        href={`/settings/teams/${teamId}`}
         role="menuitem"
-        disabled
-        title="You are the only member — invite someone or delete the team."
-        className="flex w-full cursor-not-allowed items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-text-muted opacity-60"
+        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
       >
         <LeaveGlyph />
-        Leave team
-      </button>
+        <span className="flex flex-col items-start">
+          <span>Manage to leave</span>
+          <span className="text-[10px] text-text-muted">
+            Promote a successor or delete the team
+          </span>
+        </span>
+      </Link>
     );
   }
   return (

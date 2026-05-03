@@ -29,3 +29,36 @@ export async function isOrgAdmin(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Check whether the caller is the owner of a specific team. Probes
+ * `organization:delete`, which only the `owner` role holds in BA's default
+ * ACL. Use for actions stricter than admin: deleting the team and
+ * promoting another member to owner.
+ *
+ * BA's `hasPermission` looks up the caller's `member` row for the supplied
+ * `organizationId` (defaulting to the session's `activeOrganizationId` if
+ * omitted) and checks that role. Non-members surface as `false` because
+ * BA throws `USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION`, which is caught
+ * here. This means callers can safely pass an arbitrary `organizationId`
+ * from a request body — the check is properly scoped to the target team
+ * and not the caller's session active org.
+ *
+ * @param organizationId - Optional target team. Defaults to session active org.
+ * @returns True when the caller is the owner of the target team.
+ */
+export async function isOrgOwner(organizationId?: string): Promise<boolean> {
+  try {
+    const reqHeaders = await headers();
+    const result = await auth.api.hasPermission({
+      headers: reqHeaders,
+      body: {
+        ...(organizationId !== undefined ? { organizationId } : {}),
+        permissions: { organization: ["delete"] },
+      },
+    });
+    return result.success === true;
+  } catch {
+    return false;
+  }
+}

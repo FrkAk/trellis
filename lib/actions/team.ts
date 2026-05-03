@@ -1,10 +1,15 @@
 "use server";
 
 import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { projects, tasks } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { clearOrgMembershipArtifacts } from "@/lib/auth/membership-cleanup";
+import { isOrgOwner } from "@/lib/auth/org-permissions";
 import {
   mapBetterAuthError,
   parseOrFail,
@@ -68,6 +73,30 @@ const leaveTeamSchema = z.object({
 
 const acceptInvitationSchema = z.object({
   invitationId: uuidSchema,
+});
+
+const slugSchema = z
+  .string()
+  .trim()
+  .min(SLUG_MIN)
+  .max(SLUG_MAX)
+  .regex(SLUG_PATTERN, "Slug must be lowercase alphanumeric with hyphens")
+  .refine((s) => !RESERVED_SLUGS.has(s), {
+    message: "That URL slug is reserved. Try a different one.",
+  });
+
+const updateTeamSchema = z
+  .object({
+    organizationId: uuidSchema,
+    name: z.string().trim().min(1, "Team name is required").max(TEAM_NAME_MAX).optional(),
+    slug: slugSchema.optional(),
+  })
+  .refine((data) => data.name !== undefined || data.slug !== undefined, {
+    message: "Provide at least one field to update",
+  });
+
+const deleteTeamSchema = z.object({
+  organizationId: uuidSchema,
 });
 
 /**
@@ -315,5 +344,144 @@ export async function acceptEmailInvitationAction(input: {
       console.error("acceptEmailInvitationAction failed", err);
     }
     return teamFail(code);
+  }
+}
+
+/**
+ * Rename a team. BA enforces `organization:update` (admin + owner) at the
+ * endpoint; we surface BA's authz rejection as a typed `forbidden` via
+ * `mapBetterAuthError`. Either `name` or `slug` (or both) may be provided —
+ * the schema rejects an empty payload before we hit BA.
+ *
+ * @param input - `{ organizationId, name?, slug? }`.
+ * @returns Discriminated result.
+ */
+export async function updateTeamAction(input: {
+  organizationId: string;
+  name?: string;
+  slug?: string;
+}): Promise<TeamActionResult> {
+  try {
+    await requireSession();
+  } catch {
+    return teamFail("unauthorized");
+  }
+  const parsed = parseOrFail(updateTeamSchema, input);
+  if (!parsed.ok) return parsed;
+
+  const data: { name?: string; slug?: string } = {};
+  if (parsed.data.name !== undefined) data.name = parsed.data.name;
+  if (parsed.data.slug !== undefined) data.slug = parsed.data.slug;
+
+  try {
+    await auth.api.updateOrganization({
+      body: { data, organizationId: parsed.data.organizationId },
+      headers: await headers(),
+    });
+    return { ok: true };
+  } catch (err) {
+    const code = mapBetterAuthError(err);
+    if (code === "unknown") {
+      console.error("updateTeamAction failed", err);
+    }
+    return teamFail(code);
+  }
+}
+
+/**
+ * Delete a team and cascade every dependent resource. Owner-only — we
+ * gate explicitly via `isOrgOwner()` BEFORE calling BA so admins get a
+ * predictable `forbidden` failure (BA also rejects, but the upstream
+ * check avoids depending on BA's specific error code shape for this
+ * destructive action).
+ *
+ * Side effects (already wired upstream — no work here):
+ * - `beforeDeleteOrganization` hook in `lib/auth.ts` clears OAuth
+ *   artifacts for every member.
+ * - FK `ON DELETE CASCADE` wipes projects → tasks → task_edges,
+ *   invitations, team_invite_code, and member rows.
+ * - User accounts are NOT cascaded — members keep their accounts.
+ *
+ * @param input - `{ organizationId }` to delete.
+ * @returns Discriminated result.
+ */
+export async function deleteTeamAction(input: {
+  organizationId: string;
+}): Promise<TeamActionResult> {
+  try {
+    await requireSession();
+  } catch {
+    return teamFail("unauthorized");
+  }
+  const parsed = parseOrFail(deleteTeamSchema, input);
+  if (!parsed.ok) return parsed;
+
+  if (!(await isOrgOwner(parsed.data.organizationId))) return teamFail("forbidden");
+
+  try {
+    await auth.api.deleteOrganization({
+      body: { organizationId: parsed.data.organizationId },
+      headers: await headers(),
+    });
+    return { ok: true };
+  } catch (err) {
+    const code = mapBetterAuthError(err);
+    if (code === "unknown") {
+      console.error("deleteTeamAction failed", err);
+    }
+    return teamFail(code);
+  }
+}
+
+/** Cascade preview shown in the delete-team confirm dialog. */
+export type TeamDeletePreview = {
+  /** Number of projects that will be removed. */
+  projectCount: number;
+  /** Number of tasks across those projects. */
+  taskCount: number;
+};
+
+/**
+ * Count the rows that the delete-team cascade will wipe. Surfaces in
+ * the confirm dialog so the user understands the blast radius before
+ * typing the team name. Owner-only — same gate as `deleteTeamAction`
+ * since the count itself can leak organization size.
+ *
+ * @param input - `{ organizationId }` to preview.
+ * @returns Discriminated result; `data` is `{ projectCount, taskCount }`.
+ */
+export async function previewTeamDeleteAction(input: {
+  organizationId: string;
+}): Promise<TeamActionResult<TeamDeletePreview>> {
+  try {
+    await requireSession();
+  } catch {
+    return teamFail("unauthorized");
+  }
+  const parsed = parseOrFail(deleteTeamSchema, input);
+  if (!parsed.ok) return parsed;
+
+  if (!(await isOrgOwner(parsed.data.organizationId))) return teamFail("forbidden");
+
+  try {
+    const [projectsRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(projects)
+      .where(eq(projects.organizationId, parsed.data.organizationId));
+    const [tasksRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .where(eq(projects.organizationId, parsed.data.organizationId));
+    return {
+      ok: true,
+      data: {
+        projectCount: projectsRow?.count ?? 0,
+        taskCount: tasksRow?.count ?? 0,
+      },
+    };
+  } catch (err) {
+    console.error("previewTeamDeleteAction failed", err);
+    return teamFail("unknown");
   }
 }
