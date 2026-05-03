@@ -19,6 +19,8 @@ interface WorkspaceHeaderProps {
   status: ProjectStatus;
   /** @param categories - Current project categories. */
   categories: string[];
+  /** @param team - Owning team — surfaces in the breadcrumb pill and the settings modal header. */
+  team: { id: string; name: string };
   /** @param taskCount - Total number of tasks (drives rename warning copy). */
   taskCount: number;
   /** @param canRename - True when the active org member is allowed to rename project identifiers. */
@@ -43,6 +45,7 @@ export function WorkspaceHeader({
   identifier,
   status,
   categories,
+  team,
   taskCount,
   canRename,
   stageLabel,
@@ -69,6 +72,7 @@ export function WorkspaceHeader({
         taskStats={taskStats}
         projectId={projectId}
         projectStatus={status}
+        team={team}
         onOpenProjectSettings={() => setSettingsOpen(true)}
       />
       <ProjectSettingsModal
@@ -76,6 +80,7 @@ export function WorkspaceHeader({
         onClose={() => setSettingsOpen(false)}
         projectId={projectId}
         project={{ title: projectName, description, identifier, status, categories }}
+        team={team}
         taskCount={taskCount}
         canRename={canRename}
         onUpdated={handleUpdated}

@@ -17,6 +17,8 @@ interface TopBarProps {
   projectId?: string;
   /** @param projectStatus - Optional project lifecycle status for the inline chip. */
   projectStatus?: string;
+  /** @param team - Optional owning team. Forwarded to the breadcrumb so the team chip leads the pill. */
+  team?: { id: string; name: string };
   /** @param onOpenProjectSettings - Called when the project breadcrumb button is clicked. */
   onOpenProjectSettings?: () => void;
 }
@@ -26,7 +28,7 @@ interface TopBarProps {
  * @param props - TopBar configuration.
  * @returns A fixed-position navigation bar element.
  */
-export function TopBar({ projectName, stageLabel, taskStats, projectId, projectStatus, onOpenProjectSettings }: TopBarProps) {
+export function TopBar({ projectName, stageLabel, taskStats, projectId, projectStatus, team, onOpenProjectSettings }: TopBarProps) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
 
@@ -56,6 +58,7 @@ export function TopBar({ projectName, stageLabel, taskStats, projectId, projectS
                 <ProjectBreadcrumb
                   projectName={projectName}
                   projectStatus={projectStatus}
+                  team={team}
                   onOpenSettings={onOpenProjectSettings}
                 />
               ) : (

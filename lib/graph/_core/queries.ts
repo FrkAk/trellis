@@ -65,14 +65,29 @@ export async function findEdgeByNodes(
 }
 
 /**
- * Fetch a project with its tasks and edges, scoped to the active team.
+ * Fetch a project with its tasks, edges, and owning team, scoped to the
+ * caller's memberships. The organization JOIN runs separately from
+ * `assertProjectAccess` so the auth gate stays a single hot query —
+ * downstream UI surfaces (breadcrumb chip, settings modal header) get the
+ * team metadata inline instead of issuing a second roundtrip.
+ *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
- * @returns Project with flat tasks and edges, or undefined.
+ * @returns Project with flat tasks, edges, owning team metadata, and the caller's role.
  * @throws ForbiddenError when the project is cross-team.
  */
 export async function getProject(ctx: AuthContext, projectId: string) {
   const { project, memberRole } = await assertProjectAccess(projectId, ctx);
+
+  const [orgRow] = await db
+    .select({
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+    })
+    .from(organization)
+    .where(eq(organization.id, project.organizationId))
+    .limit(1);
 
   const projectTasks = await db
     .select()
@@ -94,7 +109,13 @@ export async function getProject(ctx: AuthContext, projectId: string) {
       );
   }
 
-  return { ...project, tasks: projectTasks, edges, memberRole };
+  return {
+    ...project,
+    tasks: projectTasks,
+    edges,
+    memberRole,
+    organization: orgRow,
+  };
 }
 
 // ---------------------------------------------------------------------------

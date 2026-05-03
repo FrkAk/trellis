@@ -50,6 +50,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
         identifier={project.identifier}
         status={project.status}
         categories={project.categories}
+        team={{ id: project.organization.id, name: project.organization.name }}
         taskCount={totalCount}
         canRename={canRename}
         stageLabel={`${totalCount} tasks`}
