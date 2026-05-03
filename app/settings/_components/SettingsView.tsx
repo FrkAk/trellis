@@ -80,7 +80,7 @@ export function SettingsView({
         tabs={[...TABS]}
         activeTab={tab}
         onTabChange={handleTabChange}
-        className="max-w-md"
+        className="w-fit"
       />
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
