@@ -10,7 +10,7 @@ import {
   type NewTask,
   type NewTaskEdge,
 } from "@/lib/db/schema";
-import { member } from "@/lib/db/auth-schema";
+import { member, organization } from "@/lib/db/auth-schema";
 import type {
   Decision,
   EdgeType,
@@ -32,7 +32,6 @@ import {
   ProjectNotFoundError,
   type TeamOption,
 } from "@/lib/graph/errors";
-import { organization } from "@/lib/db/auth-schema";
 import {
   formatMarkdown,
   formatTaskMarkdownFields,

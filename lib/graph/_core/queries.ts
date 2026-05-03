@@ -89,6 +89,12 @@ export async function getProject(ctx: AuthContext, projectId: string) {
     .where(eq(organization.id, project.organizationId))
     .limit(1);
 
+  if (!orgRow) {
+    throw new Error(
+      `Project ${project.id} references missing organization ${project.organizationId}`,
+    );
+  }
+
   const projectTasks = await db
     .select()
     .from(tasks)

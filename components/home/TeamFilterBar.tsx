@@ -51,6 +51,8 @@ export function TeamFilterBar({
       return { inlineTeams: teams, overflowTeams: [] as TeamView[] };
     }
     const active = activeTeamId ? teams.find((t) => t.id === activeTeamId) : undefined;
+    // Reserve a slot for the active team if it would otherwise fall into overflow,
+    // so the current selection always stays visible on the inline rail.
     const headRoom = active ? inlineCap - 1 : inlineCap;
     const head = teams.slice(0, headRoom);
     const inline = active && !head.some((t) => t.id === active.id) ? [...head, active] : head;

@@ -18,13 +18,13 @@ export const dynamic = "force-dynamic";
 export default async function OnboardingTeamPage() {
   const session = await requireSession();
 
-  const [any] = await db
+  const [existing] = await db
     .select({ id: member.id })
     .from(member)
     .where(eq(member.userId, session.user.id))
     .limit(1);
 
-  if (any) redirect("/");
+  if (existing) redirect("/");
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center px-4 py-12">

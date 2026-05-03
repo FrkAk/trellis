@@ -19,13 +19,13 @@ import { ForbiddenError, isUuid } from "@/lib/auth/authorization";
 export async function requireMembership(): Promise<void> {
   const session = await requireSession();
 
-  const [any] = await db
+  const [existing] = await db
     .select({ id: member.id })
     .from(member)
     .where(eq(member.userId, session.user.id))
     .limit(1);
 
-  if (!any) {
+  if (!existing) {
     redirect("/onboarding/team");
   }
 }

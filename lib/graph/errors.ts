@@ -43,7 +43,10 @@ export class MultiTeamAmbiguityError extends Error {
    * @param teams - Teams the caller belongs to (id + name).
    */
   constructor(public readonly teams: readonly TeamOption[]) {
-    super("organizationId required: caller is a member of multiple teams");
+    const ids = teams.map((t) => t.id).join(", ");
+    super(
+      `organizationId required: caller is a member of ${teams.length} teams (${ids})`,
+    );
     this.name = "MultiTeamAmbiguityError";
   }
 }

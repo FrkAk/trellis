@@ -136,7 +136,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
           .describe("Task categories for this project (e.g. ['backend', 'frontend', 'mcp']). Drives drawer grouping in the UI."),
         identifier: identifierSchema.optional()
           .describe("Project prefix for task refs (e.g. 'MYM' yields MYM-1, MYM-2, …). 2-12 chars, uppercase alphanumeric, unique per team. Auto-derived from title on create when omitted. On update: renames every existing task ref — external references (PR titles, docs) no longer resolve."),
-        organizationId: z.string().optional()
+        organizationId: z.uuid().optional()
           .describe("Target team UUID for create. REQUIRED when you're a member of more than one team — the create is rejected with the team list inline otherwise. Auto-resolved when you belong to exactly one team. Membership is verified server-side; non-member targets return 'forbidden'."),
       }),
       annotations: {
