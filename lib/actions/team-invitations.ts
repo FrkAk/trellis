@@ -8,6 +8,7 @@ import { db } from '@/lib/db';
 import { user } from '@/lib/db/auth-schema';
 import { getAuthContext, NoActiveTeamError } from '@/lib/auth/context';
 import { requireSession } from '@/lib/auth/session';
+import { isOrgAdmin } from '@/lib/auth/org-permissions';
 import {
   mapBetterAuthError,
   parseOrFail,
@@ -32,9 +33,12 @@ const cancelSchema = z.object({
  * Inviter names are resolved via a single batched user lookup since BA
  * returns only `inviterId` on the listInvitations row.
  *
- * Page-level guard already enforces admin+owner gating before this is
- * called, so no extra role check here. BA's listInvitations endpoint
- * itself runs through `orgSessionMiddleware` for the session check.
+ * Defense-in-depth: BA's `listInvitations` endpoint only checks team
+ * membership, NOT role. Without the explicit `isOrgAdmin()` gate here a
+ * regular member who calls the action directly (server-action POST from
+ * the browser) could harvest invitee emails for the active team. Page
+ * UI already hides the panel for non-admins, but the action surface is
+ * independently callable and must enforce its own authorization.
  *
  * @returns Discriminated result; `data` is the pending list (newest first).
  */
@@ -48,6 +52,8 @@ export async function listPendingInvitationsAction(): Promise<
     if (err instanceof NoActiveTeamError) return teamFail('no_active_team');
     return teamFail('unauthorized');
   }
+
+  if (!(await isOrgAdmin(ctx.activeOrgId))) return teamFail('forbidden');
 
   let raw: BetterAuthInvitationRow[];
   try {
@@ -90,9 +96,14 @@ export async function listPendingInvitationsAction(): Promise<
 }
 
 /**
- * Cancel a pending invitation. BA enforces that the caller has
- * `invitation:cancel` permission (admin+owner) — we surface BA's authz
- * rejection as a typed `forbidden` via `mapBetterAuthError`.
+ * Cancel a pending invitation. BA enforces `invitation:cancel`
+ * (admin+owner) at the endpoint and scopes by the invitation's own
+ * organization, so cross-team cancels are rejected.
+ *
+ * Defense-in-depth: an explicit `isOrgAdmin()` check runs first so the
+ * action's authorization does not single-source from BA's specific
+ * error code shape, and a regular member is rejected with a typed
+ * `forbidden` before any BA call.
  *
  * @param input - `{ invitationId }` to cancel.
  * @returns Discriminated result.
@@ -108,6 +119,8 @@ export async function cancelInvitationAction(input: {
 
   const parsed = parseOrFail(cancelSchema, input);
   if (!parsed.ok) return parsed;
+
+  if (!(await isOrgAdmin())) return teamFail('forbidden');
 
   try {
     await auth.api.cancelInvitation({

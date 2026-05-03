@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import { Button } from '@/components/shared/Button';
@@ -9,6 +9,10 @@ import {
   previewTeamDeleteAction,
   type TeamDeletePreview,
 } from '@/lib/actions/team';
+
+/** CSS selector matching every keyboard-focusable element inside the panel. */
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const INPUT_CLASS =
   'w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent';
@@ -74,9 +78,17 @@ interface DeleteTeamDialogBodyProps {
 }
 
 /**
- * Mounted dialog body — owns the typed-name input state and the lazy
- * cascade-preview fetch. Mounting this on `open=true` resets state for
- * free and avoids the setState-in-effect anti-pattern.
+ * Mounted dialog body — owns the typed-name input state, the lazy
+ * cascade-preview fetch, focus trap, and focus restoration. Mounting
+ * this on `open=true` resets state for free and avoids the
+ * setState-in-effect anti-pattern.
+ *
+ * Focus management:
+ * - Captures `document.activeElement` synchronously during the first
+ *   render via `useState` lazy initializer (BEFORE `autoFocus` fires in
+ *   commit phase), then restores focus to that element on unmount.
+ * - Traps `Tab`/`Shift+Tab` within the panel so keyboard users cannot
+ *   escape the dialog without explicit dismissal.
  */
 function DeleteTeamDialogBody({
   teamId,
@@ -89,6 +101,13 @@ function DeleteTeamDialogBody({
   const [preview, setPreview] = useState<TeamDeletePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
   const [pending, startTransition] = useTransition();
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [previouslyFocused] = useState<HTMLElement | null>(() => {
+    if (typeof document === 'undefined') return null;
+    return document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -110,12 +129,42 @@ function DeleteTeamDialogBody({
   }, [teamId, onError]);
 
   useEffect(() => {
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !panelRef.current) return;
+      const focusables = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      const activeNode = active instanceof Node ? active : null;
+      const insidePanel = activeNode ? panelRef.current.contains(activeNode) : false;
+      if (event.shiftKey) {
+        if (!insidePanel || active === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (!insidePanel || active === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     }
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
   }, [onClose]);
+
+  useEffect(() => {
+    return () => {
+      previouslyFocused?.focus();
+    };
+  }, [previouslyFocused]);
 
   const canConfirm = typedName === teamName && !pending;
 
@@ -150,6 +199,7 @@ function DeleteTeamDialogBody({
         className="absolute inset-0 cursor-default bg-black/60 backdrop-blur-sm disabled:cursor-not-allowed"
       />
       <motion.div
+        ref={panelRef}
         initial={{ opacity: 0, scale: 0.96, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}

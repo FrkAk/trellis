@@ -7,9 +7,11 @@ import { z } from "zod/v4";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { projects, tasks } from "@/lib/db/schema";
+import { member } from "@/lib/db/auth-schema";
+import { getAuthContext, NoActiveTeamError } from "@/lib/auth/context";
 import { requireSession } from "@/lib/auth/session";
 import { clearOrgMembershipArtifacts } from "@/lib/auth/membership-cleanup";
-import { isOrgOwner } from "@/lib/auth/org-permissions";
+import { isOrgAdmin, isOrgOwner } from "@/lib/auth/org-permissions";
 import {
   mapBetterAuthError,
   parseOrFail,
@@ -145,6 +147,11 @@ export async function createTeamAction(input: {
  * enforces the recipient-email check at acceptance time; this action just
  * creates the invitation row and (in the future) hands it to a mailer.
  *
+ * Defense-in-depth: an explicit `isOrgAdmin()` check runs first so the
+ * action's authorization does not single-source from BA's specific
+ * error code shape. BA also enforces `invitation:create` (admin+owner)
+ * at the endpoint.
+ *
  * @param input - Recipient email and optional role (defaults to `member`).
  * @returns Discriminated result.
  */
@@ -159,6 +166,8 @@ export async function inviteMemberAction(input: {
   }
   const parsed = parseOrFail(inviteMemberSchema, input);
   if (!parsed.ok) return parsed;
+
+  if (!(await isOrgAdmin())) return teamFail("forbidden");
 
   try {
     const reqHeaders = await headers();
@@ -184,6 +193,11 @@ export async function inviteMemberAction(input: {
  * `afterRemoveMember` which clears stale OAuth tokens and active-org
  * pointers via `clearOrgMembershipArtifacts` — see lib/auth.ts.
  *
+ * Defense-in-depth: explicit `isOrgAdmin()` check runs first so the
+ * action's authorization does not single-source from BA. BA scopes the
+ * remove to the caller's `activeOrganizationId` and additionally
+ * enforces `member:delete` (admin+owner) at the endpoint.
+ *
  * @param input - `memberIdOrEmail` to remove.
  * @returns Discriminated result.
  */
@@ -197,6 +211,8 @@ export async function removeMemberAction(input: {
   }
   const parsed = parseOrFail(removeMemberSchema, input);
   if (!parsed.ok) return parsed;
+
+  if (!(await isOrgAdmin())) return teamFail("forbidden");
 
   try {
     const reqHeaders = await headers();
@@ -217,6 +233,22 @@ export async function removeMemberAction(input: {
 /**
  * Change a member's role within the caller's active team.
  *
+ * Layered authorization:
+ * 1. Explicit `isOrgAdmin()` check — defense-in-depth so authz doesn't
+ *    single-source from BA's error code shape.
+ * 2. Cross-team probe rejection — target's `member.organizationId` must
+ *    match the caller's `ctx.activeOrgId`. Returns `forbidden` (404-shaped)
+ *    so a probe cannot tell membership apart from non-existence.
+ * 3. Last-owner guard — if target is the org's only owner and the new
+ *    role is not owner, surface a typed `cannot_leave_only_owner`. BA's
+ *    own check only fires on self-demote; this catches an
+ *    owner-A-demotes-owner-B race where both reads see two owners.
+ * 4. BA's `updateMemberRole` enforces `member:update` (admin+owner) at
+ *    the endpoint plus its own creator-role/last-owner safeguards.
+ *
+ * `member.role` is comma-separated in BA — we split + `.includes('owner')`
+ * to mirror BA's parsing (see `crud-members.mjs:255`).
+ *
  * @param input - Target member id and new role.
  * @returns Discriminated result.
  */
@@ -224,13 +256,42 @@ export async function updateMemberRoleAction(input: {
   memberId: string;
   role: "member" | "admin" | "owner";
 }): Promise<TeamActionResult> {
+  let ctx;
   try {
-    await requireSession();
-  } catch {
+    ctx = await getAuthContext();
+  } catch (err) {
+    if (err instanceof NoActiveTeamError) return teamFail("no_active_team");
     return teamFail("unauthorized");
   }
   const parsed = parseOrFail(updateMemberRoleSchema, input);
   if (!parsed.ok) return parsed;
+
+  if (!(await isOrgAdmin(ctx.activeOrgId))) return teamFail("forbidden");
+
+  const [target] = await db
+    .select({
+      id: member.id,
+      role: member.role,
+      organizationId: member.organizationId,
+    })
+    .from(member)
+    .where(eq(member.id, parsed.data.memberId))
+    .limit(1);
+  if (!target) return teamFail("not_found");
+  if (target.organizationId !== ctx.activeOrgId) return teamFail("forbidden");
+
+  const targetIsOwner = target.role.split(",").includes("owner");
+  const newIsOwner = parsed.data.role === "owner";
+  if (targetIsOwner && !newIsOwner) {
+    const owners = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(eq(member.organizationId, target.organizationId));
+    const ownerCount = owners.filter((m) =>
+      m.role.split(",").includes("owner"),
+    ).length;
+    if (ownerCount <= 1) return teamFail("cannot_leave_only_owner");
+  }
 
   try {
     const reqHeaders = await headers();
@@ -353,6 +414,11 @@ export async function acceptEmailInvitationAction(input: {
  * `mapBetterAuthError`. Either `name` or `slug` (or both) may be provided —
  * the schema rejects an empty payload before we hit BA.
  *
+ * Defense-in-depth: explicit `isOrgAdmin(organizationId)` check runs
+ * first, scoped to the supplied target team rather than the caller's
+ * session active org. A regular member or non-member of the target team
+ * surfaces a typed `forbidden` before any BA call.
+ *
  * @param input - `{ organizationId, name?, slug? }`.
  * @returns Discriminated result.
  */
@@ -368,6 +434,8 @@ export async function updateTeamAction(input: {
   }
   const parsed = parseOrFail(updateTeamSchema, input);
   if (!parsed.ok) return parsed;
+
+  if (!(await isOrgAdmin(parsed.data.organizationId))) return teamFail("forbidden");
 
   const data: { name?: string; slug?: string } = {};
   if (parsed.data.name !== undefined) data.name = parsed.data.name;
