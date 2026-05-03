@@ -124,7 +124,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       inputSchema: z.object({
         action: z.enum(["list", "teams", "create", "select", "update"])
           .describe("list=projects across every team you belong to (skips empty teams). teams=every membership (id, name, slug, role, projectCount) — call before create or when list misses a team. create=new project (requires organizationId in multi-team accounts). select=confirm working project (returns projectId). update=modify fields."),
-        projectId: z.string().optional()
+        projectId: z.uuid().optional()
           .describe("Project UUID. Required for select and update."),
         title: z.string().optional()
           .describe("Project name (2-5 words, verb-noun preferred). Required for create."),
@@ -172,9 +172,9 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       inputSchema: z.object({
         action: z.enum(["create", "update", "delete", "reorder"])
           .describe("create=new task. update=modify fields (pass only what changed). delete=remove (preview by default). reorder=change position."),
-        taskId: z.string().optional()
+        taskId: z.uuid().optional()
           .describe("Task UUID. Required for update/delete/reorder."),
-        projectId: z.string().optional()
+        projectId: z.uuid().optional()
           .describe("Project UUID. Required for create. Project's team scope is inherited."),
         title: z.string().optional()
           .describe("Verb+noun, short. Required for create (e.g. 'Implement JWT auth')."),
@@ -233,11 +233,11 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       inputSchema: z.object({
         action: z.enum(["create", "update", "remove"])
           .describe("create=new edge. update=modify type or note. remove=delete by edgeId or by source+target+type."),
-        edgeId: z.string().optional()
+        edgeId: z.uuid().optional()
           .describe("Edge UUID. Required for update. For remove: use this OR sourceTaskId+targetTaskId+edgeType."),
-        sourceTaskId: z.string().optional()
+        sourceTaskId: z.uuid().optional()
           .describe("Source task UUID. Required for create. Alternative key for remove."),
-        targetTaskId: z.string().optional()
+        targetTaskId: z.uuid().optional()
           .describe("Target task UUID. Required for create. Alternative key for remove."),
         edgeType: z.enum(["depends_on", "relates_to"]).optional()
           .describe("depends_on = source needs target done first. relates_to = informational link, neither blocks the other. Required for create."),
@@ -273,9 +273,9 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
           .describe("Search string for type='search'. Matches taskRef, title substring, or tag substring. Optional when `tags` is provided."),
         tags: z.array(z.string()).optional()
           .describe("Filter to tasks containing ANY of these exact tags (OR-within). Combine with `query` to narrow further. Pick from the Tag vocabulary in `type='overview'`."),
-        taskId: z.string().optional()
+        taskId: z.uuid().optional()
           .describe("Task UUID for type='edges'."),
-        projectId: z.string().optional()
+        projectId: z.uuid().optional()
           .describe("Project UUID. Required for search/list/overview."),
       }),
       annotations: {
@@ -301,10 +301,10 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
     {
       description: DESCRIPTIONS.mymir_context,
       inputSchema: z.object({
-        taskId: z.string().describe("Task UUID."),
+        taskId: z.uuid().describe("Task UUID."),
         depth: z.enum(["summary", "working", "agent", "planning"]).default("working")
           .describe("summary=quick (status, edge counts). working=detailed (criteria, decisions, 1-hop edges, siblings). agent=multi-hop deps + execution records (use BEFORE coding). planning=spec for pre-implementation (project description, prereqs, acceptance criteria, downstream specs)."),
-        projectId: z.string().optional()
+        projectId: z.uuid().optional()
           .describe("Project UUID. Required for 'working' depth."),
       }),
       annotations: {
@@ -332,9 +332,9 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       inputSchema: z.object({
         type: z.enum(["ready", "blocked", "downstream", "critical_path", "plannable"])
           .describe("ready=unblocked work to start. blocked=waiting tasks with blocker details. downstream=transitive dependents (impact analysis before changes). critical_path=longest dep chain (project bottleneck). plannable=draft tasks with description+criteria, ready for planning."),
-        taskId: z.string().optional()
+        taskId: z.uuid().optional()
           .describe("Task UUID. Required for 'downstream'."),
-        projectId: z.string().optional()
+        projectId: z.uuid().optional()
           .describe("Project UUID. Required for ready/blocked/critical_path/plannable."),
       }),
       annotations: {
