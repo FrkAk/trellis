@@ -1,10 +1,17 @@
 "use server";
 
 import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { projects, tasks } from "@/lib/db/schema";
+import { member } from "@/lib/db/auth-schema";
+import { getAuthContext, NoActiveTeamError } from "@/lib/auth/context";
 import { requireSession } from "@/lib/auth/session";
 import { clearOrgMembershipArtifacts } from "@/lib/auth/membership-cleanup";
+import { isOrgAdmin, isOrgOwner } from "@/lib/auth/org-permissions";
 import {
   mapBetterAuthError,
   parseOrFail,
@@ -49,6 +56,7 @@ const uuidSchema = z.uuid();
 const emailSchema = z.email();
 
 const inviteMemberSchema = z.object({
+  organizationId: uuidSchema.optional(),
   email: emailSchema,
   role: memberRoleSchema.optional(),
 });
@@ -69,6 +77,82 @@ const leaveTeamSchema = z.object({
 const acceptInvitationSchema = z.object({
   invitationId: uuidSchema,
 });
+
+const slugSchema = z
+  .string()
+  .trim()
+  .min(SLUG_MIN)
+  .max(SLUG_MAX)
+  .regex(SLUG_PATTERN, "Slug must be lowercase alphanumeric with hyphens")
+  .refine((s) => !RESERVED_SLUGS.has(s), {
+    message: "That URL slug is reserved. Try a different one.",
+  });
+
+const updateTeamSchema = z
+  .object({
+    organizationId: uuidSchema,
+    name: z.string().trim().min(1, "Team name is required").max(TEAM_NAME_MAX).optional(),
+    slug: slugSchema.optional(),
+  })
+  .refine((data) => data.name !== undefined || data.slug !== undefined, {
+    message: "Provide at least one field to update",
+  });
+
+const deleteTeamSchema = z.object({
+  organizationId: uuidSchema,
+});
+
+/**
+ * Parse a Better Auth `member.role` value and return the set of role
+ * names it carries. BA 1.6.x stores roles as a comma-separated string
+ * (`"owner"`, `"owner,admin"`); a future serializer change to a JSON
+ * array (`'["owner","admin"]'`) is tolerated by attempting JSON parse
+ * first and falling back to the comma split. Whitespace and empty
+ * fragments are stripped.
+ *
+ * Pinned against `better-auth@1.6.x crud-members.mjs:255`.
+ *
+ * @param role - Raw `member.role` string from the DB.
+ * @returns Lowercased role names present on the member.
+ */
+function parseMemberRoles(role: string): string[] {
+  const trimmed = role.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((v): v is string => typeof v === "string")
+          .map((v) => v.trim())
+          .filter((v) => v.length > 0);
+      }
+    } catch {
+      // fall through to comma split
+    }
+  }
+  return trimmed
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+}
+
+/** Convenience: does `role` carry the `owner` grant? */
+function roleIncludesOwner(role: string): boolean {
+  return parseMemberRoles(role).includes("owner");
+}
+
+/**
+ * Advisory-lock key serializing concurrent owner-role mutations within a
+ * single team. Demotes for a single team serialize on this lock so the
+ * last-owner guard cannot race; demotes against different teams proceed
+ * in parallel because the lock is per-org.
+ *
+ * @param organizationId - UUID of the team being mutated.
+ * @returns SQL fragment producing the int8 lock key for `pg_advisory_xact_lock`.
+ */
+function ownerLockKey(organizationId: string) {
+  return sql`hashtext(${`mymir:team-owners:${organizationId}`})`;
+}
 
 /**
  * Create a new organization (team) for the signed-in user and set it as
@@ -112,14 +196,26 @@ export async function createTeamAction(input: {
 }
 
 /**
- * Send an email invitation to join the caller's active team. Better Auth
- * enforces the recipient-email check at acceptance time; this action just
- * creates the invitation row and (in the future) hands it to a mailer.
+ * Send an email invitation to join a team. Better Auth enforces the
+ * recipient-email check at acceptance time; this action just creates
+ * the invitation row and (in the future) hands it to a mailer.
  *
- * @param input - Recipient email and optional role (defaults to `member`).
+ * Target-scoped: an optional `organizationId` lets admins of team T
+ * invite to T while their session is active on team U. When omitted,
+ * BA's `createInvitation` falls back to session active org (verified
+ * against `better-auth@1.6.x crud-invites.mjs:70`).
+ *
+ * Defense-in-depth: an explicit `isOrgAdmin(parsed.data.organizationId)`
+ * check runs first (target-scoped when provided, session-scoped when
+ * not), so the action's authorization does not single-source from BA's
+ * specific error code shape. BA also enforces `invitation:create`
+ * (admin+owner) at the endpoint.
+ *
+ * @param input - Optional target org id, recipient email, optional role.
  * @returns Discriminated result.
  */
 export async function inviteMemberAction(input: {
+  organizationId?: string;
   email: string;
   role?: "member" | "admin" | "owner";
 }): Promise<TeamActionResult> {
@@ -131,12 +227,17 @@ export async function inviteMemberAction(input: {
   const parsed = parseOrFail(inviteMemberSchema, input);
   if (!parsed.ok) return parsed;
 
+  if (!(await isOrgAdmin(parsed.data.organizationId))) return teamFail("forbidden");
+
   try {
     const reqHeaders = await headers();
     await auth.api.createInvitation({
       body: {
         email: parsed.data.email,
         role: parsed.data.role ?? "member",
+        ...(parsed.data.organizationId !== undefined
+          ? { organizationId: parsed.data.organizationId }
+          : {}),
       },
       headers: reqHeaders,
     });
@@ -155,6 +256,11 @@ export async function inviteMemberAction(input: {
  * `afterRemoveMember` which clears stale OAuth tokens and active-org
  * pointers via `clearOrgMembershipArtifacts` — see lib/auth.ts.
  *
+ * Defense-in-depth: explicit `isOrgAdmin()` check runs first so the
+ * action's authorization does not single-source from BA. BA scopes the
+ * remove to the caller's `activeOrganizationId` and additionally
+ * enforces `member:delete` (admin+owner) at the endpoint.
+ *
  * @param input - `memberIdOrEmail` to remove.
  * @returns Discriminated result.
  */
@@ -168,6 +274,8 @@ export async function removeMemberAction(input: {
   }
   const parsed = parseOrFail(removeMemberSchema, input);
   if (!parsed.ok) return parsed;
+
+  if (!(await isOrgAdmin())) return teamFail("forbidden");
 
   try {
     const reqHeaders = await headers();
@@ -188,6 +296,33 @@ export async function removeMemberAction(input: {
 /**
  * Change a member's role within the caller's active team.
  *
+ * Layered authorization:
+ * 1. Explicit `isOrgAdmin(ctx.activeOrgId)` check — defense-in-depth so
+ *    authz doesn't single-source from BA's error code shape.
+ * 2. Cross-team probe rejection — target's `member.organizationId` must
+ *    match the caller's `ctx.activeOrgId`. Returns `forbidden` (404-shaped)
+ *    so a probe cannot tell membership apart from non-existence.
+ * 3. Last-owner guard, atomically held against concurrent demotes — the
+ *    re-read of target + owner-count + BA's `updateMemberRole` happen
+ *    inside a transaction holding `pg_advisory_xact_lock` keyed on the
+ *    team. Two browsers demoting two different owners simultaneously
+ *    serialize on this lock, so the second demote sees the first's
+ *    committed effect (one owner left) and fails closed. BA's own check
+ *    only fires on self-demote; this guard catches the cross-actor case.
+ * 4. BA's `updateMemberRole` enforces `member:update` (admin+owner) at
+ *    the endpoint plus its own creator-role/last-owner safeguards.
+ *
+ * BA's UPDATE runs on its own connection (autocommit) inside our tx
+ * callback. The advisory lock doesn't block that connection, so there's
+ * no deadlock; the lock simply serializes other actions waiting to run
+ * the same gate. By the time we release the lock at tx commit, BA has
+ * already committed the role change.
+ *
+ * `member.role` parsing goes through {@link roleIncludesOwner} which
+ * accepts both BA's current comma-separated format and a future JSON
+ * array, so a serializer change can't silently flip the last-owner
+ * guard open.
+ *
  * @param input - Target member id and new role.
  * @returns Discriminated result.
  */
@@ -195,28 +330,72 @@ export async function updateMemberRoleAction(input: {
   memberId: string;
   role: "member" | "admin" | "owner";
 }): Promise<TeamActionResult> {
+  let ctx;
   try {
-    await requireSession();
-  } catch {
+    ctx = await getAuthContext();
+  } catch (err) {
+    if (err instanceof NoActiveTeamError) return teamFail("no_active_team");
     return teamFail("unauthorized");
   }
   const parsed = parseOrFail(updateMemberRoleSchema, input);
   if (!parsed.ok) return parsed;
 
-  try {
-    const reqHeaders = await headers();
-    await auth.api.updateMemberRole({
-      body: { memberId: parsed.data.memberId, role: parsed.data.role },
-      headers: reqHeaders,
-    });
-    return { ok: true };
-  } catch (err) {
-    const code = mapBetterAuthError(err);
-    if (code === "unknown") {
-      console.error("updateMemberRoleAction failed", err);
+  if (!(await isOrgAdmin(ctx.activeOrgId))) return teamFail("forbidden");
+
+  const [preRead] = await db
+    .select({ organizationId: member.organizationId })
+    .from(member)
+    .where(eq(member.id, parsed.data.memberId))
+    .limit(1);
+  if (!preRead) return teamFail("not_found");
+  if (preRead.organizationId !== ctx.activeOrgId) return teamFail("forbidden");
+
+  const reqHeaders = await headers();
+  type Outcome =
+    | { kind: "ok" }
+    | { kind: "fail"; code: "not_found" | "forbidden" | "cannot_leave_only_owner" }
+    | { kind: "ba_error"; err: unknown };
+
+  const outcome: Outcome = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ownerLockKey(preRead.organizationId)})`);
+
+    const [latest] = await tx
+      .select({ role: member.role, organizationId: member.organizationId })
+      .from(member)
+      .where(eq(member.id, parsed.data.memberId))
+      .limit(1);
+    if (!latest) return { kind: "fail", code: "not_found" };
+    if (latest.organizationId !== ctx.activeOrgId) return { kind: "fail", code: "forbidden" };
+
+    const targetIsOwner = roleIncludesOwner(latest.role);
+    const newIsOwner = parsed.data.role === "owner";
+    if (targetIsOwner && !newIsOwner) {
+      const owners = await tx
+        .select({ role: member.role })
+        .from(member)
+        .where(eq(member.organizationId, latest.organizationId));
+      const ownerCount = owners.filter((m) => roleIncludesOwner(m.role)).length;
+      if (ownerCount <= 1) return { kind: "fail", code: "cannot_leave_only_owner" };
     }
-    return teamFail(code);
+
+    try {
+      await auth.api.updateMemberRole({
+        body: { memberId: parsed.data.memberId, role: parsed.data.role },
+        headers: reqHeaders,
+      });
+      return { kind: "ok" };
+    } catch (err) {
+      return { kind: "ba_error", err };
+    }
+  });
+
+  if (outcome.kind === "ok") return { ok: true };
+  if (outcome.kind === "fail") return teamFail(outcome.code);
+  const code = mapBetterAuthError(outcome.err);
+  if (code === "unknown") {
+    console.error("updateMemberRoleAction failed", outcome.err);
   }
+  return teamFail(code);
 }
 
 /**
@@ -315,5 +494,163 @@ export async function acceptEmailInvitationAction(input: {
       console.error("acceptEmailInvitationAction failed", err);
     }
     return teamFail(code);
+  }
+}
+
+/**
+ * Rename a team. BA enforces `organization:update` (admin + owner) at the
+ * endpoint; we surface BA's authz rejection as a typed `forbidden` via
+ * `mapBetterAuthError`. Either `name` or `slug` (or both) may be provided —
+ * the schema rejects an empty payload before we hit BA.
+ *
+ * Defense-in-depth: explicit `isOrgAdmin(organizationId)` check runs
+ * first, scoped to the supplied target team rather than the caller's
+ * session active org. A regular member or non-member of the target team
+ * surfaces a typed `forbidden` before any BA call.
+ *
+ * BA's `updateOrganization` honors `body.organizationId` for both the
+ * permission check and the underlying write — verified against
+ * `better-auth@1.6.x crud-org.mjs:199-228`. A renamer who is admin of
+ * team T but currently active on team U therefore renames T (the body
+ * arg), not U.
+ *
+ * @param input - `{ organizationId, name?, slug? }`.
+ * @returns Discriminated result.
+ */
+export async function updateTeamAction(input: {
+  organizationId: string;
+  name?: string;
+  slug?: string;
+}): Promise<TeamActionResult> {
+  try {
+    await requireSession();
+  } catch {
+    return teamFail("unauthorized");
+  }
+  const parsed = parseOrFail(updateTeamSchema, input);
+  if (!parsed.ok) return parsed;
+
+  if (!(await isOrgAdmin(parsed.data.organizationId))) return teamFail("forbidden");
+
+  const data: { name?: string; slug?: string } = {};
+  if (parsed.data.name !== undefined) data.name = parsed.data.name;
+  if (parsed.data.slug !== undefined) data.slug = parsed.data.slug;
+
+  try {
+    await auth.api.updateOrganization({
+      body: { data, organizationId: parsed.data.organizationId },
+      headers: await headers(),
+    });
+    return { ok: true };
+  } catch (err) {
+    const code = mapBetterAuthError(err);
+    if (code === "unknown") {
+      console.error("updateTeamAction failed", err);
+    }
+    return teamFail(code);
+  }
+}
+
+/**
+ * Delete a team and cascade every dependent resource. Owner-only — we
+ * gate explicitly via `isOrgOwner()` BEFORE calling BA so admins get a
+ * predictable `forbidden` failure (BA also rejects, but the upstream
+ * check avoids depending on BA's specific error code shape for this
+ * destructive action).
+ *
+ * Side effects (already wired upstream — no work here):
+ * - `beforeDeleteOrganization` hook in `lib/auth.ts` clears OAuth
+ *   artifacts for every member.
+ * - FK `ON DELETE CASCADE` wipes projects → tasks → task_edges,
+ *   invitations, team_invite_code, and member rows.
+ * - User accounts are NOT cascaded — members keep their accounts.
+ *
+ * @param input - `{ organizationId }` to delete.
+ * @returns Discriminated result.
+ */
+export async function deleteTeamAction(input: {
+  organizationId: string;
+}): Promise<TeamActionResult> {
+  try {
+    await requireSession();
+  } catch {
+    return teamFail("unauthorized");
+  }
+  const parsed = parseOrFail(deleteTeamSchema, input);
+  if (!parsed.ok) return parsed;
+
+  if (!(await isOrgOwner(parsed.data.organizationId))) return teamFail("forbidden");
+
+  try {
+    await auth.api.deleteOrganization({
+      body: { organizationId: parsed.data.organizationId },
+      headers: await headers(),
+    });
+    return { ok: true };
+  } catch (err) {
+    const code = mapBetterAuthError(err);
+    if (code === "unknown") {
+      console.error("deleteTeamAction failed", err);
+    }
+    return teamFail(code);
+  }
+}
+
+/** Cascade preview shown in the delete-team confirm dialog. */
+export type TeamDeletePreview = {
+  /** Number of projects that will be removed. */
+  projectCount: number;
+  /** Number of tasks across those projects. */
+  taskCount: number;
+};
+
+/**
+ * Count the rows that the delete-team cascade will wipe. Surfaces in
+ * the confirm dialog so the user understands the blast radius before
+ * typing the team name. Owner-only — same gate as `deleteTeamAction`
+ * since the count itself can leak organization size.
+ *
+ * Both counts share a single SQL statement so they read from the same
+ * MVCC snapshot (Postgres evaluates subqueries against one statement-
+ * level snapshot under default `READ COMMITTED` isolation), preventing
+ * a stale projects/tasks mismatch when concurrent writes land between
+ * two separate count queries.
+ *
+ * @param input - `{ organizationId }` to preview.
+ * @returns Discriminated result; `data` is `{ projectCount, taskCount }`.
+ */
+export async function previewTeamDeleteAction(input: {
+  organizationId: string;
+}): Promise<TeamActionResult<TeamDeletePreview>> {
+  try {
+    await requireSession();
+  } catch {
+    return teamFail("unauthorized");
+  }
+  const parsed = parseOrFail(deleteTeamSchema, input);
+  if (!parsed.ok) return parsed;
+
+  if (!(await isOrgOwner(parsed.data.organizationId))) return teamFail("forbidden");
+
+  try {
+    const orgId = parsed.data.organizationId;
+    const rows = (await db.execute(sql`
+      SELECT
+        (SELECT count(*)::int FROM ${projects} WHERE ${projects.organizationId} = ${orgId}) AS project_count,
+        (SELECT count(*)::int FROM ${tasks}
+           INNER JOIN ${projects} ON ${tasks.projectId} = ${projects.id}
+           WHERE ${projects.organizationId} = ${orgId}) AS task_count
+    `)) as unknown as { project_count: number; task_count: number }[];
+    const row = rows[0];
+    return {
+      ok: true,
+      data: {
+        projectCount: Number(row?.project_count ?? 0),
+        taskCount: Number(row?.task_count ?? 0),
+      },
+    };
+  } catch (err) {
+    console.error("previewTeamDeleteAction failed", err);
+    return teamFail("unknown");
   }
 }

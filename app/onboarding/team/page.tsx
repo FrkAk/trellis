@@ -59,7 +59,7 @@ export default async function OnboardingTeamPage() {
             Pick a team
           </h1>
           <p className="text-sm text-text-muted">
-            Mymir is team-scoped. Create a team to start a fresh workspace, or
+            mymir is team-scoped. Create a team to start a fresh workspace, or
             paste the 21-character invite code your team admin shared.
           </p>
         </div>

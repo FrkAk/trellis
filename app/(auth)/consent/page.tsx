@@ -74,7 +74,7 @@ export default function ConsentPage() {
           Authorize access
         </h1>
         <p className="text-sm text-text-muted">
-          An application is requesting access to your Mymir account.
+          An application is requesting access to your mymir account.
         </p>
       </div>
 

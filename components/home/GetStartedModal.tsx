@@ -30,7 +30,7 @@ const CLI_INSTALLS: readonly CliInstall[] = [
     name: 'Codex',
     install: 'codex plugin marketplace add ./plugins',
     setupNote:
-      'Run /plugin, search for Mymir, install, then restart Codex. Invoke the skill explicitly with $mymir.',
+      'Run /plugin, search for mymir, install, then restart Codex. Invoke the skill explicitly with $mymir.',
   },
   {
     name: 'Gemini',
@@ -60,7 +60,7 @@ function FirstTimeBody() {
   return (
     <>
       <p className="text-sm leading-relaxed text-text-secondary">
-        Mymir runs in your coding agent, which has the file context an in-app
+        mymir runs in your coding agent, which has the file context an in-app
         chat never will. Install the plugin for your tool, then describe
         what you&apos;re building.
       </p>
@@ -114,7 +114,7 @@ function ReturningBody() {
   return (
     <>
       <p className="text-sm leading-relaxed text-text-secondary">
-        Mymir projects start in your coding agent. Open it and describe
+        mymir projects start in your coding agent. Open it and describe
         what you&apos;re building. The mymir skill creates the project, and
         it&apos;ll show up here once it&apos;s active.
       </p>

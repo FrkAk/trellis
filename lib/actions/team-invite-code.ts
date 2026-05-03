@@ -7,7 +7,6 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { teamInviteCodes } from "@/lib/db/team-schema";
 import { requireSession } from "@/lib/auth/session";
-import { getAuthContext, NoActiveTeamError } from "@/lib/auth/context";
 import { isOrgAdmin } from "@/lib/auth/org-permissions";
 import { generateInviteCode, INVITE_CODE_PATTERN } from "@/lib/auth/invite-code";
 import {
@@ -29,8 +28,8 @@ export type InviteCodeMetadata = {
 
 type InviteCodeFailureCode =
   | "unauthorized"
-  | "no_active_team"
   | "forbidden"
+  | "invalid_input"
   | "not_found"
   | "unknown";
 
@@ -82,36 +81,44 @@ const joinSchema = z.object({
   code: z.string().trim().regex(INVITE_CODE_PATTERN),
 });
 
+const orgInputSchema = z.object({
+  organizationId: z.uuid(),
+});
+
 /**
- * Resolve auth context for an admin-only invite-code action. Mapping:
- * not signed in → unauthorized, no active team → no_active_team,
- * not an admin → forbidden.
+ * Resolve auth + admin authorization for an invite-code action against
+ * a target team. The target org is supplied by the caller so admins of
+ * team T can rotate / revoke T's code while their session is active on
+ * a different team U.
+ *
+ * Mapping: not signed in → unauthorized, not an admin of `organizationId`
+ * → forbidden (covers both "regular member" and "non-member" without
+ * leaking which one).
+ *
+ * @param organizationId - Target team UUID (already shape-validated).
+ * @returns The signed-in caller's `userId` on success, or a typed failure.
  */
-async function resolveAdminContext(): Promise<
-  | { ok: true; ctx: Awaited<ReturnType<typeof getAuthContext>> }
-  | { ok: false; code: "unauthorized" | "no_active_team" | "forbidden"; message: string }
+async function resolveAdminContext(
+  organizationId: string,
+): Promise<
+  | { ok: true; userId: string }
+  | { ok: false; code: "unauthorized" | "forbidden"; message: string }
 > {
-  let ctx;
+  let userId: string;
   try {
-    ctx = await getAuthContext();
-  } catch (err) {
-    if (err instanceof NoActiveTeamError) {
-      return {
-        ok: false,
-        code: "no_active_team",
-        message: TEAM_ACTION_MESSAGES.no_active_team,
-      };
-    }
+    const session = await requireSession();
+    userId = session.user.id;
+  } catch {
     return {
       ok: false,
       code: "unauthorized",
       message: TEAM_ACTION_MESSAGES.unauthorized,
     };
   }
-  if (!(await isOrgAdmin())) {
+  if (!(await isOrgAdmin(organizationId))) {
     return { ok: false, code: "forbidden", message: FORBIDDEN_MSG };
   }
-  return { ok: true, ctx };
+  return { ok: true, userId };
 }
 
 /** Project a row to the public metadata shape. */
@@ -128,22 +135,38 @@ function toMetadata(row: typeof teamInviteCodes.$inferSelect): InviteCodeMetadat
 }
 
 /**
- * Return the active team's invite code, lazily creating one if missing.
+ * Return the supplied team's invite code, lazily creating one if missing.
  * The first admin to open the team-settings panel triggers creation; this
  * is intentional, since v1 is one-code-per-team and we'd rather generate
  * codes on demand than seed every existing org up-front.
  *
+ * Target-scoped: callers pass `{ organizationId }` so an admin of team
+ * T can manage T's code while their session is active on team U.
+ *
+ * @param input - `{ organizationId }` of the team whose code to load.
  * @returns Code metadata or a typed failure.
  */
-export async function getOrCreateTeamInviteCodeAction(): Promise<InviteCodeResult> {
-  const authResult = await resolveAdminContext();
+export async function getOrCreateTeamInviteCodeAction(input: {
+  organizationId: string;
+}): Promise<InviteCodeResult> {
+  const parsed = orgInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      code: "invalid_input",
+      message: parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
+    };
+  }
+  const orgId = parsed.data.organizationId;
+
+  const authResult = await resolveAdminContext(orgId);
   if (!authResult.ok) return authResult;
-  const { activeOrgId, userId } = authResult.ctx;
+  const { userId } = authResult;
 
   const [existing] = await db
     .select()
     .from(teamInviteCodes)
-    .where(eq(teamInviteCodes.organizationId, activeOrgId))
+    .where(eq(teamInviteCodes.organizationId, orgId))
     .limit(1);
   if (existing) return { ok: true, data: toMetadata(existing) };
 
@@ -151,7 +174,7 @@ export async function getOrCreateTeamInviteCodeAction(): Promise<InviteCodeResul
     const [created] = await db
       .insert(teamInviteCodes)
       .values({
-        organizationId: activeOrgId,
+        organizationId: orgId,
         code: generateInviteCode(),
         createdBy: userId,
       })
@@ -162,7 +185,7 @@ export async function getOrCreateTeamInviteCodeAction(): Promise<InviteCodeResul
       const [row] = await db
         .select()
         .from(teamInviteCodes)
-        .where(eq(teamInviteCodes.organizationId, activeOrgId))
+        .where(eq(teamInviteCodes.organizationId, orgId))
         .limit(1);
       if (row) return { ok: true, data: toMetadata(row) };
     }
@@ -176,16 +199,29 @@ export async function getOrCreateTeamInviteCodeAction(): Promise<InviteCodeResul
 }
 
 /**
- * Rotate the active team's invite code. Replaces the value, resets
+ * Rotate the supplied team's invite code. Replaces the value, resets
  * `use_count` to 0, and clears any `revoked_at`. Old codes stop working
  * immediately because lookups are by `code` (UNIQUE).
  *
+ * @param input - `{ organizationId }` of the team whose code to rotate.
  * @returns Updated metadata or a typed failure.
  */
-export async function regenerateTeamInviteCodeAction(): Promise<InviteCodeResult> {
-  const authResult = await resolveAdminContext();
+export async function regenerateTeamInviteCodeAction(input: {
+  organizationId: string;
+}): Promise<InviteCodeResult> {
+  const parsed = orgInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      code: "invalid_input",
+      message: parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
+    };
+  }
+  const orgId = parsed.data.organizationId;
+
+  const authResult = await resolveAdminContext(orgId);
   if (!authResult.ok) return authResult;
-  const { activeOrgId, userId } = authResult.ctx;
+  const { userId } = authResult;
 
   const [updated] = await db
     .update(teamInviteCodes)
@@ -195,7 +231,7 @@ export async function regenerateTeamInviteCodeAction(): Promise<InviteCodeResult
       revokedAt: null,
       updatedAt: sql`NOW()`,
     })
-    .where(eq(teamInviteCodes.organizationId, activeOrgId))
+    .where(eq(teamInviteCodes.organizationId, orgId))
     .returning();
   if (updated) return { ok: true, data: toMetadata(updated) };
 
@@ -203,7 +239,7 @@ export async function regenerateTeamInviteCodeAction(): Promise<InviteCodeResult
     const [created] = await db
       .insert(teamInviteCodes)
       .values({
-        organizationId: activeOrgId,
+        organizationId: orgId,
         code: generateInviteCode(),
         createdBy: userId,
       })
@@ -222,7 +258,7 @@ export async function regenerateTeamInviteCodeAction(): Promise<InviteCodeResult
           revokedAt: null,
           updatedAt: sql`NOW()`,
         })
-        .where(eq(teamInviteCodes.organizationId, activeOrgId))
+        .where(eq(teamInviteCodes.organizationId, orgId))
         .returning();
       if (retried) return { ok: true, data: toMetadata(retried) };
     }
@@ -236,22 +272,34 @@ export async function regenerateTeamInviteCodeAction(): Promise<InviteCodeResult
 }
 
 /**
- * Mark the active team's invite code as revoked. Subsequent join-by-code
+ * Mark the supplied team's invite code as revoked. Subsequent join-by-code
  * attempts fail (anti-enumeration: same generic error as missing/expired).
  * `regenerateTeamInviteCodeAction` clears `revoked_at` if the admin later
  * wants to issue a fresh code.
  *
+ * @param input - `{ organizationId }` of the team whose code to revoke.
  * @returns Updated metadata or a typed failure.
  */
-export async function revokeTeamInviteCodeAction(): Promise<InviteCodeResult> {
-  const authResult = await resolveAdminContext();
+export async function revokeTeamInviteCodeAction(input: {
+  organizationId: string;
+}): Promise<InviteCodeResult> {
+  const parsed = orgInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      code: "invalid_input",
+      message: parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
+    };
+  }
+  const orgId = parsed.data.organizationId;
+
+  const authResult = await resolveAdminContext(orgId);
   if (!authResult.ok) return authResult;
-  const { activeOrgId } = authResult.ctx;
 
   const [updated] = await db
     .update(teamInviteCodes)
     .set({ revokedAt: sql`NOW()`, updatedAt: sql`NOW()` })
-    .where(eq(teamInviteCodes.organizationId, activeOrgId))
+    .where(eq(teamInviteCodes.organizationId, orgId))
     .returning();
   if (!updated) {
     return { ok: false, code: "not_found", message: NOT_FOUND_MSG };

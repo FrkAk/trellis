@@ -85,7 +85,7 @@ export function DevicesTab({ initialSessions }: DevicesTabProps) {
         <EmptyState
           icon={<AgentSessionGlyph className="h-6 w-6" />}
           title="No active sessions"
-          body="Connect Mymir to your coding agent (Claude Code, Cursor, etc.) to see authorized devices here."
+          body="Connect mymir to your coding agent (Claude Code, Cursor, etc.) to see authorized devices here."
         />
       ) : (
         <div className="space-y-2">
