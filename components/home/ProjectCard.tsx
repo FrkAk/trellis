@@ -118,7 +118,8 @@ export function ProjectCard({
   const body = (
     <motion.div
       whileHover={{ y: -2 }}
-      className="group relative flex h-full flex-col rounded-xl border border-border bg-surface p-5 text-left shadow-[var(--shadow-card)] transition-all hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
+      transition={{ type: 'tween', duration: 0.15, ease: 'easeOut' }}
+      className="group relative flex h-full flex-col rounded-xl border border-border bg-surface p-5 text-left shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-200 ease-out hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
     >
       {canDelete && (
         <div className="absolute right-3 top-3">
@@ -157,7 +158,7 @@ export function ProjectCard({
         </div>
       )}
       <h3 className="mb-1 pr-8 text-sm font-semibold text-text-primary">{title}</h3>
-      <p className="flex-1 text-xs leading-normal text-text-muted line-clamp-2">
+      <p className="text-xs leading-normal text-text-muted line-clamp-2">
         {description}
       </p>
 
@@ -170,29 +171,39 @@ export function ProjectCard({
         </div>
       )}
 
-      <ProgressBar
-        value={progress}
-        status={progress === 100 ? 'done' : 'in-progress'}
-        className="mt-4"
-      />
-
-      <div className="mt-2 flex min-h-4 flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10px] tabular-nums text-text-muted">
-        {tasksInProgress > 0 && (
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            <span className="h-1.5 w-1.5 rounded-full bg-progress" />
-            {tasksInProgress} in progress
-          </span>
-        )}
-        {cancelledTasks > 0 && (
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            <span className="h-1.5 w-1.5 rounded-full bg-cancelled" />
-            {cancelledTasks} cancelled
+      <div className="mt-auto flex items-center gap-2.5 pt-4">
+        <div className="flex-1">
+          <ProgressBar
+            value={progress}
+            status={progress === 100 ? 'done' : 'in-progress'}
+          />
+        </div>
+        {(tasksInProgress > 0 || cancelledTasks > 0) && (
+          <span className="inline-flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums text-text-muted">
+            {tasksInProgress > 0 && (
+              <span
+                className="inline-flex items-center gap-1"
+                title={`${tasksInProgress} in progress`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-progress" />
+                {tasksInProgress}
+              </span>
+            )}
+            {cancelledTasks > 0 && (
+              <span
+                className="inline-flex items-center gap-1"
+                title={`${cancelledTasks} cancelled`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-cancelled" />
+                {cancelledTasks}
+              </span>
+            )}
           </span>
         )}
       </div>
 
-      <div className="mt-3 flex flex-col gap-2 border-t border-border/40 pt-3">
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="mt-3 flex items-start justify-between gap-3 border-t border-border/40 pt-3">
+        <div className="flex min-w-0 flex-col items-start gap-2">
           <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
             status === 'active' ? 'bg-done/15 text-done'
             : status === 'decomposing' ? 'bg-progress/15 text-progress'
@@ -207,13 +218,17 @@ export function ProjectCard({
             }`} />
             {status === 'brainstorming' ? 'Idea' : status === 'decomposing' ? 'Building' : status === 'active' ? 'Active' : status}
           </span>
-          {team ? <TeamChip team={team} /> : null}
+          <div className="flex min-w-0 items-center gap-x-1.5 font-mono text-[10px] tabular-nums text-text-muted">
+            <span className="whitespace-nowrap text-text-secondary">{identifier}</span>
+            <span className="text-text-muted/40">·</span>
+            <span className="whitespace-nowrap">{tasksDone}/{activeTasks} tasks</span>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-mono text-[10px] tabular-nums text-text-muted">
-          <span className="whitespace-nowrap text-text-secondary">{identifier}</span>
-          <span className="text-text-muted/40">·</span>
-          <span className="whitespace-nowrap">{tasksDone}/{activeTasks} tasks</span>
-          <span className="ml-auto whitespace-nowrap">{lastActive}</span>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {team ? <TeamChip team={team} /> : null}
+          <span className="whitespace-nowrap font-mono text-[10px] tabular-nums text-text-muted">
+            {lastActive}
+          </span>
         </div>
       </div>
     </motion.div>
