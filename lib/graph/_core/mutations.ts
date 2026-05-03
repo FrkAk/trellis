@@ -180,7 +180,7 @@ async function resolveTargetOrgId(
 ): Promise<string> {
   if (requested !== undefined) {
     if (!isUuid(requested)) {
-      throw new ForbiddenError("Forbidden", "project", requested);
+      throw new ForbiddenError("Forbidden", "team", requested);
     }
     const [row] = await db
       .select({ id: member.id })
@@ -189,7 +189,7 @@ async function resolveTargetOrgId(
         and(eq(member.userId, ctx.userId), eq(member.organizationId, requested)),
       )
       .limit(1);
-    if (!row) throw new ForbiddenError("Forbidden", "project", requested);
+    if (!row) throw new ForbiddenError("Forbidden", "team", requested);
     return requested;
   }
 

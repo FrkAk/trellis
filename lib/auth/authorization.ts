@@ -16,7 +16,7 @@ import {
 } from "@/lib/auth/permissions";
 
 /** Resource kind a {@link ForbiddenError} refers to. */
-export type ForbiddenResource = "project" | "task" | "edge";
+export type ForbiddenResource = "project" | "task" | "edge" | "team";
 
 /** Strict UUID v1-v5 shape. */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

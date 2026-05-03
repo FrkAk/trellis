@@ -291,6 +291,10 @@ function translateError(e: unknown): ToolResult {
         return fail(
           `Edge '${id}' not found. Run mymir_query type='edges' with a taskId to see current edges on that task.`,
         );
+      case "team":
+        return fail(
+          `organizationId '${id}' is not a team you belong to. Trigger the team-list rejection by calling create without organizationId, then ask the user to pick from that list before retrying.`,
+        );
       default:
         return fail(
           "Not found in any team you belong to. Run mymir_project action='list' to see what you can access.",
