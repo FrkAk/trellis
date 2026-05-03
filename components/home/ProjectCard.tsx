@@ -202,7 +202,7 @@ export function ProjectCard({
         )}
       </div>
 
-      <div className="mt-3 flex items-start justify-between gap-3 border-t border-border/40 pt-3">
+      <div className="mt-3 flex justify-between gap-3 border-t border-border/40 pt-3">
         <div className="flex min-w-0 flex-col items-start gap-2">
           <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
             status === 'active' ? 'bg-done/15 text-done'
@@ -226,7 +226,7 @@ export function ProjectCard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           {team ? <TeamChip team={team} /> : null}
-          <span className="whitespace-nowrap font-mono text-[10px] tabular-nums text-text-muted">
+          <span className="mt-auto whitespace-nowrap font-mono text-[10px] tabular-nums text-text-muted">
             {lastActive}
           </span>
         </div>
