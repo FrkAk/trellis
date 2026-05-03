@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'motion/react';
 import { Button } from '@/components/shared/Button';
-import { formatAbsolute, formatRelative } from '@/lib/ui/relative-time';
+import { formatAbsolute } from '@/lib/ui/relative-time';
 import { roleStyle } from '@/lib/ui/role-badge';
 import { cancelInvitationAction } from '@/lib/actions/team-invitations';
 import type { InvitationView } from '@/lib/actions/team-invitations-map';
@@ -96,7 +96,9 @@ export function PendingInvitationsList({
                         </span>
                       </div>
                       <p className="mt-0.5 text-xs text-text-muted">
-                        Invited {formatRelative(invitation.createdAt)} by {invitation.inviterName}
+                        Email delivery ships with the next release
+                        <span aria-hidden="true"> · </span>
+                        Invited by {invitation.inviterName}
                         <span aria-hidden="true"> · </span>
                         Expires {formatExpiry(invitation.expiresAt)}
                       </p>
