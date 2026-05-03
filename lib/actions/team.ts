@@ -11,56 +11,20 @@ import {
   teamFail,
   type TeamActionResult,
 } from "@/lib/actions/team-errors";
-
-const TEAM_NAME_MAX = 64;
-const SLUG_MAX = 32;
-const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-
-/**
- * Slugs that resemble route segments or admin-shaped paths. We don't
- * route teams under `/<slug>/...` today, but reserving these now keeps
- * the URL namespace open for future product surfaces (settings panels,
- * admin tools, public landing pages) without a migration later.
- */
-const RESERVED_SLUGS: ReadonlySet<string> = new Set([
-  "_next",
-  "admin",
-  "api",
-  "app",
-  "assets",
-  "auth",
-  "consent",
-  "dev",
-  "favicon",
-  "help",
-  "invite",
-  "join",
-  "login",
-  "logout",
-  "mcp",
-  "onboarding",
-  "public",
-  "robots",
-  "settings",
-  "sign-in",
-  "sign-up",
-  "signin",
-  "signup",
-  "sitemap",
-  "static",
-  "support",
-  "team",
-  "teams",
-  "user",
-  "users",
-]);
+import {
+  RESERVED_SLUGS,
+  SLUG_MAX,
+  SLUG_MIN,
+  SLUG_PATTERN,
+  TEAM_NAME_MAX,
+} from "@/lib/team/slug-rules";
 
 const createTeamSchema = z.object({
   name: z.string().trim().min(1, "Team name is required").max(TEAM_NAME_MAX),
   slug: z
     .string()
     .trim()
-    .min(2)
+    .min(SLUG_MIN)
     .max(SLUG_MAX)
     .regex(SLUG_PATTERN, "Slug must be lowercase alphanumeric with hyphens")
     .refine((s) => !RESERVED_SLUGS.has(s), {

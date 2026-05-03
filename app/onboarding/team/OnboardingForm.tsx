@@ -12,6 +12,18 @@ import { acceptInviteCode, createTeam } from "./actions";
 const INVITE_CODE_HTML_PATTERN = `${INVITE_CODE_ALPHABET_PATTERN_SOURCE}{${INVITE_CODE_LENGTH}}`;
 const INVITE_CODE_PLACEHOLDER = "8K3jH-pX9_aW2nQ7vB4mF";
 
+/** Personalize the team-name placeholder using the caller's first name. */
+function teamNamePlaceholder(name: string | null | undefined): string {
+  const first = name?.trim().split(/\s+/)[0];
+  return first ? `${first}'s Team` : "My Team";
+}
+
+/** Slug placeholder mirrors the team-name placeholder, lowercased and hyphenated. */
+function slugPlaceholder(name: string | null | undefined): string {
+  const first = name?.trim().split(/\s+/)[0]?.toLowerCase();
+  return first ? `${first}-team` : "my-team";
+}
+
 const INPUT_CLASS =
   "w-full rounded-lg border border-border-strong bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
 
@@ -26,14 +38,20 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+interface OnboardingFormProps {
+  /** Caller's display name — first word becomes "{name}'s Team" placeholder. */
+  userName?: string | null;
+}
+
 /**
  * Onboarding form — lets the signed-in user create a new team or join an
  * existing one with a 21-char invite code. Both branches dispatch to
  * server actions in `./actions.ts` which delegate to `lib/actions/team.ts`
  * and `lib/actions/team-invite-code.ts`.
+ * @param props - Optional caller display name for personalized placeholders.
  * @returns Card-shaped form panel with create/join tabs.
  */
-export function OnboardingForm() {
+export function OnboardingForm({ userName }: OnboardingFormProps = {}) {
   const [tab, setTab] = useState<TabId>("create");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +93,7 @@ export function OnboardingForm() {
               name="name"
               required
               maxLength={64}
-              placeholder="Acme Robotics"
+              placeholder={teamNamePlaceholder(userName)}
               className={INPUT_CLASS}
             />
           </label>
@@ -87,7 +105,7 @@ export function OnboardingForm() {
               minLength={2}
               maxLength={32}
               pattern="[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
-              placeholder="acme-robotics"
+              placeholder={slugPlaceholder(userName)}
               className={`${INPUT_CLASS} font-mono`}
             />
             <span className={HELP_CLASS}>
