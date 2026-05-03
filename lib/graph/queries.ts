@@ -9,14 +9,16 @@ export type {
   TaskState,
   SearchResult,
   DetailedEdge,
+  ProjectListEntry,
+  ProjectListOrganization,
 } from "@/lib/graph/_core/queries";
 
 /**
- * Server action wrapper — fetches a project with tasks and edges,
- * scoped to the caller's active team. Throws ForbiddenError when the
- * project is in a different team.
+ * Server action wrapper — fetches a project with tasks and edges. The
+ * project must belong to a team the caller is a member of; cross-team
+ * probes raise a `ForbiddenError`.
  * @param projectId - UUID of the project.
- * @returns Project with flat tasks and edges, or undefined.
+ * @returns Project with flat tasks and edges.
  */
 export async function getProject(projectId: string) {
   const ctx = await getAuthContext();
@@ -24,8 +26,10 @@ export async function getProject(projectId: string) {
 }
 
 /**
- * Server action wrapper — fetches all projects in the caller's active team.
- * @returns Array of projects with task counts and progress.
+ * Server action wrapper — fetches every project across every team the
+ * caller is a member of, decorated with team metadata, the caller's role,
+ * and progress stats.
+ * @returns Array of projects ordered by `updatedAt` descending.
  */
 export async function getProjectList() {
   const ctx = await getAuthContext();

@@ -28,7 +28,7 @@ interface InviteCodePanelProps {
  * surface primary; expanding reveals the full operational area.
  *
  * Actions are target-scoped on `teamId`, so admins of team T can rotate
- * or revoke T's code regardless of their session active org.
+ * or revoke T's code from any context — there is no "active team" gate.
  *
  * @param props - Panel state + callbacks.
  * @returns Collapsible card with the current code and actions.

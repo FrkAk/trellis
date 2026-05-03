@@ -3,7 +3,7 @@
 import { headers } from 'next/headers';
 import { z } from 'zod/v4';
 import { auth } from '@/lib/auth';
-import { getAuthContext, NoActiveTeamError } from '@/lib/auth/context';
+import { getAuthContext } from '@/lib/auth/context';
 import { requireTeamMembership } from '@/lib/auth/membership';
 import { ForbiddenError } from '@/lib/auth/authorization';
 import {
@@ -39,8 +39,7 @@ export async function listTeamMembersAction(input: {
   let ctx;
   try {
     ctx = await getAuthContext();
-  } catch (err) {
-    if (err instanceof NoActiveTeamError) return teamFail('no_active_team');
+  } catch {
     return teamFail('unauthorized');
   }
 

@@ -10,6 +10,7 @@ import {
   type NewTask,
   type NewTaskEdge,
 } from "@/lib/db/schema";
+import { member, organization } from "@/lib/db/auth-schema";
 import type {
   Decision,
   EdgeType,
@@ -26,7 +27,10 @@ import {
 } from "@/lib/graph/identifier";
 import {
   IdentifierAllocationError,
+  MultiTeamAmbiguityError,
+  NoTeamMembershipError,
   ProjectNotFoundError,
+  type TeamOption,
 } from "@/lib/graph/errors";
 import {
   formatMarkdown,
@@ -89,14 +93,20 @@ async function appendTaskHistory(
 // ---------------------------------------------------------------------------
 
 /**
- * Input for createProject — identifier optional, organizationId is set
- * from the caller's active team and is not part of the input.
+ * Input for createProject — identifier optional. `organizationId` is
+ * optional only when the caller is a member of exactly one team. Multi-team
+ * callers must name the target explicitly; see {@link createProject}.
  */
 export type CreateProjectInput = Omit<
   NewProject,
   "id" | "identifier" | "organizationId"
 > & {
   identifier?: Identifier;
+  /**
+   * Target team. Required when the caller is a member of more than one
+   * team. Membership in the supplied team is verified before insert.
+   */
+  organizationId?: string;
 };
 
 /**
@@ -113,8 +123,8 @@ function identifierLockKey(organizationId: string) {
  * Pick an identifier that's not already taken within an organization,
  * auto-suffixing on collision. Identifiers are unique per organization
  * (composite constraint `projects_org_identifier_unique`), so the scan
- * is scoped to the caller's active team — two teams can independently
- * use the same prefix.
+ * is scoped to the supplied team — two teams can independently use the
+ * same prefix.
  *
  * Must be called inside a transaction holding the identifier advisory
  * lock; otherwise the select-then-insert window is racy.
@@ -145,20 +155,78 @@ async function pickAvailableIdentifier(
 }
 
 /**
- * Insert a new project bound to the caller's active team.
+ * Resolve the destination team for a `createProject` call.
  *
- * If `identifier` is omitted, it is derived from the title and auto-suffixed on
- * collision under a transaction-scoped advisory lock. If provided, collision
- * surfaces the DB unique-violation error.
+ * Resolution rules — every path enforces a fresh membership check, so a
+ * stale token cannot write into a team the user has been removed from:
  *
- * @param ctx - Resolved auth context — provides activeOrgId for the new project.
- * @param data - Project fields. Identifier optional.
+ * 1. `data.organizationId` provided → membership-checked; on miss raise
+ *    `ForbiddenError`.
+ * 2. Omitted + caller has exactly one membership → use that team.
+ * 3. Omitted + caller has multiple memberships → raise
+ *    {@link MultiTeamAmbiguityError} carrying the team list so the
+ *    tool-handler can surface the choice to the agent.
+ * 4. Omitted + caller has zero memberships → raise
+ *    {@link NoTeamMembershipError}.
+ *
+ * @param ctx - Resolved auth context.
+ * @param requested - Optional explicit `organizationId` from the caller.
+ * @returns Verified destination team UUID.
+ */
+async function resolveTargetOrgId(
+  ctx: AuthContext,
+  requested: string | undefined,
+): Promise<string> {
+  if (requested !== undefined) {
+    if (!isUuid(requested)) {
+      throw new ForbiddenError("Forbidden", "team", requested);
+    }
+    const [row] = await db
+      .select({ id: member.id })
+      .from(member)
+      .where(
+        and(eq(member.userId, ctx.userId), eq(member.organizationId, requested)),
+      )
+      .limit(1);
+    if (!row) throw new ForbiddenError("Forbidden", "team", requested);
+    return requested;
+  }
+
+  const memberships = await db
+    .select({ id: organization.id, name: organization.name })
+    .from(member)
+    .innerJoin(organization, eq(organization.id, member.organizationId))
+    .where(eq(member.userId, ctx.userId));
+
+  if (memberships.length === 0) throw new NoTeamMembershipError();
+  if (memberships.length === 1) return memberships[0].id;
+  const teams: TeamOption[] = memberships.map((m) => ({ id: m.id, name: m.name }));
+  throw new MultiTeamAmbiguityError(teams);
+}
+
+/**
+ * Insert a new project. Destination resolution is handled by
+ * {@link resolveTargetOrgId} (always membership-checked).
+ *
+ * If `identifier` is omitted, it is derived from the title and auto-suffixed
+ * on collision under a transaction-scoped advisory lock keyed on the target
+ * team. If provided, collision surfaces the DB unique-violation error.
+ *
+ * @param ctx - Resolved auth context.
+ * @param data - Project fields. `identifier` optional. `organizationId`
+ *   required when the caller is a member of more than one team.
  * @returns The created project row.
+ * @throws ForbiddenError when `data.organizationId` is supplied but the
+ *   caller is not a member of that team.
+ * @throws MultiTeamAmbiguityError when omitted and the caller is in >1 team.
+ * @throws NoTeamMembershipError when omitted and the caller has no teams.
  */
 export async function createProject(
   ctx: AuthContext,
   data: CreateProjectInput,
 ) {
+  const targetOrgId = await resolveTargetOrgId(ctx, data.organizationId);
+
   if (typeof data.description === "string" && data.description.trim()) {
     data = {
       ...data,
@@ -169,11 +237,11 @@ export async function createProject(
     let identifier = data.identifier;
     if (identifier === undefined) {
       await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(${identifierLockKey(ctx.activeOrgId)})`,
+        sql`SELECT pg_advisory_xact_lock(${identifierLockKey(targetOrgId)})`,
       );
       identifier = await pickAvailableIdentifier(
         tx,
-        ctx.activeOrgId,
+        targetOrgId,
         deriveIdentifier(data.title),
       );
     }
@@ -183,7 +251,7 @@ export async function createProject(
       .values({
         ...data,
         identifier,
-        organizationId: ctx.activeOrgId,
+        organizationId: targetOrgId,
         history: [
           makeHistoryEntry({
             type: "created",
@@ -276,11 +344,13 @@ export async function renameProjectIdentifier(
   projectId: string,
   identifier: Identifier,
 ) {
-  await assertProjectAccess(projectId, ctx, { project: ["rename"] });
+  const { project } = await assertProjectAccess(projectId, ctx, {
+    project: ["rename"],
+  });
 
   const updated = await db.transaction(async (tx) => {
     await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(${identifierLockKey(ctx.activeOrgId)})`,
+      sql`SELECT pg_advisory_xact_lock(${identifierLockKey(project.organizationId)})`,
     );
     const [row] = await tx
       .update(projects)
@@ -302,7 +372,9 @@ export async function renameProjectIdentifier(
 export type CreateTaskInput = Omit<NewTask, "id" | "sequenceNumber">;
 
 /**
- * Insert a new task under a project owned by the caller's active team.
+ * Insert a new task under a project the caller has access to. The
+ * project's team scope is verified by `assertProjectAccess` and inherited
+ * by the new task — task team scope is never derived from the session.
  *
  * Uses a transaction-scoped PostgreSQL advisory lock keyed on the project UUID
  * to serialize concurrent task creation and prevent sequence_number collisions.

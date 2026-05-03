@@ -5,6 +5,8 @@ import type { MemberView } from '@/lib/actions/team-members-map';
 import { MemberRow } from './MemberRow';
 
 interface MembersSectionProps {
+  /** Team UUID — threaded down to MemberRow for role/remove calls. */
+  teamId: string;
   /** Members to render (already sorted by `TeamSettingsView`). */
   members: MemberView[];
   /** Caller's user id — drives self-row detection in MemberRow. */
@@ -30,6 +32,7 @@ interface MembersSectionProps {
  * @returns Section header + animated member list.
  */
 export function MembersSection({
+  teamId,
   members,
   currentUserId,
   viewerRole,
@@ -54,6 +57,7 @@ export function MembersSection({
             {members.map((member) => (
               <MemberRow
                 key={member.id}
+                teamId={teamId}
                 member={member}
                 currentUserId={currentUserId}
                 viewerRole={viewerRole}

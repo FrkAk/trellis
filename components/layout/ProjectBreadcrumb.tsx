@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'motion/react';
+import { TeamChip } from '@/components/shared/TeamChip';
 
 /** Status chip display mapping — mirrors the home ProjectCard. */
 const PROJECT_STATUS_DISPLAY: Record<string, { label: string; dot: string; bg: string; text: string }> = {
@@ -15,16 +16,21 @@ interface ProjectBreadcrumbProps {
   projectName: string;
   /** @param projectStatus - Optional project lifecycle status for the inline chip. */
   projectStatus?: string;
+  /** @param team - Optional owning team. When provided, renders a TeamChip before the project name. */
+  team?: { id: string; name: string };
   /** @param onOpenSettings - Called when the breadcrumb button is clicked. */
   onOpenSettings: () => void;
 }
 
 /**
- * Breadcrumb pill that triggers the project settings modal.
+ * Breadcrumb pill that triggers the project settings modal. When a team is
+ * supplied, the team chip leads the pill so the owning team is visible at
+ * a glance — matches the team chip on home-page project cards so the same
+ * hue identifies the same team across the app.
  * @param props - Breadcrumb configuration.
- * @returns Button displaying the project name, status chip, and pencil icon.
+ * @returns Button displaying the team chip, project name, status chip, and pencil icon.
  */
-export function ProjectBreadcrumb({ projectName, projectStatus, onOpenSettings }: ProjectBreadcrumbProps) {
+export function ProjectBreadcrumb({ projectName, projectStatus, team, onOpenSettings }: ProjectBreadcrumbProps) {
   return (
     <motion.button
       whileHover={{ scale: 1.02 }}
@@ -35,6 +41,7 @@ export function ProjectBreadcrumb({ projectName, projectStatus, onOpenSettings }
       title="Project settings"
       className="group/proj flex cursor-pointer items-center gap-2 rounded-md border border-border-strong/40 bg-surface/40 px-2.5 py-1 transition-all hover:border-accent/40 hover:bg-surface-hover"
     >
+      {team && <TeamChip team={team} size="xs" />}
       <span className="text-sm text-text-secondary group-hover/proj:text-text-primary transition-colors">{projectName}</span>
       {projectStatus && PROJECT_STATUS_DISPLAY[projectStatus] && (
         <span

@@ -20,9 +20,10 @@ import {
  * - `organizationHooks.beforeDeleteOrganization` (per-member loop before
  *   the org row is deleted; member rows then cascade)
  *
- * Order matters here: NULL the active-org pointer first so the next
- * request from any of the user's sessions does not race with a token that
- * is about to be deleted.
+ * Order matters here: NULL the session's `activeOrganizationId` pointer
+ * before deleting tokens so any BA-internal route that still reads the
+ * column (e.g. for a "last viewed org" hint) doesn't observe a value
+ * pointing at a team the user just lost access to.
  *
  * @param userId - Owner of the artifacts to remove.
  * @param orgId - Organization the artifacts pointed at.

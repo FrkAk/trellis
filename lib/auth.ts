@@ -4,7 +4,7 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import * as authSchema from "@/lib/db/auth-schema";
 import { member } from "@/lib/db/auth-schema";
 import { clearOrgMembershipArtifacts } from "@/lib/auth/membership-cleanup";
@@ -56,25 +56,6 @@ export const auth = betterAuth({
       ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"],
     },
   },
-  databaseHooks: {
-    session: {
-      create: {
-        before: async (session) => {
-          if (session.activeOrganizationId) return { data: session };
-          const [earliest] = await authDb
-            .select({ organizationId: member.organizationId })
-            .from(member)
-            .where(eq(member.userId, session.userId))
-            .orderBy(asc(member.createdAt))
-            .limit(1);
-          if (!earliest) return { data: session };
-          return {
-            data: { ...session, activeOrganizationId: earliest.organizationId },
-          };
-        },
-      },
-    },
-  },
   // organization() must precede any future customSession() — see
   // better-auth issue #3233 (activeOrganizationId is type-erased otherwise).
   plugins: [
@@ -105,19 +86,19 @@ export const auth = betterAuth({
       validAudiences: process.env.BETTER_AUTH_URL
         ? [process.env.BETTER_AUTH_URL, `${process.env.BETTER_AUTH_URL}/api/mcp`]
         : ["http://localhost:3000", "http://localhost:3000/api/mcp"],
-      // consentReferenceId runs at consent time with the authenticated session,
-      // so it captures activeOrganizationId for clients registered via
-      // unauthenticated DCR. clientReference (registration-time) does not work
-      // here because Claude Code's DCR has no session.
+      // MCP tokens are intentionally org-agnostic. Team scope is resolved
+      // per request: read paths span every team the caller belongs to,
+      // writes either name an explicit `organizationId` (membership-checked)
+      // or auto-resolve when the caller is in exactly one team. There is no
+      // `active_org` claim — that conflated identity with destination and
+      // let stale tokens write into teams the user had been removed from.
+      // `consentReferenceId` returns undefined so BA does not stamp a
+      // referenceId on the token.
       postLogin: {
         page: "/onboarding/team",
-        consentReferenceId: ({ session }) =>
-          (session?.activeOrganizationId as string | undefined) ?? undefined,
+        consentReferenceId: () => undefined,
         shouldRedirect: () => false,
       },
-      customAccessTokenClaims: ({ referenceId }) => ({
-        active_org: referenceId ?? null,
-      }),
       silenceWarnings: { oauthAuthServerConfig: true },
     }),
   ],

@@ -31,13 +31,11 @@ interface TeamSettingsViewProps {
   isOwner: boolean;
   /** Caller's user id, used for self-row detection in members. */
   currentUserId: string;
-  /** True when this team is the user's active session team. */
-  isActive: boolean;
   /** Initial member list, hydrated server-side. */
   initialMembers: MemberView[];
   /** Initial pending invitation list (admin/owner only; empty otherwise). */
   initialInvitations: InvitationView[];
-  /** Initial invite-code metadata (admin/owner + active team only). */
+  /** Initial invite-code metadata (admin/owner only). */
   initialInviteCode: InviteCodeMetadata | null;
 }
 
@@ -70,7 +68,6 @@ export function TeamSettingsView({
   isAdminOrOwner,
   isOwner,
   currentUserId,
-  isActive,
   initialMembers,
   initialInvitations,
   initialInviteCode,
@@ -159,11 +156,11 @@ export function TeamSettingsView({
           slug={teamSlug}
           teamId={team.id}
           memberRole={memberRole}
-          isActive={isActive}
           memberCount={members.length}
         />
 
         <MembersSection
+          teamId={team.id}
           members={members}
           currentUserId={currentUserId}
           viewerRole={memberRole}

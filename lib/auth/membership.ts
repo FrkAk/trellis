@@ -9,31 +9,23 @@ import type { AuthContext } from "@/lib/auth/context";
 import { ForbiddenError, isUuid } from "@/lib/auth/authorization";
 
 /**
- * Workspace gate — redirect to onboarding unless the session points at a
- * current membership. The onboarding page resolves three states for us:
- * no memberships → render onboarding form; memberships exist but session
- * activeOrganizationId is stale → bounce to /; otherwise redirect to /.
+ * Workspace gate — redirect to onboarding when the caller has zero teams.
+ * Membership in any team is sufficient; per-resource access is gated
+ * downstream by {@link assertProjectAccess} / {@link requireTeamMembership}.
  *
  * Returns void: callers don't need the session, and exposing it would
  * invite re-authorization patterns that bypass `getAuthContext`.
  */
 export async function requireMembership(): Promise<void> {
   const session = await requireSession();
-  const activeOrgId = session.session.activeOrganizationId;
 
-  if (!activeOrgId) {
-    redirect("/onboarding/team");
-  }
-
-  const [active] = await db
+  const [existing] = await db
     .select({ id: member.id })
     .from(member)
-    .where(
-      and(eq(member.userId, session.user.id), eq(member.organizationId, activeOrgId)),
-    )
+    .where(eq(member.userId, session.user.id))
     .limit(1);
 
-  if (!active) {
+  if (!existing) {
     redirect("/onboarding/team");
   }
 }
@@ -58,7 +50,7 @@ export type TeamMembership = {
  * non-existence.
  *
  * @param teamId - UUID of the team to authorize.
- * @param ctx - Resolved auth context (user id + active org id).
+ * @param ctx - Resolved auth context.
  * @returns The full organization row and the caller's member role.
  * @throws ForbiddenError if the team does not exist or the user is not a
  *   member of it.

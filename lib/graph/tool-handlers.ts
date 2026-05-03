@@ -18,6 +18,7 @@ import {
 } from "@/lib/graph/_core/mutations";
 import {
   getProjectList,
+  listUserTeams,
   searchTasks,
   getProjectTasksSlim,
   getTaskEdgesDetailed,
@@ -44,6 +45,10 @@ import {
 import type { EdgeType, Decision } from "@/lib/types";
 import { parseIdentifier } from "@/lib/graph/identifier";
 import type { ProjectUpdate, TaskUpdate } from "@/lib/graph/_core/mutations";
+import {
+  MultiTeamAmbiguityError,
+  NoTeamMembershipError,
+} from "@/lib/graph/errors";
 import {
   formatSummary,
   formatSearchResults,
@@ -240,15 +245,36 @@ function stateHint(state: TaskState): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Translate a thrown ForbiddenError to a resource-specific tool failure with
- * a recovery hint. The data-layer assertions tag the error with `resource`
- * and `resourceId`, so this layer does not re-query the database.
+ * Translate a thrown error to a token-dense, agent-correcting tool failure.
+ *
+ * Each branch carries a recovery path the agent can execute on its own:
+ * - InsufficientRole: name the action that requires admin so the agent can
+ *   tell the user (or the orchestrator) to escalate.
+ * - Forbidden: 404-shaped per resource, with the next-tool to call.
+ * - MultiTeamAmbiguity: include the team list inline so the agent can
+ *   present choices to the user without an extra round trip.
+ * - NoTeamMembership: send the user to the web app to create or join.
+ *
+ * The data-layer assertions tag ForbiddenError with `resource`/`resourceId`,
+ * so this layer never re-queries the database.
+ *
  * @param e - Caught error.
  */
 function translateError(e: unknown): ToolResult {
   if (e instanceof InsufficientRoleError) {
     return fail(
-      `Only team admins can ${e.primaryAction} projects. Ask a team admin to perform this action.`,
+      `Forbidden: only team admins can ${e.primaryAction} projects. Tell the user; they need a team admin to do this.`,
+    );
+  }
+  if (e instanceof MultiTeamAmbiguityError) {
+    const list = e.teams.map((t) => `${t.name} (${t.id})`).join(", ");
+    return fail(
+      `organizationId required: multi-team account. Teams: ${list}. Ask the user which team, then retry with organizationId='<uuid>'. (mymir_project action='teams' returns the same list anytime, with role + projectCount.)`,
+    );
+  }
+  if (e instanceof NoTeamMembershipError) {
+    return fail(
+      "No team membership: the caller does not belong to any team. Ask the user to sign in to the web app and create or join a team, then retry.",
     );
   }
   if (e instanceof ForbiddenError) {
@@ -256,19 +282,23 @@ function translateError(e: unknown): ToolResult {
     switch (e.resource) {
       case "project":
         return fail(
-          `Project '${id}' not found. Run mymir_project action='list' to see available projects.`,
+          `Project '${id}' not found in any team you belong to. Run mymir_project action='list' to see available projects across all your teams.`,
         );
       case "task":
         return fail(
-          `Task '${id}' not found. Run mymir_query type='search' to find tasks, or type='list' with your projectId.`,
+          `Task '${id}' not found in any team you belong to. Run mymir_query type='search' with a projectId, or type='list' to enumerate tasks.`,
         );
       case "edge":
         return fail(
-          `Edge '${id}' not found. Run mymir_query type='edges' with a taskId to see current edges.`,
+          `Edge '${id}' not found. Run mymir_query type='edges' with a taskId to see current edges on that task.`,
+        );
+      case "team":
+        return fail(
+          `organizationId '${id}' is not a team you belong to. Run mymir_project action='teams' to see valid ids, then ask the user which team before retrying.`,
         );
       default:
         return fail(
-          "Resource not found in your team. Run mymir_project action='list' to see your team's projects.",
+          "Not found in any team you belong to. Run mymir_project action='list' to see what you can access.",
         );
     }
   }
@@ -282,60 +312,65 @@ function translateError(e: unknown): ToolResult {
 /** Tool descriptions shared between MCP and web app. */
 export const DESCRIPTIONS = {
   mymir_project:
-    "Manage projects. " +
-    "'list': all projects with task counts and progress. " +
-    "'create': new project (status defaults to 'brainstorming'; pass status to override). " +
-    "'select': confirm which project to work on (returns projectId — pass it explicitly on all subsequent calls). " +
-    "'update': change title, description, status, or categories. " +
-    "Always 'list' then 'select' at session start. Always pass projectId explicitly on every call.",
+    "Projects + teams across every membership the caller has. " +
+    "list=projects with task counts, progress, team metadata (skips empty teams). " +
+    "teams=every membership (id, name, slug, role, projectCount) — call before create or when list misses a team. " +
+    "create=new project (REQUIRES organizationId in multi-team accounts; auto-resolves for single-team; rejected with team list inline otherwise). " +
+    "select=confirm working project (returns projectId — pass it on every subsequent call; stateless server). " +
+    "update=change title, description, status, categories, or identifier.",
   mymir_task:
     "Create, update, delete, or reorder tasks. " +
-    "Status lifecycle: draft → planned → in_progress → done; cancelled is terminal abandoned work with transparent deps (see `status`). " +
+    "Status lifecycle: draft → planned → in_progress → done. " +
+    "cancelled is terminal abandoned work with transparent deps — populate executionRecord with rationale; dependents stay blocked through the cancelled task's own unsatisfied prereqs. " +
     "Before marking done, follow the skill's Completion Protocol. " +
-    "For delete: preview defaults to true (shows impact without deleting). Set preview=false to execute. " +
-    "Update accepts any combination of fields — pass only what changed. " +
-    "Array fields (decisions, acceptanceCriteria, files) APPEND by default. Set overwriteArrays=true to replace entirely.",
+    "delete: preview=true (default) shows impact without deleting; set preview=false to execute. " +
+    "update: pass only changed fields. Array fields (decisions, acceptanceCriteria, files) APPEND by default — set overwriteArrays=true to replace.",
   mymir_edge:
     "Manage dependency edges between tasks. " +
-    "'create': link two tasks (depends_on = source needs target done first, relates_to = informational). " +
-    "'update': change edge type or note by edgeId. " +
-    "'remove': delete by edgeId OR by sourceTaskId+targetTaskId+edgeType. " +
-    "Validates against self-edges, duplicates, and circular dependencies.",
+    "create=link two tasks (depends_on = source blocks on target; relates_to = informational). " +
+    "update=change edgeType or note by edgeId. " +
+    "remove=delete by edgeId OR by sourceTaskId+targetTaskId+edgeType. " +
+    "Server rejects self-edges, duplicates, and cycles.",
   mymir_query:
     "Search and browse project data. " +
-    "'search': find tasks by taskRef, title, or tag substring (case-insensitive, up to 20 results); pass `tags` to filter by exact tag (OR-within), combine with `query` to narrow further. " +
-    "'list': all tasks ordered by position. " +
-    "'edges': all relationships on a task with connected task title, status, direction, and note. " +
-    "'overview': full project structure — all tasks, dependencies, and progress stats.",
+    "search=find tasks by taskRef, title, or tag substring (case-insensitive, up to 20). Pass `tags` to filter by exact tag (OR-within); combine with `query` to narrow. " +
+    "list=all tasks ordered by position. " +
+    "edges=relationships on a task (connected title, status, direction, note). " +
+    "overview=full project structure (tasks, deps, progress, tag vocab).",
   mymir_context:
-    "Retrieve task context at varying depth for different use cases. " +
-    "'summary': quick — title, status, edge counts. " +
-    "'working': full details — criteria, decisions, neighbors (~4K tokens). " +
-    "'agent': multi-hop dependency chains with execution records — for coding agents starting implementation. " +
-    "'planning': spec-focused — prerequisites, related work, acceptance criteria — for writing implementation plans. " +
-    "Always fetch context before reasoning about a task.",
+    "Retrieve task context at varying depth. ALWAYS fetch context before reasoning about a task. " +
+    "summary=quick (title, status, edge counts). " +
+    "working=detailed (criteria, decisions, 1-hop edges, siblings). " +
+    "agent=multi-hop dependency chains with execution records (coding context, ~4-8K tokens). " +
+    "planning=spec-focused (project description, prereqs, acceptance criteria, downstream specs).",
   mymir_analyze:
     "Analyze the project dependency graph. " +
-    "'ready': tasks with all dependencies done — what to work on next. " +
-    "'plannable': draft tasks with description and acceptance criteria — ready for planning when nothing is ready to code. " +
-    "'blocked': tasks waiting on unfinished dependencies with blocker details. " +
-    "'downstream': all tasks that transitively depend on a given task — impact analysis before changes. " +
-    "'critical_path': longest dependency chain — the project bottleneck to prioritize.",
+    "ready=tasks with all deps done — pick from these first. " +
+    "plannable=draft tasks ready for planning when nothing is ready to code. " +
+    "blocked=tasks waiting on unfinished deps with blocker details. " +
+    "downstream=transitive dependents of a task — impact analysis before changes. " +
+    "critical_path=longest dep chain — the bottleneck to prioritize.",
 } as const;
 
 // ---------------------------------------------------------------------------
 // Param types
 // ---------------------------------------------------------------------------
 
-/** Params for mymir_project (handler covers list/create/update; MCP handles select separately). */
+/** Params for mymir_project (handler covers list/create/update/teams; MCP handles select separately). */
 export type ProjectParams = {
-  action: "list" | "create" | "update";
+  action: "list" | "create" | "update" | "teams";
   projectId?: string;
   title?: string;
   description?: string;
   status?: "brainstorming" | "decomposing" | "active" | "archived";
   categories?: string[];
   identifier?: string;
+  /**
+   * Target team UUID for `create`. Required when the caller is a member
+   * of more than one team. Membership in the supplied team is enforced
+   * server-side; cross-team probes return a 404-shaped 'not found'.
+   */
+  organizationId?: string;
 };
 
 /** Params for mymir_task. */
@@ -409,8 +444,10 @@ export async function handleProject(
     switch (p.action) {
       case "list":
         return ok(await getProjectList(ctx));
+      case "teams":
+        return ok(await listUserTeams(ctx));
       case "create": {
-        if (!p.title) return fail("title required for create");
+        if (!p.title) return fail("title required for create (2-5 words, verb-noun preferred)");
         let parsedIdentifier;
         if (p.identifier !== undefined) {
           const parsed = parseIdentifier(p.identifier);
@@ -423,11 +460,12 @@ export async function handleProject(
           ...(p.status !== undefined && { status: p.status }),
           categories: p.categories,
           identifier: parsedIdentifier,
+          organizationId: p.organizationId,
         });
         const createHints: string[] = [];
         if (p.identifier === undefined) {
           createHints.push(
-            `Auto-derived identifier '${project.identifier}' from title. Pass identifier='...' on create to override (2-12 chars, uppercase alphanumeric).`,
+            `Auto-derived identifier '${project.identifier}' from title. Pass identifier='...' to override (2-12 chars, uppercase alphanumeric, unique per team).`,
           );
         }
         return ok(createHints.length > 0 ? { ...project, _hints: createHints } : project);

@@ -1,6 +1,7 @@
 'use client';
 
 import { Modal } from '@/components/shared/Modal';
+import { TeamSection } from './TeamSection';
 import { StatusSection } from './StatusSection';
 import { TitleSection } from './TitleSection';
 import { DescriptionSection } from './DescriptionSection';
@@ -17,17 +18,20 @@ interface ProjectSettingsModalProps {
   projectId: string;
   /** @param project - Current project fields reflected by the form. */
   project: { title: string; description: string; identifier: string; status: ProjectStatus; categories: string[] };
+  /** @param team - Owning team. Read-only — project ownership is fixed at creation. */
+  team: { id: string; name: string };
   /** @param taskCount - Number of tasks affected by an identifier rename. */
   taskCount: number;
-  /** @param canRename - True when the active org member is allowed to rename project identifiers. */
+  /** @param canRename - True when the caller's role in the project's team grants identifier rename. */
   canRename: boolean;
   /** @param onUpdated - Fired after a successful update. Caller refetches. */
   onUpdated?: () => void;
 }
 
 /**
- * Per-project settings dialog — edit title, description, identifier, categories.
- * Identifier rename uses a 2-click inline-danger confirm with external-ref warning.
+ * Per-project settings dialog — read-only team header plus editable
+ * title, description, status, identifier, and categories. Identifier
+ * rename uses a 2-click inline-danger confirm with external-ref warning.
  * @param props - Modal configuration.
  * @returns Settings modal rendered via {@link Modal}.
  */
@@ -36,6 +40,7 @@ export function ProjectSettingsModal({
   onClose,
   projectId,
   project,
+  team,
   taskCount,
   canRename,
   onUpdated,
@@ -43,6 +48,7 @@ export function ProjectSettingsModal({
   return (
     <Modal open={open} onClose={onClose} title="Project settings" maxWidth="md">
       <div className="space-y-5">
+        <TeamSection team={team} />
         <TitleSection
           projectId={projectId}
           initialTitle={project.title}

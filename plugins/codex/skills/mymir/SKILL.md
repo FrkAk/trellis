@@ -15,13 +15,25 @@ description: >
 
 # Mymir — Context Network for Coding Projects
 
-Invokable as `/mymir`. You have access to 6 Mymir MCP tools (prefixed `mymir_`) for managing project context across sessions.
+Invokable as `/mymir`. You have access to 6 Mymir MCP tools (prefixed `mymir_`) for managing project context and teams across sessions.
+
+## Multi-Team Awareness
+
+Account spans every membership. No "active" team:
+
+- Read tools (list / teams / search / context / analyze / overview) span every team.
+- Writes name `organizationId` or auto-resolve when there's exactly one membership.
+- `mymir_project action='teams'` → every membership (id, name, slug, role, projectCount). Canonical team discovery. Includes empty teams.
+- `mymir_project action='list'` → projects with `organization.id`/`name`. Skips teams with zero projects — pair with `teams` for the full set.
+- `mymir_project action='create'` REQUIRES `organizationId` in multi-team accounts; server rejects ambiguous creates with the team list inline. Ask the user, don't default.
+- Cross-team probes (an id you don't own) return 404-shaped. Only trust ids from list/teams/search/context.
 
 ## First Use in Session
 
-1. `mymir_project` with `action='list'` → see existing projects
-2. `mymir_project` with `action='select'` → confirm working project (note the projectId — pass it explicitly on every call)
-3. Then use other tools as needed, always passing projectId explicitly
+1. `mymir_project` `action='list'` → projects across every team.
+2. `mymir_project` `action='teams'` → every membership. Run when `list` is empty, before `create`, or when the user mentions a team `list` didn't surface.
+3. `mymir_project` `action='select'` → confirm working project (note the projectId; pass it on every call).
+4. Then other tools as needed.
 
 ## Data Model
 
@@ -43,7 +55,7 @@ Task titles: verb+noun format (e.g., "Implement JWT auth", "Fix login redirect")
 
 | Tool | Actions/Types | Purpose |
 |------|---------------|---------|
-| `mymir_project` | list, create, select, update | Manage projects |
+| `mymir_project` | list, teams, create, select, update | Manage projects + discover teams |
 | `mymir_task` | create, update, delete, reorder | Manage tasks |
 | `mymir_edge` | create, update, remove | Manage dependency edges |
 | `mymir_query` | search, list, edges, overview | Find and browse data |
@@ -201,6 +213,12 @@ Stay concise — same density as before, just use markdown structure so the UI r
 1. `mymir_context` `depth='working'` → understand current state
 2. Help improve description, acceptance criteria, decisions, dependencies
 3. `mymir_task` `action='update'` → save changes
+
+### Create a project
+1. `mymir_project action='teams'` → every membership with role + projectCount. Run even when `list` showed projects — empty teams are invisible to `list`.
+2. **Multi-team account + user didn't pick → ASK BEFORE CREATING.** Server rejects ambiguous creates with the team list inline; don't default.
+3. `mymir_project action='create' title='<verb+noun>' description='<3-5 sentences>' organizationId='<team-uuid>'` (omit `organizationId` only when single-team).
+4. Then run "Create a task" repeatedly, or hand to `mymir:decompose` for a full breakdown.
 
 ### Create a task
 0. Check `mymir_query type='overview'` Tag vocabulary section for existing tags to reuse.

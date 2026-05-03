@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { ProgressBar } from '@/components/shared/ProgressBar';
+import { TeamChip } from '@/components/shared/TeamChip';
 import { ProjectStatusModal, type CliManagedStatus } from '@/components/home/ProjectStatusModal';
 import { deleteProjectAction } from '@/lib/actions/project';
 
@@ -29,8 +30,14 @@ interface ProjectCardProps {
   tasksInProgress: number;
   /** @param lastActive - Relative time string. */
   lastActive: string;
-  /** @param canDelete - True when the active org member is allowed to delete projects. */
+  /** @param canDelete - True when the caller's role in the project's team grants delete. */
   canDelete: boolean;
+  /**
+   * @param team - Owning team. Rendered as a {@link TeamChip} on the meta row
+   *   so multi-team users can see which team a project belongs to without
+   *   leaving the home grid.
+   */
+  team?: { id: string; name: string };
 }
 
 /**
@@ -61,6 +68,7 @@ export function ProjectCard({
   tasksInProgress,
   lastActive,
   canDelete,
+  team,
 }: ProjectCardProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -110,7 +118,8 @@ export function ProjectCard({
   const body = (
     <motion.div
       whileHover={{ y: -2 }}
-      className="group relative flex flex-col rounded-xl border border-border bg-surface p-5 text-left shadow-[var(--shadow-card)] transition-all hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
+      transition={{ type: 'tween', duration: 0.15, ease: 'easeOut' }}
+      className="group relative flex h-full flex-col rounded-xl border border-border bg-surface p-5 text-left shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-200 ease-out hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
     >
       {canDelete && (
         <div className="absolute right-3 top-3">
@@ -148,55 +157,78 @@ export function ProjectCard({
           )}
         </div>
       )}
-      <h3 className="mb-1 text-sm font-semibold text-text-primary pr-8">{title}</h3>
-      <p className="mb-4 text-xs leading-relaxed text-text-muted line-clamp-2 flex-1">
+      <h3 className="mb-1 pr-8 text-sm font-semibold text-text-primary">{title}</h3>
+      <p className="text-xs leading-normal text-text-muted line-clamp-2">
         {description}
       </p>
 
       {deleteError && (
         <div
           role="alert"
-          className="mb-3 rounded-md border border-danger/20 bg-danger/10 px-2 py-1 font-mono text-[10px] text-danger"
+          className="mt-3 rounded-md border border-danger/20 bg-danger/10 px-2 py-1 font-mono text-[10px] text-danger"
         >
           {deleteError}
         </div>
       )}
 
-      <ProgressBar value={progress} status={progress === 100 ? 'done' : 'in-progress'} className="mb-3" />
+      <div className="mt-auto flex items-center gap-2.5 pt-4">
+        <div className="flex-1">
+          <ProgressBar
+            value={progress}
+            status={progress === 100 ? 'done' : 'in-progress'}
+          />
+        </div>
+        {(tasksInProgress > 0 || cancelledTasks > 0) && (
+          <span className="inline-flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums text-text-muted">
+            {tasksInProgress > 0 && (
+              <span
+                className="inline-flex items-center gap-1"
+                title={`${tasksInProgress} in progress`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-progress" />
+                {tasksInProgress}
+              </span>
+            )}
+            {cancelledTasks > 0 && (
+              <span
+                className="inline-flex items-center gap-1"
+                title={`${cancelledTasks} cancelled`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-cancelled" />
+                {cancelledTasks}
+              </span>
+            )}
+          </span>
+        )}
+      </div>
 
-      <div className="flex flex-col gap-2">
-        <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
-          status === 'active' ? 'bg-done/15 text-done'
-          : status === 'decomposing' ? 'bg-progress/15 text-progress'
-          : status === 'brainstorming' ? 'bg-accent/15 text-accent'
-          : 'bg-draft/10 text-draft'
-        }`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${
-            status === 'active' ? 'bg-done'
-            : status === 'decomposing' ? 'bg-progress'
-            : status === 'brainstorming' ? 'bg-accent'
-            : 'bg-draft'
-          }`} />
-          {status === 'brainstorming' ? 'Idea' : status === 'decomposing' ? 'Building' : status === 'active' ? 'Active' : status}
-        </span>
-        <div className="flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-text-muted">
-          <span className="text-text-secondary">{identifier}</span>
-          <span className="text-text-muted/40">·</span>
-          <span>{tasksDone}/{activeTasks} tasks</span>
-          {cancelledTasks > 0 && (
-            <>
-              <span className="text-text-muted/40">·</span>
-              <span>{cancelledTasks} cancelled</span>
-            </>
-          )}
-          {tasksInProgress > 0 && (
-            <>
-              <span className="text-text-muted/40">·</span>
-              <span>{tasksInProgress} active</span>
-            </>
-          )}
-          <span className="text-text-muted/40">·</span>
-          <span>{lastActive}</span>
+      <div className="mt-3 flex justify-between gap-3 border-t border-border/40 pt-3">
+        <div className="flex min-w-0 flex-col items-start gap-2">
+          <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
+            status === 'active' ? 'bg-done/15 text-done'
+            : status === 'decomposing' ? 'bg-progress/15 text-progress'
+            : status === 'brainstorming' ? 'bg-accent/15 text-accent'
+            : 'bg-draft/10 text-draft'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              status === 'active' ? 'bg-done'
+              : status === 'decomposing' ? 'bg-progress'
+              : status === 'brainstorming' ? 'bg-accent'
+              : 'bg-draft'
+            }`} />
+            {status === 'brainstorming' ? 'Idea' : status === 'decomposing' ? 'Building' : status === 'active' ? 'Active' : status}
+          </span>
+          <div className="flex min-w-0 items-center gap-x-1.5 font-mono text-[10px] tabular-nums text-text-muted">
+            <span className="whitespace-nowrap text-text-secondary">{identifier}</span>
+            <span className="text-text-muted/40">·</span>
+            <span className="whitespace-nowrap">{tasksDone}/{activeTasks} tasks</span>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {team ? <TeamChip team={team} /> : null}
+          <span className="mt-auto whitespace-nowrap font-mono text-[10px] tabular-nums text-text-muted">
+            {lastActive}
+          </span>
         </div>
       </div>
     </motion.div>
@@ -204,7 +236,7 @@ export function ProjectCard({
 
   if (opensWorkspace || !isCliManagedStatus(status)) {
     return (
-      <Link href={`/project/${id}`} className="block no-underline">
+      <Link href={`/project/${id}`} className="block h-full no-underline">
         {body}
       </Link>
     );
@@ -217,7 +249,7 @@ export function ProjectCard({
         tabIndex={0}
         onClick={handleCardClick}
         onKeyDown={handleCardKeyDown}
-        className="block cursor-pointer no-underline"
+        className="block h-full cursor-pointer no-underline"
       >
         {body}
       </div>

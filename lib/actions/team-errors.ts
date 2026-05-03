@@ -9,7 +9,6 @@ import { z } from "zod/v4";
  */
 export type TeamActionFailureCode =
   | "unauthorized"
-  | "no_active_team"
   | "forbidden"
   | "invalid_input"
   | "not_found"
@@ -37,8 +36,6 @@ export type TeamActionFailure = {
 /** Human-readable copy keyed by failure code. Single source of truth. */
 export const TEAM_ACTION_MESSAGES: Record<TeamActionFailureCode, string> = {
   unauthorized: "You must be signed in to perform this action.",
-  no_active_team:
-    "Pick a team before continuing — visit /onboarding/team to create or join one.",
   forbidden: "You don't have permission to do that.",
   invalid_input: "Invalid input.",
   not_found: "We couldn't find that.",
@@ -123,9 +120,6 @@ export function mapBetterAuthError(err: unknown): TeamActionFailureCode {
     case "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED":
     case "INVITATION_LIMIT_REACHED":
       return "membership_limit_reached";
-    case "NO_ACTIVE_ORGANIZATION":
-    case "YOU_DO_NOT_HAVE_AN_ACTIVE_TEAM":
-      return "no_active_team";
     case "YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER":
     case "YOU_CANNOT_LEAVE_THE_ORGANIZATION_WITHOUT_AN_OWNER":
       return "cannot_leave_only_owner";

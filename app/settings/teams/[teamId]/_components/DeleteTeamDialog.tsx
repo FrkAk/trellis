@@ -37,9 +37,8 @@ interface DeleteTeamDialogProps {
  * server-side via `deleteTeamAction → isOrgOwner()`.
  *
  * Closes on ESC and backdrop click. After a successful delete the user
- * is redirected to `/` since their active team is gone (the session
- * `activeOrganizationId` was cleared by the `beforeDeleteOrganization`
- * hook for every member).
+ * is redirected to `/` since the team they were on is gone — the workspace
+ * spans every remaining team membership so the home grid takes over.
  *
  * Mounts the body only while `open` is true — keeps state-reset and the
  * cascade-preview fetch tied to mount lifecycle so the lint

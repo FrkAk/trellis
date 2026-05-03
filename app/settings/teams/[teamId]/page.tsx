@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { TopBar } from '@/components/layout/TopBar';
 import { PageShell } from '@/components/layout/PageShell';
 import { getSession } from '@/lib/auth/session';
-import { getAuthContext, NoActiveTeamError } from '@/lib/auth/context';
+import { getAuthContext } from '@/lib/auth/context';
 import { requireTeamMembership } from '@/lib/auth/membership';
 import { ForbiddenError } from '@/lib/auth/authorization';
 import { listTeamMembersAction } from '@/lib/actions/team-members';
@@ -32,13 +32,7 @@ export default async function TeamSettingsPage({ params }: TeamSettingsPageProps
   const session = await getSession();
   if (!session) redirect('/sign-in');
 
-  let ctx;
-  try {
-    ctx = await getAuthContext();
-  } catch (err) {
-    if (err instanceof NoActiveTeamError) redirect('/onboarding/team');
-    throw err;
-  }
+  const ctx = await getAuthContext();
 
   let membership: Awaited<ReturnType<typeof requireTeamMembership>>;
   try {
@@ -51,7 +45,6 @@ export default async function TeamSettingsPage({ params }: TeamSettingsPageProps
   const isAdminOrOwner =
     membership.memberRole === 'owner' || membership.memberRole === 'admin';
   const isOwner = membership.memberRole === 'owner';
-  const isActive = session.session.activeOrganizationId === teamId;
 
   const [membersResult, invitationsResult, inviteCodeResult] = await Promise.all([
     listTeamMembersAction({ organizationId: teamId }),
@@ -73,7 +66,6 @@ export default async function TeamSettingsPage({ params }: TeamSettingsPageProps
           isAdminOrOwner={isAdminOrOwner}
           isOwner={isOwner}
           currentUserId={session.user.id}
-          isActive={isActive}
           initialMembers={membersResult.ok ? membersResult.data : []}
           initialInvitations={
             invitationsResult && invitationsResult.ok ? invitationsResult.data : []

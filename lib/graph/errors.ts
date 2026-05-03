@@ -28,3 +28,36 @@ export class ProjectNotFoundError extends Error {
     this.name = "ProjectNotFoundError";
   }
 }
+
+/** Team option carried in {@link MultiTeamAmbiguityError}. */
+export type TeamOption = { readonly id: string; readonly name: string };
+
+/**
+ * Thrown by `createProject` when the caller is a member of multiple teams
+ * and did not supply `organizationId`. Carries the team list so the
+ * tool-handler can surface it to the agent for self-recovery without an
+ * extra round trip.
+ */
+export class MultiTeamAmbiguityError extends Error {
+  /**
+   * @param teams - Teams the caller belongs to (id + name).
+   */
+  constructor(public readonly teams: readonly TeamOption[]) {
+    const ids = teams.map((t) => t.id).join(", ");
+    super(
+      `organizationId required: caller is a member of ${teams.length} teams (${ids})`,
+    );
+    this.name = "MultiTeamAmbiguityError";
+  }
+}
+
+/**
+ * Thrown by `createProject` when the caller has zero team memberships.
+ * MCP cannot create a project in nowhere; the caller must onboard first.
+ */
+export class NoTeamMembershipError extends Error {
+  constructor() {
+    super("Caller has no team memberships");
+    this.name = "NoTeamMembershipError";
+  }
+}
