@@ -56,6 +56,7 @@ const uuidSchema = z.uuid();
 const emailSchema = z.email();
 
 const inviteMemberSchema = z.object({
+  organizationId: uuidSchema.optional(),
   email: emailSchema,
   role: memberRoleSchema.optional(),
 });
@@ -102,6 +103,58 @@ const deleteTeamSchema = z.object({
 });
 
 /**
+ * Parse a Better Auth `member.role` value and return the set of role
+ * names it carries. BA 1.6.x stores roles as a comma-separated string
+ * (`"owner"`, `"owner,admin"`); a future serializer change to a JSON
+ * array (`'["owner","admin"]'`) is tolerated by attempting JSON parse
+ * first and falling back to the comma split. Whitespace and empty
+ * fragments are stripped.
+ *
+ * Pinned against `better-auth@1.6.x crud-members.mjs:255`.
+ *
+ * @param role - Raw `member.role` string from the DB.
+ * @returns Lowercased role names present on the member.
+ */
+function parseMemberRoles(role: string): string[] {
+  const trimmed = role.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((v): v is string => typeof v === "string")
+          .map((v) => v.trim())
+          .filter((v) => v.length > 0);
+      }
+    } catch {
+      // fall through to comma split
+    }
+  }
+  return trimmed
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+}
+
+/** Convenience: does `role` carry the `owner` grant? */
+function roleIncludesOwner(role: string): boolean {
+  return parseMemberRoles(role).includes("owner");
+}
+
+/**
+ * Advisory-lock key serializing concurrent owner-role mutations within a
+ * single team. Demotes for a single team serialize on this lock so the
+ * last-owner guard cannot race; demotes against different teams proceed
+ * in parallel because the lock is per-org.
+ *
+ * @param organizationId - UUID of the team being mutated.
+ * @returns SQL fragment producing the int8 lock key for `pg_advisory_xact_lock`.
+ */
+function ownerLockKey(organizationId: string) {
+  return sql`hashtext(${`mymir:team-owners:${organizationId}`})`;
+}
+
+/**
  * Create a new organization (team) for the signed-in user and set it as
  * the active org for the session. The caller does NOT need an active team
  * already — this is the bootstrap path used by onboarding.
@@ -143,19 +196,26 @@ export async function createTeamAction(input: {
 }
 
 /**
- * Send an email invitation to join the caller's active team. Better Auth
- * enforces the recipient-email check at acceptance time; this action just
- * creates the invitation row and (in the future) hands it to a mailer.
+ * Send an email invitation to join a team. Better Auth enforces the
+ * recipient-email check at acceptance time; this action just creates
+ * the invitation row and (in the future) hands it to a mailer.
  *
- * Defense-in-depth: an explicit `isOrgAdmin()` check runs first so the
- * action's authorization does not single-source from BA's specific
- * error code shape. BA also enforces `invitation:create` (admin+owner)
- * at the endpoint.
+ * Target-scoped: an optional `organizationId` lets admins of team T
+ * invite to T while their session is active on team U. When omitted,
+ * BA's `createInvitation` falls back to session active org (verified
+ * against `better-auth@1.6.x crud-invites.mjs:70`).
  *
- * @param input - Recipient email and optional role (defaults to `member`).
+ * Defense-in-depth: an explicit `isOrgAdmin(parsed.data.organizationId)`
+ * check runs first (target-scoped when provided, session-scoped when
+ * not), so the action's authorization does not single-source from BA's
+ * specific error code shape. BA also enforces `invitation:create`
+ * (admin+owner) at the endpoint.
+ *
+ * @param input - Optional target org id, recipient email, optional role.
  * @returns Discriminated result.
  */
 export async function inviteMemberAction(input: {
+  organizationId?: string;
   email: string;
   role?: "member" | "admin" | "owner";
 }): Promise<TeamActionResult> {
@@ -167,7 +227,7 @@ export async function inviteMemberAction(input: {
   const parsed = parseOrFail(inviteMemberSchema, input);
   if (!parsed.ok) return parsed;
 
-  if (!(await isOrgAdmin())) return teamFail("forbidden");
+  if (!(await isOrgAdmin(parsed.data.organizationId))) return teamFail("forbidden");
 
   try {
     const reqHeaders = await headers();
@@ -175,6 +235,9 @@ export async function inviteMemberAction(input: {
       body: {
         email: parsed.data.email,
         role: parsed.data.role ?? "member",
+        ...(parsed.data.organizationId !== undefined
+          ? { organizationId: parsed.data.organizationId }
+          : {}),
       },
       headers: reqHeaders,
     });
@@ -234,20 +297,31 @@ export async function removeMemberAction(input: {
  * Change a member's role within the caller's active team.
  *
  * Layered authorization:
- * 1. Explicit `isOrgAdmin()` check — defense-in-depth so authz doesn't
- *    single-source from BA's error code shape.
+ * 1. Explicit `isOrgAdmin(ctx.activeOrgId)` check — defense-in-depth so
+ *    authz doesn't single-source from BA's error code shape.
  * 2. Cross-team probe rejection — target's `member.organizationId` must
  *    match the caller's `ctx.activeOrgId`. Returns `forbidden` (404-shaped)
  *    so a probe cannot tell membership apart from non-existence.
- * 3. Last-owner guard — if target is the org's only owner and the new
- *    role is not owner, surface a typed `cannot_leave_only_owner`. BA's
- *    own check only fires on self-demote; this catches an
- *    owner-A-demotes-owner-B race where both reads see two owners.
+ * 3. Last-owner guard, atomically held against concurrent demotes — the
+ *    re-read of target + owner-count + BA's `updateMemberRole` happen
+ *    inside a transaction holding `pg_advisory_xact_lock` keyed on the
+ *    team. Two browsers demoting two different owners simultaneously
+ *    serialize on this lock, so the second demote sees the first's
+ *    committed effect (one owner left) and fails closed. BA's own check
+ *    only fires on self-demote; this guard catches the cross-actor case.
  * 4. BA's `updateMemberRole` enforces `member:update` (admin+owner) at
  *    the endpoint plus its own creator-role/last-owner safeguards.
  *
- * `member.role` is comma-separated in BA — we split + `.includes('owner')`
- * to mirror BA's parsing (see `crud-members.mjs:255`).
+ * BA's UPDATE runs on its own connection (autocommit) inside our tx
+ * callback. The advisory lock doesn't block that connection, so there's
+ * no deadlock; the lock simply serializes other actions waiting to run
+ * the same gate. By the time we release the lock at tx commit, BA has
+ * already committed the role change.
+ *
+ * `member.role` parsing goes through {@link roleIncludesOwner} which
+ * accepts both BA's current comma-separated format and a future JSON
+ * array, so a serializer change can't silently flip the last-owner
+ * guard open.
  *
  * @param input - Target member id and new role.
  * @returns Discriminated result.
@@ -268,45 +342,60 @@ export async function updateMemberRoleAction(input: {
 
   if (!(await isOrgAdmin(ctx.activeOrgId))) return teamFail("forbidden");
 
-  const [target] = await db
-    .select({
-      id: member.id,
-      role: member.role,
-      organizationId: member.organizationId,
-    })
+  const [preRead] = await db
+    .select({ organizationId: member.organizationId })
     .from(member)
     .where(eq(member.id, parsed.data.memberId))
     .limit(1);
-  if (!target) return teamFail("not_found");
-  if (target.organizationId !== ctx.activeOrgId) return teamFail("forbidden");
+  if (!preRead) return teamFail("not_found");
+  if (preRead.organizationId !== ctx.activeOrgId) return teamFail("forbidden");
 
-  const targetIsOwner = target.role.split(",").includes("owner");
-  const newIsOwner = parsed.data.role === "owner";
-  if (targetIsOwner && !newIsOwner) {
-    const owners = await db
-      .select({ role: member.role })
+  const reqHeaders = await headers();
+  type Outcome =
+    | { kind: "ok" }
+    | { kind: "fail"; code: "not_found" | "forbidden" | "cannot_leave_only_owner" }
+    | { kind: "ba_error"; err: unknown };
+
+  const outcome: Outcome = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${ownerLockKey(preRead.organizationId)})`);
+
+    const [latest] = await tx
+      .select({ role: member.role, organizationId: member.organizationId })
       .from(member)
-      .where(eq(member.organizationId, target.organizationId));
-    const ownerCount = owners.filter((m) =>
-      m.role.split(",").includes("owner"),
-    ).length;
-    if (ownerCount <= 1) return teamFail("cannot_leave_only_owner");
-  }
+      .where(eq(member.id, parsed.data.memberId))
+      .limit(1);
+    if (!latest) return { kind: "fail", code: "not_found" };
+    if (latest.organizationId !== ctx.activeOrgId) return { kind: "fail", code: "forbidden" };
 
-  try {
-    const reqHeaders = await headers();
-    await auth.api.updateMemberRole({
-      body: { memberId: parsed.data.memberId, role: parsed.data.role },
-      headers: reqHeaders,
-    });
-    return { ok: true };
-  } catch (err) {
-    const code = mapBetterAuthError(err);
-    if (code === "unknown") {
-      console.error("updateMemberRoleAction failed", err);
+    const targetIsOwner = roleIncludesOwner(latest.role);
+    const newIsOwner = parsed.data.role === "owner";
+    if (targetIsOwner && !newIsOwner) {
+      const owners = await tx
+        .select({ role: member.role })
+        .from(member)
+        .where(eq(member.organizationId, latest.organizationId));
+      const ownerCount = owners.filter((m) => roleIncludesOwner(m.role)).length;
+      if (ownerCount <= 1) return { kind: "fail", code: "cannot_leave_only_owner" };
     }
-    return teamFail(code);
+
+    try {
+      await auth.api.updateMemberRole({
+        body: { memberId: parsed.data.memberId, role: parsed.data.role },
+        headers: reqHeaders,
+      });
+      return { kind: "ok" };
+    } catch (err) {
+      return { kind: "ba_error", err };
+    }
+  });
+
+  if (outcome.kind === "ok") return { ok: true };
+  if (outcome.kind === "fail") return teamFail(outcome.code);
+  const code = mapBetterAuthError(outcome.err);
+  if (code === "unknown") {
+    console.error("updateMemberRoleAction failed", outcome.err);
   }
+  return teamFail(code);
 }
 
 /**
@@ -419,6 +508,12 @@ export async function acceptEmailInvitationAction(input: {
  * session active org. A regular member or non-member of the target team
  * surfaces a typed `forbidden` before any BA call.
  *
+ * BA's `updateOrganization` honors `body.organizationId` for both the
+ * permission check and the underlying write — verified against
+ * `better-auth@1.6.x crud-org.mjs:199-228`. A renamer who is admin of
+ * team T but currently active on team U therefore renames T (the body
+ * arg), not U.
+ *
  * @param input - `{ organizationId, name?, slug? }`.
  * @returns Discriminated result.
  */
@@ -515,6 +610,12 @@ export type TeamDeletePreview = {
  * typing the team name. Owner-only — same gate as `deleteTeamAction`
  * since the count itself can leak organization size.
  *
+ * Both counts share a single SQL statement so they read from the same
+ * MVCC snapshot (Postgres evaluates subqueries against one statement-
+ * level snapshot under default `READ COMMITTED` isolation), preventing
+ * a stale projects/tasks mismatch when concurrent writes land between
+ * two separate count queries.
+ *
  * @param input - `{ organizationId }` to preview.
  * @returns Discriminated result; `data` is `{ projectCount, taskCount }`.
  */
@@ -532,20 +633,20 @@ export async function previewTeamDeleteAction(input: {
   if (!(await isOrgOwner(parsed.data.organizationId))) return teamFail("forbidden");
 
   try {
-    const [projectsRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(projects)
-      .where(eq(projects.organizationId, parsed.data.organizationId));
-    const [tasksRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(tasks)
-      .innerJoin(projects, eq(projects.id, tasks.projectId))
-      .where(eq(projects.organizationId, parsed.data.organizationId));
+    const orgId = parsed.data.organizationId;
+    const rows = (await db.execute(sql`
+      SELECT
+        (SELECT count(*)::int FROM ${projects} WHERE ${projects.organizationId} = ${orgId}) AS project_count,
+        (SELECT count(*)::int FROM ${tasks}
+           INNER JOIN ${projects} ON ${tasks.projectId} = ${projects.id}
+           WHERE ${projects.organizationId} = ${orgId}) AS task_count
+    `)) as unknown as { project_count: number; task_count: number }[];
+    const row = rows[0];
     return {
       ok: true,
       data: {
-        projectCount: projectsRow?.count ?? 0,
-        taskCount: tasksRow?.count ?? 0,
+        projectCount: Number(row?.project_count ?? 0),
+        taskCount: Number(row?.task_count ?? 0),
       },
     };
   } catch (err) {

@@ -1,12 +1,11 @@
 'use server';
 
 import { headers } from 'next/headers';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { z } from 'zod/v4';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { user } from '@/lib/db/auth-schema';
-import { getAuthContext, NoActiveTeamError } from '@/lib/auth/context';
+import { invitation, user } from '@/lib/db/auth-schema';
 import { requireSession } from '@/lib/auth/session';
 import { isOrgAdmin } from '@/lib/auth/org-permissions';
 import {
@@ -25,8 +24,12 @@ const cancelSchema = z.object({
   invitationId: z.uuid(),
 });
 
+const listInvitationsSchema = z.object({
+  organizationId: z.uuid(),
+});
+
 /**
- * List pending invitations for the caller's active team. Filters out
+ * List pending invitations for the supplied team. Filters out
  * already-accepted, rejected, and expired rows so the admin only sees
  * actionable items.
  *
@@ -34,31 +37,33 @@ const cancelSchema = z.object({
  * returns only `inviterId` on the listInvitations row.
  *
  * Defense-in-depth: BA's `listInvitations` endpoint only checks team
- * membership, NOT role. Without the explicit `isOrgAdmin()` gate here a
- * regular member who calls the action directly (server-action POST from
- * the browser) could harvest invitee emails for the active team. Page
- * UI already hides the panel for non-admins, but the action surface is
- * independently callable and must enforce its own authorization.
+ * membership, NOT role. Without the explicit `isOrgAdmin(organizationId)`
+ * gate here a regular member who calls the action directly (server-action
+ * POST from the browser) could harvest invitee emails for any team they
+ * belong to. The gate is target-scoped so admins of team T can list T's
+ * invitations even when their session is active on team U.
  *
+ * @param input - `{ organizationId }` of the team to list invitations for.
  * @returns Discriminated result; `data` is the pending list (newest first).
  */
-export async function listPendingInvitationsAction(): Promise<
-  TeamActionResult<InvitationView[]>
-> {
-  let ctx;
+export async function listPendingInvitationsAction(input: {
+  organizationId: string;
+}): Promise<TeamActionResult<InvitationView[]>> {
   try {
-    ctx = await getAuthContext();
-  } catch (err) {
-    if (err instanceof NoActiveTeamError) return teamFail('no_active_team');
+    await requireSession();
+  } catch {
     return teamFail('unauthorized');
   }
 
-  if (!(await isOrgAdmin(ctx.activeOrgId))) return teamFail('forbidden');
+  const parsed = parseOrFail(listInvitationsSchema, input);
+  if (!parsed.ok) return parsed;
+
+  if (!(await isOrgAdmin(parsed.data.organizationId))) return teamFail('forbidden');
 
   let raw: BetterAuthInvitationRow[];
   try {
     const result = await auth.api.listInvitations({
-      query: { organizationId: ctx.activeOrgId },
+      query: { organizationId: parsed.data.organizationId },
       headers: await headers(),
     });
     raw = (result ?? []) as BetterAuthInvitationRow[];
@@ -100,10 +105,12 @@ export async function listPendingInvitationsAction(): Promise<
  * (admin+owner) at the endpoint and scopes by the invitation's own
  * organization, so cross-team cancels are rejected.
  *
- * Defense-in-depth: an explicit `isOrgAdmin()` check runs first so the
- * action's authorization does not single-source from BA's specific
- * error code shape, and a regular member is rejected with a typed
- * `forbidden` before any BA call.
+ * Defense-in-depth: we resolve the invitation's `organizationId` from
+ * the DB and run `isOrgAdmin(invitationOrgId)` so the upstream check is
+ * scoped to the invitation's own org rather than the caller's session
+ * active org. A non-existent invitation surfaces a typed `not_found`
+ * (preserving the "already cancelled in another tab" UX); BA reveals
+ * the same existence signal, so this lookup adds no new info disclosure.
  *
  * @param input - `{ invitationId }` to cancel.
  * @returns Discriminated result.
@@ -120,7 +127,14 @@ export async function cancelInvitationAction(input: {
   const parsed = parseOrFail(cancelSchema, input);
   if (!parsed.ok) return parsed;
 
-  if (!(await isOrgAdmin())) return teamFail('forbidden');
+  const [row] = await db
+    .select({ organizationId: invitation.organizationId })
+    .from(invitation)
+    .where(eq(invitation.id, parsed.data.invitationId))
+    .limit(1);
+  if (!row) return teamFail('not_found');
+
+  if (!(await isOrgAdmin(row.organizationId))) return teamFail('forbidden');
 
   try {
     await auth.api.cancelInvitation({

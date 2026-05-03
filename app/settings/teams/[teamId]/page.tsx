@@ -55,9 +55,11 @@ export default async function TeamSettingsPage({ params }: TeamSettingsPageProps
 
   const [membersResult, invitationsResult, inviteCodeResult] = await Promise.all([
     listTeamMembersAction({ organizationId: teamId }),
-    isAdminOrOwner && isActive ? listPendingInvitationsAction() : Promise.resolve(null),
-    isAdminOrOwner && isActive
-      ? getOrCreateTeamInviteCodeAction()
+    isAdminOrOwner
+      ? listPendingInvitationsAction({ organizationId: teamId })
+      : Promise.resolve(null),
+    isAdminOrOwner
+      ? getOrCreateTeamInviteCodeAction({ organizationId: teamId })
       : Promise.resolve(null),
   ]);
 

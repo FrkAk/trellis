@@ -14,6 +14,8 @@ const ROLE_OPTIONS: ReadonlyArray<{ value: 'member' | 'admin'; label: string }> 
 ];
 
 interface InviteFormProps {
+  /** Team UUID — passed to the invite action so admins of T can invite to T from any session. */
+  teamId: string;
   /** Called after a successful invite to refresh the pending list. */
   onInvited: () => Promise<void> | void;
   /** Surface a transient error from the action. */
@@ -21,7 +23,7 @@ interface InviteFormProps {
 }
 
 /**
- * Email-invite form. Sends a Better Auth invitation row to the active
+ * Email-invite form. Sends a Better Auth invitation row to the supplied
  * team. Email delivery itself is wired in MYMR-153 — for now the row
  * appears in the pending list and an admin must share the invite link
  * out-of-band (or use the invite-code panel).
@@ -33,7 +35,7 @@ interface InviteFormProps {
  * @param props - Form callbacks.
  * @returns Email + role picker row with Send button.
  */
-export function InviteForm({ onInvited, onError }: InviteFormProps) {
+export function InviteForm({ teamId, onInvited, onError }: InviteFormProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'member' | 'admin'>('member');
   const [pending, startTransition] = useTransition();
@@ -66,7 +68,11 @@ export function InviteForm({ onInvited, onError }: InviteFormProps) {
     event.preventDefault();
     if (!canSubmit) return;
     startTransition(async () => {
-      const result = await inviteMemberAction({ email: trimmed, role });
+      const result = await inviteMemberAction({
+        organizationId: teamId,
+        email: trimmed,
+        role,
+      });
       if (!result.ok) {
         onError(result.message);
         return;

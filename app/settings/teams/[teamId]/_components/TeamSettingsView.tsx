@@ -90,14 +90,14 @@ export function TeamSettingsView({
   }, [team.id]);
 
   const refreshInvitations = useCallback(async () => {
-    const result = await listPendingInvitationsAction();
+    const result = await listPendingInvitationsAction({ organizationId: team.id });
     if (result.ok) setInvitations(result.data);
-  }, []);
+  }, [team.id]);
 
   const refreshInviteCode = useCallback(async () => {
-    const result = await getOrCreateTeamInviteCodeAction();
+    const result = await getOrCreateTeamInviteCodeAction({ organizationId: team.id });
     if (result.ok) setInviteCode(result.data);
-  }, []);
+  }, [team.id]);
 
   const handleRoleChanged = useCallback(
     (memberId: string, newRole: 'member' | 'admin' | 'owner') => {
@@ -175,9 +175,9 @@ export function TeamSettingsView({
 
         {isAdminOrOwner ? (
           <InviteSection
+            teamId={team.id}
             invitations={invitations}
             inviteCode={inviteCode}
-            isActive={isActive}
             onInvitationsChanged={refreshInvitations}
             onInviteCodeChanged={(next) => setInviteCode(next)}
             onRefreshInviteCode={refreshInviteCode}

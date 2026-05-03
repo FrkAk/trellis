@@ -106,7 +106,7 @@ export function TeamCard({
   const handleCopyInvite = () => {
     setMenuOpen(false);
     startTransition(async () => {
-      const result = await getOrCreateTeamInviteCodeAction();
+      const result = await getOrCreateTeamInviteCodeAction({ organizationId: team.id });
       if (!result.ok) {
         onError(result.message);
         return;
@@ -222,7 +222,7 @@ export function TeamCard({
               transition={{ duration: 0.12 }}
               className="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-lg border border-border bg-surface p-1 shadow-[var(--shadow-float)]"
             >
-              {isActive && isAdminOrOwner ? (
+              {isAdminOrOwner ? (
                 <button
                   type="button"
                   role="menuitem"

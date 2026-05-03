@@ -7,12 +7,12 @@ import { PendingInvitationsList } from './PendingInvitationsList';
 import { InviteCodePanel } from './InviteCodePanel';
 
 interface InviteSectionProps {
+  /** Team UUID — passed to every target-scoped action. */
+  teamId: string;
   /** Pending invitations to render. */
   invitations: InvitationView[];
   /** Current invite-code metadata, or null when none has been minted. */
   inviteCode: InviteCodeMetadata | null;
-  /** True when this is the user's active team. */
-  isActive: boolean;
   /** Refresh the pending list after invite/cancel. */
   onInvitationsChanged: () => Promise<void>;
   /** Replace the invite-code metadata after rotate/revoke. */
@@ -33,9 +33,9 @@ interface InviteSectionProps {
  * @returns Three sub-panels under a single section heading.
  */
 export function InviteSection({
+  teamId,
   invitations,
   inviteCode,
-  isActive,
   onInvitationsChanged,
   onInviteCodeChanged,
   onRefreshMembers,
@@ -48,6 +48,7 @@ export function InviteSection({
       </p>
       <div className="space-y-4">
         <InviteForm
+          teamId={teamId}
           onInvited={async () => {
             await onInvitationsChanged();
             await onRefreshMembers();
@@ -60,8 +61,8 @@ export function InviteSection({
           onError={onError}
         />
         <InviteCodePanel
+          teamId={teamId}
           inviteCode={inviteCode}
-          isActive={isActive}
           onChanged={onInviteCodeChanged}
           onError={onError}
         />

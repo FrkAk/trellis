@@ -67,7 +67,13 @@ export async function requireTeamMembership(
   teamId: string,
   ctx: AuthContext,
 ): Promise<TeamMembership> {
-  if (!isUuid(teamId)) throw new ForbiddenError("Forbidden");
+  if (!isUuid(teamId)) {
+    console.warn("requireTeamMembership: malformed teamId rejected", {
+      teamId,
+      userId: ctx.userId,
+    });
+    throw new ForbiddenError("Forbidden");
+  }
   const [row] = await db
     .select({
       organization: getTableColumns(organization),

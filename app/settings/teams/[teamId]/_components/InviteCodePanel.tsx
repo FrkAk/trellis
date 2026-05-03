@@ -12,10 +12,10 @@ import {
 import { InlineConfirm } from '@/app/settings/_components/InlineConfirm';
 
 interface InviteCodePanelProps {
+  /** Team UUID — passed to every invite-code action. */
+  teamId: string;
   /** Current invite-code metadata, or null when none has been minted yet. */
   inviteCode: InviteCodeMetadata | null;
-  /** True when this is the user's active team — actions hit `ctx.activeOrgId`. */
-  isActive: boolean;
   /** Replace the current invite-code metadata after a rotate/revoke. */
   onChanged: (next: InviteCodeMetadata) => void;
   /** Surface a transient error from any action. */
@@ -27,17 +27,15 @@ interface InviteCodePanelProps {
  * rotate / revoke actions. Collapsed by default to keep the email-invite
  * surface primary; expanding reveals the full operational area.
  *
- * Hidden entirely when `!isActive` since invite-code actions resolve
- * `ctx.activeOrgId` server-side — using them on the wrong team would
- * silently affect the active team instead. The disabled state copies a
- * "Switch to manage" hint into the slot.
+ * Actions are target-scoped on `teamId`, so admins of team T can rotate
+ * or revoke T's code regardless of their session active org.
  *
  * @param props - Panel state + callbacks.
  * @returns Collapsible card with the current code and actions.
  */
 export function InviteCodePanel({
+  teamId,
   inviteCode,
-  isActive,
   onChanged,
   onError,
 }: InviteCodePanelProps) {
@@ -59,7 +57,7 @@ export function InviteCodePanel({
 
   const handleRotate = () => {
     startTransition(async () => {
-      const result = await regenerateTeamInviteCodeAction();
+      const result = await regenerateTeamInviteCodeAction({ organizationId: teamId });
       if (result.ok) {
         onChanged(result.data);
       } else {
@@ -69,26 +67,13 @@ export function InviteCodePanel({
   };
 
   const handleRevoke = async () => {
-    const result = await revokeTeamInviteCodeAction();
+    const result = await revokeTeamInviteCodeAction({ organizationId: teamId });
     if (result.ok) {
       onChanged(result.data);
     } else {
       onError(result.message);
     }
   };
-
-  if (!isActive) {
-    return (
-      <section className="rounded-xl border border-dashed border-border bg-surface/40 p-5">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-          Invite code
-        </p>
-        <p className="mt-2 text-sm text-text-secondary">
-          Switch to this team from the Settings · Teams tab to rotate or revoke its invite code.
-        </p>
-      </section>
-    );
-  }
 
   const isRevoked = !!inviteCode?.revokedAt;
 
