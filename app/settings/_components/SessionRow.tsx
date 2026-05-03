@@ -15,32 +15,23 @@ interface SessionRowProps {
   onError: (message: string) => void;
 }
 
-/** Pick a glyph for the row icon based on the OAuth client name. */
-function ClientGlyph({ name }: { name: string }) {
-  if (/claude/i.test(name)) {
-    return (
-      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-4 w-4">
-        <path d="M8 0l1.6 4.5L14 6l-4.4 1.5L8 12l-1.6-4.5L2 6l4.4-1.5L8 0zm5 9l.8 2 2.2.8-2.2.8L13 15l-.8-2.4-2.2-.8 2.2-.8L13 9z" />
-      </svg>
-    );
-  }
-  if (/cursor/i.test(name)) {
-    return (
-      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-4 w-4">
-        <path d="M3 1.5a.5.5 0 01.8-.4l9 6.5a.5.5 0 01-.1.9l-3.6 1-1 3.6a.5.5 0 01-.9.1l-4.5-9A.5.5 0 013 1.5z" />
-      </svg>
-    );
-  }
-  if (/codex|gemini|copilot|terminal/i.test(name)) {
-    return (
-      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-4 w-4">
-        <path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm2.3 3.3a.75.75 0 011.05-.05l2.5 2.25a.75.75 0 010 1.1l-2.5 2.25a.75.75 0 11-1-1.1L6.18 9 4.3 7.35a.75.75 0 010-1.05zM8.5 11h3a.75.75 0 010 1.5h-3a.75.75 0 010-1.5z" />
-      </svg>
-    );
-  }
+interface AgentSessionGlyphProps {
+  /** Tailwind classes controlling the rendered icon size. */
+  className?: string;
+}
+
+/**
+ * Neutral glyph for OAuth device sessions.
+ *
+ * @param props - Icon size configuration.
+ * @returns SVG glyph for an authorized coding-agent session.
+ */
+export function AgentSessionGlyph({
+  className = 'h-4 w-4',
+}: AgentSessionGlyphProps) {
   return (
-    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-4 w-4">
-      <path d="M5 1a1 1 0 011 1v3h4V2a1 1 0 112 0v3h.5a.5.5 0 010 1H12v2.5a4 4 0 01-3 3.87V14a1 1 0 11-2 0v-1.63A4 4 0 014 8.5V6h-.5a.5.5 0 010-1H4V2a1 1 0 011-1z" />
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M11 1.25a.5.5 0 01.47.33l.62 1.73 1.73.62a.5.5 0 010 .94l-1.73.62-.62 1.73a.5.5 0 01-.94 0l-.62-1.73-1.73-.62a.5.5 0 010-.94l1.73-.62.62-1.73a.5.5 0 01.47-.33zM2 4.5A1.5 1.5 0 013.5 3h3a.75.75 0 010 1.5h-3v8h9v-3a.75.75 0 011.5 0v3a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-8zm3.22 2.03a.75.75 0 011.06 0l1.44 1.44a.75.75 0 010 1.06l-1.44 1.44a.75.75 0 11-1.06-1.06l.91-.91-.91-.91a.75.75 0 010-1.06zM8.75 10h1.75a.75.75 0 010 1.5H8.75a.75.75 0 010-1.5z" />
     </svg>
   );
 }
@@ -77,7 +68,7 @@ export function SessionRow({ session, onRevoked, onError }: SessionRowProps) {
       className="flex items-center gap-4 rounded-xl border border-border bg-surface px-5 py-4 shadow-[var(--shadow-card)]"
     >
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-raised text-text-secondary">
-        <ClientGlyph name={session.clientName} />
+        <AgentSessionGlyph />
       </div>
 
       <div className="min-w-0 flex-1" title={tooltip}>

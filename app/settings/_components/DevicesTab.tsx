@@ -7,7 +7,7 @@ import {
   type OAuthSessionView,
 } from '@/lib/actions/oauth-session';
 import { EmptyState } from './EmptyState';
-import { SessionRow } from './SessionRow';
+import { AgentSessionGlyph, SessionRow } from './SessionRow';
 
 interface DevicesTabProps {
   /** Initial session list, hydrated from the server component. */
@@ -83,11 +83,7 @@ export function DevicesTab({ initialSessions }: DevicesTabProps) {
 
       {sessions.length === 0 ? (
         <EmptyState
-          icon={
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-6 w-6">
-              <path d="M5 1a1 1 0 011 1v3h4V2a1 1 0 112 0v3h.5a.5.5 0 010 1H12v2.5a4 4 0 01-3 3.87V14a1 1 0 11-2 0v-1.63A4 4 0 014 8.5V6h-.5a.5.5 0 010-1H4V2a1 1 0 011-1z" />
-            </svg>
-          }
+          icon={<AgentSessionGlyph className="h-6 w-6" />}
           title="No active sessions"
           body="Connect Mymir to your coding agent (Claude Code, Cursor, etc.) to see authorized devices here."
         />
