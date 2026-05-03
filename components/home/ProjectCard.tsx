@@ -176,6 +176,21 @@ export function ProjectCard({
         className="mt-4"
       />
 
+      <div className="mt-2 flex min-h-4 flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10px] tabular-nums text-text-muted">
+        {tasksInProgress > 0 && (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <span className="h-1.5 w-1.5 rounded-full bg-progress" />
+            {tasksInProgress} in progress
+          </span>
+        )}
+        {cancelledTasks > 0 && (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <span className="h-1.5 w-1.5 rounded-full bg-cancelled" />
+            {cancelledTasks} cancelled
+          </span>
+        )}
+      </div>
+
       <div className="mt-3 flex flex-col gap-2 border-t border-border/40 pt-3">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${
@@ -198,18 +213,6 @@ export function ProjectCard({
           <span className="whitespace-nowrap text-text-secondary">{identifier}</span>
           <span className="text-text-muted/40">·</span>
           <span className="whitespace-nowrap">{tasksDone}/{activeTasks} tasks</span>
-          {cancelledTasks > 0 && (
-            <>
-              <span className="text-text-muted/40">·</span>
-              <span className="whitespace-nowrap">{cancelledTasks} cancelled</span>
-            </>
-          )}
-          {tasksInProgress > 0 && (
-            <>
-              <span className="text-text-muted/40">·</span>
-              <span className="whitespace-nowrap">{tasksInProgress} active</span>
-            </>
-          )}
           <span className="ml-auto whitespace-nowrap">{lastActive}</span>
         </div>
       </div>

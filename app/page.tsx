@@ -14,6 +14,9 @@ import { TeamChip } from '@/components/shared/TeamChip';
 /** Force dynamic rendering — this page queries the database. */
 export const dynamic = 'force-dynamic';
 
+/** dd/mm/yyyy formatter used across the home grid for stable, locale-independent dates. */
+const dateFormatter = new Intl.DateTimeFormat('en-GB');
+
 interface HomePageProps {
   /** Search params hydrate the team filter and group-by toggle so refresh / link sharing preserves UI state. */
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -83,7 +86,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             projectId={activeProject.id}
             projectName={activeProject.title}
             lastActiveNode={`${activeProject.taskStats.done}/${Math.max(activeProject.taskStats.total - activeProject.taskStats.cancelled, 0)} tasks done`}
-            lastActive={activeProject.updatedAt.toLocaleDateString()}
+            lastActive={dateFormatter.format(activeProject.updatedAt)}
           />
         )}
 
@@ -149,7 +152,7 @@ function FlatGrid({ projects }: FlatGridProps) {
           totalTasks={project.taskStats.total}
           cancelledTasks={project.taskStats.cancelled}
           tasksInProgress={project.taskStats.inProgress}
-          lastActive={project.updatedAt.toLocaleDateString()}
+          lastActive={dateFormatter.format(project.updatedAt)}
           canDelete={roleHasProjectPermission(project.memberRole, ['delete'])}
           team={showTeamChip ? { id: project.organization.id, name: project.organization.name } : undefined}
         />
@@ -211,7 +214,7 @@ function GroupedGrid({ projects, teams }: GroupedGridProps) {
                     totalTasks={project.taskStats.total}
                     cancelledTasks={project.taskStats.cancelled}
                     tasksInProgress={project.taskStats.inProgress}
-                    lastActive={project.updatedAt.toLocaleDateString()}
+                    lastActive={dateFormatter.format(project.updatedAt)}
                     canDelete={roleHasProjectPermission(project.memberRole, ['delete'])}
                   />
                 ))}
