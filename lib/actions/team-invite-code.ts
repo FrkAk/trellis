@@ -336,16 +336,15 @@ async function diagnoseInvalidCode(
 }
 
 /**
- * Redeem an invite code: add the caller as a member of the target team
- * and switch their active org. Atomic UPDATE-RETURNING reserves the slot
- * (use_count++) inline with the validity guards (revoked / expired /
- * max_uses), so two concurrent redemptions of a `maxUses=1` code can't
- * both succeed.
+ * Redeem an invite code: add the caller as a member of the target team.
+ * Atomic UPDATE-RETURNING reserves the slot (use_count++) inline with the
+ * validity guards (revoked / expired / max_uses), so two concurrent
+ * redemptions of a `maxUses=1` code can't both succeed.
  *
- * Saga shape: only `addMember` rejection compensates — once membership
- * exists the slot is permanently consumed, so a `setActiveOrganization`
- * failure is logged and the redemption returns success (the next
- * request lands the user on onboarding to pick the active team).
+ * Saga shape: `addMember` is the only step that can compensate — once
+ * membership exists the slot is permanently consumed, and the workspace
+ * spans every team the caller belongs to so no further bookkeeping is
+ * required.
  *
  * Rate-limited per-user (5/min) AND per-IP (20/min) as defense in depth
  * on top of the 126-bit code entropy.
@@ -476,18 +475,6 @@ export async function joinTeamByCodeAction(input: {
       code: "unknown",
       message: TEAM_ACTION_MESSAGES.unknown,
     };
-  }
-
-  try {
-    await auth.api.setActiveOrganization({
-      body: { organizationId: reserved.orgId },
-      headers: reqHeaders,
-    });
-  } catch (err) {
-    console.error(
-      "joinTeamByCodeAction setActiveOrganization failed (membership succeeded)",
-      { err, orgId: reserved.orgId, userId },
-    );
   }
 
   return { ok: true, data: { organizationId: reserved.orgId } };

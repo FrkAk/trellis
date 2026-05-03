@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, or, and, asc, desc, sql, ilike, getTableColumns } from "drizzle-orm";
+import { eq, or, and, asc, desc, sql, ilike, inArray, getTableColumns } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
 import { member, organization } from "@/lib/db/auth-schema";
@@ -311,7 +311,10 @@ export async function listUserTeams(
     })
     .from(projects)
     .where(
-      sql`${projects.organizationId} IN ${memberships.map((m) => m.id)}`,
+      inArray(
+        projects.organizationId,
+        memberships.map((m) => m.id),
+      ),
     )
     .groupBy(projects.organizationId);
 

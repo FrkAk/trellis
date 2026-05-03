@@ -4,7 +4,7 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import * as authSchema from "@/lib/db/auth-schema";
 import { member } from "@/lib/db/auth-schema";
 import { clearOrgMembershipArtifacts } from "@/lib/auth/membership-cleanup";
@@ -54,25 +54,6 @@ export const auth = betterAuth({
     },
     ipAddress: {
       ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"],
-    },
-  },
-  databaseHooks: {
-    session: {
-      create: {
-        before: async (session) => {
-          if (session.activeOrganizationId) return { data: session };
-          const [earliest] = await authDb
-            .select({ organizationId: member.organizationId })
-            .from(member)
-            .where(eq(member.userId, session.userId))
-            .orderBy(asc(member.createdAt))
-            .limit(1);
-          if (!earliest) return { data: session };
-          return {
-            data: { ...session, activeOrganizationId: earliest.organizationId },
-          };
-        },
-      },
     },
   },
   // organization() must precede any future customSession() — see

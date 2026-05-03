@@ -55,7 +55,7 @@ const uuidSchema = z.uuid();
 const emailSchema = z.email();
 
 const inviteMemberSchema = z.object({
-  organizationId: uuidSchema.optional(),
+  organizationId: uuidSchema,
   email: emailSchema,
   role: memberRoleSchema.optional(),
 });
@@ -182,10 +182,6 @@ export async function createTeamAction(input: {
       headers: reqHeaders,
     });
     if (!created) return teamFail("unknown");
-    await auth.api.setActiveOrganization({
-      body: { organizationId: created.id },
-      headers: reqHeaders,
-    });
     return { ok: true, data: { organizationId: created.id } };
   } catch (err) {
     const code = mapBetterAuthError(err);
@@ -201,22 +197,21 @@ export async function createTeamAction(input: {
  * recipient-email check at acceptance time; this action just creates
  * the invitation row and (in the future) hands it to a mailer.
  *
- * Target-scoped: an optional `organizationId` lets admins of team T
- * invite to T while their session is active on team U. When omitted,
- * BA's `createInvitation` falls back to session active org (verified
- * against `better-auth@1.6.x crud-invites.mjs:70`).
+ * Target-scoped: callers always name the destination team, so admins of
+ * team T can invite to T regardless of which team their session was last
+ * pointed at. The team is never inferred from the session.
  *
- * Defense-in-depth: an explicit `isOrgAdmin(parsed.data.organizationId)`
- * check runs first (target-scoped when provided, session-scoped when
- * not), so the action's authorization does not single-source from BA's
- * specific error code shape. BA also enforces `invitation:create`
- * (admin+owner) at the endpoint.
+ * Defense-in-depth: an explicit `isOrgAdmin(organizationId)` check runs
+ * first so the action's authorization does not single-source from BA's
+ * error code shape. BA also enforces `invitation:create` (admin+owner)
+ * at the endpoint and uses the supplied `body.organizationId` for both
+ * the permission check and the underlying insert.
  *
- * @param input - Optional target org id, recipient email, optional role.
+ * @param input - Target org id, recipient email, optional role.
  * @returns Discriminated result.
  */
 export async function inviteMemberAction(input: {
-  organizationId?: string;
+  organizationId: string;
   email: string;
   role?: "member" | "admin" | "owner";
 }): Promise<TeamActionResult> {
@@ -236,9 +231,7 @@ export async function inviteMemberAction(input: {
       body: {
         email: parsed.data.email,
         role: parsed.data.role ?? "member",
-        ...(parsed.data.organizationId !== undefined
-          ? { organizationId: parsed.data.organizationId }
-          : {}),
+        organizationId: parsed.data.organizationId,
       },
       headers: reqHeaders,
     });
@@ -496,10 +489,6 @@ export async function acceptEmailInvitationAction(input: {
       return teamFail("unknown");
     }
     const { organizationId } = shape.data.invitation;
-    await auth.api.setActiveOrganization({
-      body: { organizationId },
-      headers: reqHeaders,
-    });
     return { ok: true, data: { organizationId } };
   } catch (err) {
     const code = mapBetterAuthError(err);
