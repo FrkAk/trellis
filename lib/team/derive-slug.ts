@@ -1,5 +1,10 @@
 import { RESERVED_SLUGS, SLUG_MAX, SLUG_MIN } from './slug-rules';
 
+/** Random-suffixed fallback used when the input cannot produce a valid slug. */
+function fallbackSlug(): string {
+  return `team-${Date.now().toString(36).slice(-4)}`;
+}
+
 /**
  * Derive a URL-safe team slug from a free-form display name.
  *
@@ -13,8 +18,8 @@ export function deriveTeamSlug(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  if (!base || RESERVED_SLUGS.has(base)) return `team-${Date.now().toString(36).slice(-4)}`;
+  if (!base || RESERVED_SLUGS.has(base)) return fallbackSlug();
   const slug = base.slice(0, SLUG_MAX).replace(/-+$/, '');
-  if (slug.length < SLUG_MIN) return `${slug}${'0'.repeat(SLUG_MIN - slug.length)}`;
+  if (slug.length < SLUG_MIN) return fallbackSlug();
   return slug;
 }
