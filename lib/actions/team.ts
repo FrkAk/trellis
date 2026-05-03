@@ -14,6 +14,7 @@ import {
 import {
   RESERVED_SLUGS,
   SLUG_MAX,
+  SLUG_MIN,
   SLUG_PATTERN,
   TEAM_NAME_MAX,
 } from "@/lib/team/slug-rules";
@@ -23,7 +24,7 @@ const createTeamSchema = z.object({
   slug: z
     .string()
     .trim()
-    .min(2)
+    .min(SLUG_MIN)
     .max(SLUG_MAX)
     .regex(SLUG_PATTERN, "Slug must be lowercase alphanumeric with hyphens")
     .refine((s) => !RESERVED_SLUGS.has(s), {

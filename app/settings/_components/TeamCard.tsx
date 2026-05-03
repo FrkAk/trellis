@@ -178,7 +178,8 @@ export function TeamCard({
         </div>
         <p className="mt-1 truncate text-xs text-text-muted">
           {team.memberCount} {team.memberCount === 1 ? 'member' : 'members'} ·{' '}
-          {team.role === 'owner' ? 'Created' : 'Joined'} {formatAbsolute(team.createdAt)}
+          {team.role === 'owner' ? 'Created' : 'Joined'}{' '}
+          {formatAbsolute(team.role === 'owner' ? team.createdAt : team.joinedAt)}
         </p>
       </div>
 

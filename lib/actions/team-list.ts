@@ -5,22 +5,9 @@ import { db } from '@/lib/db';
 import { member, organization } from '@/lib/db/auth-schema';
 import { requireSession } from '@/lib/auth/session';
 import { teamFail, type TeamActionResult } from '@/lib/actions/team-errors';
+import { mapTeamViews, type TeamView } from '@/lib/actions/team-list-map';
 
-/**
- * Membership-enriched view of an organization the caller belongs to.
- * `auth.api.listOrganizations` returns only the org row — role and member
- * count are the caller's responsibility, hence this dedicated query.
- */
-export type TeamView = {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: Date;
-  /** Role of the caller within this team (member.role). */
-  role: string;
-  /** Total active members in the team. */
-  memberCount: number;
-};
+export type { TeamView } from '@/lib/actions/team-list-map';
 
 /**
  * List every team the caller is a member of, decorated with their role
@@ -44,7 +31,8 @@ export async function listUserTeamsAction(): Promise<TeamActionResult<TeamView[]
         organizationId: organization.id,
         name: organization.name,
         slug: organization.slug,
-        createdAt: organization.createdAt,
+        organizationCreatedAt: organization.createdAt,
+        membershipCreatedAt: member.createdAt,
         role: member.role,
       })
       .from(member)
@@ -66,14 +54,7 @@ export async function listUserTeamsAction(): Promise<TeamActionResult<TeamView[]
 
     const countByOrg = new Map(counts.map((c) => [c.organizationId, Number(c.memberCount)]));
 
-    const data: TeamView[] = memberships.map((m) => ({
-      id: m.organizationId,
-      name: m.name,
-      slug: m.slug,
-      createdAt: m.createdAt,
-      role: m.role,
-      memberCount: countByOrg.get(m.organizationId) ?? 1,
-    }));
+    const data = mapTeamViews(memberships, countByOrg);
 
     return { ok: true, data };
   } catch (err) {

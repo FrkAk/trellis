@@ -16,6 +16,9 @@ export const TEAM_NAME_MAX = 64;
 /** Maximum length of a team URL slug. */
 export const SLUG_MAX = 32;
 
+/** Minimum length of a team URL slug. */
+export const SLUG_MIN = 2;
+
 /** Allowed slug shape: lowercase alphanumeric with internal hyphens. */
 export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
