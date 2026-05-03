@@ -63,7 +63,7 @@ export default async function OnboardingTeamPage() {
             paste the 21-character invite code your team admin shared.
           </p>
         </div>
-        <OnboardingForm />
+        <OnboardingForm userName={session.user.name} />
       </div>
     </div>
   );
