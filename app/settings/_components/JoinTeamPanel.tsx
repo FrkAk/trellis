@@ -84,8 +84,6 @@ export function JoinTeamPanel({ onCancel, onJoined }: JoinTeamPanelProps) {
           name="invite-code"
           value={code}
           onChange={(event) => setCode(event.target.value)}
-          minLength={INVITE_CODE_LENGTH}
-          maxLength={INVITE_CODE_LENGTH}
           pattern={HTML_PATTERN}
           placeholder={PLACEHOLDER}
           className={INPUT_CLASS}

@@ -46,12 +46,18 @@ export function CreateTeamPanel({ onCancel, onCreated, userName }: CreateTeamPan
     setError(null);
     const slug = deriveTeamSlug(trimmed);
     startTransition(async () => {
-      const result = await createTeamAction({ name: trimmed, slug });
-      if (!result.ok) {
-        setError(result.message);
-        return;
+      try {
+        const result = await createTeamAction({ name: trimmed, slug });
+        if (!result.ok) {
+          setError(result.message);
+          return;
+        }
+        onCreated(result.data.organizationId);
+      } catch {
+        setError(
+          'Something went wrong reaching the server. Check your connection and try again.',
+        );
       }
-      onCreated(result.data.organizationId);
     });
   };
 

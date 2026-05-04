@@ -87,13 +87,13 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
       setJoining(false);
       setError(null);
       const refreshed = await refresh();
-      router.refresh();
       if (!refreshed) {
         setError(
           "You've been added to the team, but we couldn't refresh the list. Reload the page to see it.",
         );
         return;
       }
+      router.refresh();
       setGlowId(organizationId);
       window.setTimeout(() => setGlowId(null), 900);
     },
@@ -121,7 +121,7 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
             onClick={startCreating}
             disabled={creating}
           >
-            + New team
+            New team
           </Button>
         </div>
       </div>
@@ -158,9 +158,6 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
             />
           </motion.div>
         ) : null}
-      </AnimatePresence>
-
-      <AnimatePresence initial={false}>
         {joining ? (
           <motion.div
             key="join-panel"
