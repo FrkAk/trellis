@@ -10,6 +10,7 @@ import {
 } from '@/lib/actions/team-list';
 import { CreateTeamPanel } from './CreateTeamPanel';
 import { EmptyState } from './EmptyState';
+import { JoinTeamPanel } from './JoinTeamPanel';
 import { TeamCard } from './TeamCard';
 
 interface TeamsTabProps {
@@ -42,12 +43,33 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
   const router = useRouter();
   const [teams, setTeams] = useState<TeamView[]>(() => sortTeams(initialTeams));
   const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [glowId, setGlowId] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const startCreating = useCallback(() => {
+    setJoining(false);
+    setCreating(true);
+  }, []);
+
+  const startJoining = useCallback(() => {
+    setCreating(false);
+    setJoining(true);
+  }, []);
+
+  /**
+   * Re-fetch the user's teams and replace local state on success.
+   *
+   * @returns `true` if the list was refreshed, `false` if the action
+   *   failed. Callers must surface the failure when their UX depends on
+   *   the new state being visible — `router.refresh()` alone won't fix
+   *   it because `useState(initialTeams)` only seeds the first render.
+   */
+  const refresh = useCallback(async (): Promise<boolean> => {
     const result = await listUserTeamsAction();
-    if (result.ok) setTeams(sortTeams(result.data));
+    if (!result.ok) return false;
+    setTeams(sortTeams(result.data));
+    return true;
   }, []);
 
   const handleLeft = useCallback(
@@ -59,32 +81,49 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
     [router],
   );
 
-  const handleCreated = useCallback(
+  const handleAdded = useCallback(
     async (organizationId: string) => {
       setCreating(false);
+      setJoining(false);
       setError(null);
+      const refreshed = await refresh();
+      router.refresh();
+      if (!refreshed) {
+        setError(
+          "You've been added to the team, but we couldn't refresh the list. Reload the page to see it.",
+        );
+        return;
+      }
       setGlowId(organizationId);
       window.setTimeout(() => setGlowId(null), 900);
-      await refresh();
-      router.refresh();
     },
     [refresh, router],
   );
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
           Your teams · {teams.length}
         </p>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setCreating(true)}
-          disabled={creating}
-        >
-          + New team
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={startJoining}
+            disabled={joining}
+          >
+            Join team
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={startCreating}
+            disabled={creating}
+          >
+            + New team
+          </Button>
+        </div>
       </div>
 
       {teams.length > 0 ? (
@@ -114,14 +153,32 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
           >
             <CreateTeamPanel
               onCancel={() => setCreating(false)}
-              onCreated={handleCreated}
+              onCreated={handleAdded}
               userName={userName}
             />
           </motion.div>
         ) : null}
       </AnimatePresence>
 
-      {teams.length === 0 && !creating ? (
+      <AnimatePresence initial={false}>
+        {joining ? (
+          <motion.div
+            key="join-panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+            style={{ overflow: 'hidden' }}
+          >
+            <JoinTeamPanel
+              onCancel={() => setJoining(false)}
+              onJoined={handleAdded}
+            />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {teams.length === 0 && !creating && !joining ? (
         <EmptyState
           icon={
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-6 w-6">
@@ -129,11 +186,16 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
             </svg>
           }
           title="You're not in any teams yet"
-          body="Create a team to start a fresh workspace, or ask an admin for an invite code."
+          body="Create a team to start a fresh workspace, or join an existing one with an invite code from an admin."
           action={
-            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
-              Create your first team
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button variant="primary" size="sm" onClick={startCreating}>
+                Create your first team
+              </Button>
+              <Button variant="secondary" size="sm" onClick={startJoining}>
+                Join with code
+              </Button>
+            </div>
           }
         />
       ) : (
