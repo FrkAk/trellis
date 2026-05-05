@@ -39,6 +39,7 @@ import {
 import type { AuthContext } from "@/lib/auth/context";
 import {
   ForbiddenError,
+  InsufficientRoleError,
   assertProjectAccess,
   assertTaskAccess,
   isUuid,
@@ -268,24 +269,47 @@ export async function createProject(
   return project;
 }
 
-/** Fields an `updateProject` caller is allowed to change. */
+/** Fields an `updateProject` caller is allowed to change. `identifier`
+ * is intentionally excluded — renames must go through
+ * {@link renameProjectIdentifier} so they hold the per-org advisory lock. */
 export type ProjectUpdate = Partial<
   Pick<
     typeof projects.$inferInsert,
-    "title" | "description" | "status" | "categories" | "identifier"
+    "title" | "description" | "status" | "categories"
   >
 >;
 
+/** Fields callers must not change via `updateProject` — managed internally
+ * (history, timestamps, id), tenant-scoped (organizationId), or gated by a
+ * separate API (identifier → renameProjectIdentifier). Stripped at runtime
+ * from the input object before the spread to defeat mass-assignment via
+ * untyped or `as any` callers. */
+const PROTECTED_PROJECT_FIELDS = [
+  "id",
+  "organizationId",
+  "identifier",
+  "history",
+  "createdAt",
+  "updatedAt",
+] as const;
+
 /**
- * Update a project's fields. Intentionally NOT role-gated: members may
- * edit title, description, categories, and toggle status (active ↔
- * archived). Only `delete` and identifier `rename` require admin/owner —
- * those gates live on {@link deleteProject} and
- * {@link renameProjectIdentifier}.
+ * Update a project's fields. Intentionally NOT role-gated for the
+ * member-editable subset (title, description, categories, status); only
+ * `delete` and identifier `rename` require admin/owner, and those gates
+ * live on {@link deleteProject} and {@link renameProjectIdentifier}.
+ *
+ * Defense in depth: the {@link ProjectUpdate} type erases at runtime, so
+ * this function additionally rejects `changes.identifier` with
+ * {@link InsufficientRoleError} (callers must use
+ * {@link renameProjectIdentifier}) and strips every key in
+ * {@link PROTECTED_PROJECT_FIELDS} before forwarding to Drizzle.
+ *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
  * @param changes - Typed subset of project fields to update.
  * @returns The updated project row.
+ * @throws {InsufficientRoleError} If `changes.identifier` is set.
  */
 export async function updateProject(
   ctx: AuthContext,
@@ -294,16 +318,22 @@ export async function updateProject(
 ) {
   await assertProjectAccess(projectId, ctx);
 
-  if (typeof changes.description === "string" && changes.description.trim()) {
-    changes = {
-      ...changes,
-      description:
-        (await formatMarkdown(changes.description)) ?? changes.description,
-    };
+  const incoming = changes as Record<string, unknown>;
+  if (incoming.identifier !== undefined) {
+    throw new InsufficientRoleError(["rename"], "project", projectId);
+  }
+  const safe: Record<string, unknown> = { ...incoming };
+  for (const key of PROTECTED_PROJECT_FIELDS) {
+    if (key in safe) delete safe[key];
+  }
+
+  if (typeof safe.description === "string" && safe.description.trim()) {
+    const formatted = await formatMarkdown(safe.description);
+    safe.description = formatted ?? safe.description;
   }
   const [updated] = await db
     .update(projects)
-    .set({ ...changes, updatedAt: new Date() })
+    .set({ ...safe, updatedAt: new Date() })
     .where(eq(projects.id, projectId))
     .returning();
   notifyChange();

@@ -7,6 +7,7 @@
 import {
   createProject,
   updateProject,
+  renameProjectIdentifier,
   createTask,
   updateTask,
   deleteTask,
@@ -488,12 +489,22 @@ export async function handleProject(
         if (p.description !== undefined) changes.description = p.description;
         if (p.status !== undefined) changes.status = p.status;
         if (p.categories !== undefined) changes.categories = p.categories;
+
+        let project: Awaited<ReturnType<typeof updateProject>> | undefined;
         if (p.identifier !== undefined) {
           const parsed = parseIdentifier(p.identifier);
           if (!parsed.ok) return fail(parsed.error);
-          changes.identifier = parsed.value;
+          project = await renameProjectIdentifier(ctx, p.projectId, parsed.value);
         }
-        const project = await updateProject(ctx, p.projectId, changes);
+        if (Object.keys(changes).length > 0) {
+          project = await updateProject(ctx, p.projectId, changes);
+        }
+        if (!project) {
+          return fail(
+            "update requires at least one of: title, description, status, categories, identifier.",
+          );
+        }
+
         const updateHints: string[] = [];
         if (p.identifier !== undefined) {
           updateHints.push(
