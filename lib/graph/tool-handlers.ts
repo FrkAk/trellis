@@ -7,6 +7,7 @@
 import {
   createProject,
   updateProject,
+  renameProjectIdentifier,
   createTask,
   updateTask,
   deleteTask,
@@ -45,6 +46,7 @@ import {
 import type { EdgeType, Decision } from "@/lib/types";
 import { parseIdentifier } from "@/lib/graph/identifier";
 import type { ProjectUpdate, TaskUpdate } from "@/lib/graph/_core/mutations";
+import type { Project } from "@/lib/db/schema";
 import {
   MultiTeamAmbiguityError,
   NoTeamMembershipError,
@@ -488,12 +490,17 @@ export async function handleProject(
         if (p.description !== undefined) changes.description = p.description;
         if (p.status !== undefined) changes.status = p.status;
         if (p.categories !== undefined) changes.categories = p.categories;
+
+        let project: Project | undefined;
         if (p.identifier !== undefined) {
           const parsed = parseIdentifier(p.identifier);
           if (!parsed.ok) return fail(parsed.error);
-          changes.identifier = parsed.value;
+          project = await renameProjectIdentifier(ctx, p.projectId, parsed.value);
         }
-        const project = await updateProject(ctx, p.projectId, changes);
+        if (Object.keys(changes).length > 0) {
+          project = await updateProject(ctx, p.projectId, changes);
+        }
+
         const updateHints: string[] = [];
         if (p.identifier !== undefined) {
           updateHints.push(
