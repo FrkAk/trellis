@@ -46,6 +46,7 @@ import {
 import type { EdgeType, Decision } from "@/lib/types";
 import { parseIdentifier } from "@/lib/graph/identifier";
 import type { ProjectUpdate, TaskUpdate } from "@/lib/graph/_core/mutations";
+import type { Project } from "@/lib/db/schema";
 import {
   MultiTeamAmbiguityError,
   NoTeamMembershipError,
@@ -490,7 +491,7 @@ export async function handleProject(
         if (p.status !== undefined) changes.status = p.status;
         if (p.categories !== undefined) changes.categories = p.categories;
 
-        let project: Awaited<ReturnType<typeof updateProject>> | undefined;
+        let project: Project | undefined;
         if (p.identifier !== undefined) {
           const parsed = parseIdentifier(p.identifier);
           if (!parsed.ok) return fail(parsed.error);
@@ -498,11 +499,6 @@ export async function handleProject(
         }
         if (Object.keys(changes).length > 0) {
           project = await updateProject(ctx, p.projectId, changes);
-        }
-        if (!project) {
-          return fail(
-            "update requires at least one of: title, description, status, categories, identifier.",
-          );
         }
 
         const updateHints: string[] = [];
