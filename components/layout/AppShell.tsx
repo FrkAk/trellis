@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
 import { getProjectList } from '@/lib/graph/queries';
@@ -6,6 +7,9 @@ import { listUserTeamsAction } from '@/lib/actions/team-list';
 import { Sidebar, type SidebarProject, type SidebarTeam, type SidebarUser } from '@/components/layout/Sidebar';
 import { WorkspaceLabelProvider } from '@/components/layout/WorkspaceLabelProvider';
 import { SidebarCollapseProvider } from '@/components/layout/SidebarCollapseProvider';
+
+/** Cookie that persists the sidebar collapse preference. Mirrors the constant in `SidebarCollapseProvider`. */
+const SIDEBAR_COLLAPSE_COOKIE = 'mymir-sidebar-collapsed';
 
 interface AppShellProps {
   /** @param children - Page content rendered inside the main column. */
@@ -29,10 +33,13 @@ export async function AppShell({ children }: AppShellProps) {
   const session = await getSession();
   if (!session) redirect('/sign-in');
 
-  const [projects, teamsResult] = await Promise.all([
+  const [projects, teamsResult, cookieStore] = await Promise.all([
     getProjectList(),
     listUserTeamsAction(),
+    cookies(),
   ]);
+  const initialSidebarCollapsed =
+    cookieStore.get(SIDEBAR_COLLAPSE_COOKIE)?.value === '1';
 
   const teams = teamsResult.ok ? teamsResult.data : [];
   const sidebarProjects: SidebarProject[] = projects.map((p) => ({
@@ -54,7 +61,7 @@ export async function AppShell({ children }: AppShellProps) {
 
   return (
     <WorkspaceLabelProvider value={workspaceLabel}>
-      <SidebarCollapseProvider>
+      <SidebarCollapseProvider initialCollapsed={initialSidebarCollapsed}>
         <div className="flex h-[var(--viewport-height)] overflow-hidden">
           <Sidebar user={user} workspaceLabel={workspaceLabel} projects={sidebarProjects} teams={sidebarTeams} />
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden">

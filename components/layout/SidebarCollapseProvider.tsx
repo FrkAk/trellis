@@ -4,13 +4,14 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 
-/** localStorage key for the sidebar collapsed-state preference. */
-const STORAGE_KEY = 'mymir:sidebar-collapsed';
+/** Cookie name for the sidebar collapsed-state preference. Server-readable so SSR can render the correct width on first paint and avoid a hydration flash. */
+const COOKIE_NAME = 'mymir-sidebar-collapsed';
+/** Cookie max-age in seconds (1 year). */
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 interface SidebarCollapseValue {
   /** Whether the sidebar is currently collapsed to its icon-only rail. */
@@ -23,21 +24,79 @@ interface SidebarCollapseValue {
 
 const SidebarCollapseContext = createContext<SidebarCollapseValue | null>(null);
 
+const listeners = new Set<() => void>();
+let cachedValue: boolean | null = null;
+
 /**
- * Read the persisted collapsed-state preference with a safe SSR fallback.
+ * Read the persisted value from `document.cookie`. Browser-only.
  *
- * @returns `true` when the sidebar should start collapsed.
+ * @returns `true` when the cookie marks the sidebar as collapsed.
  */
-function readInitialCollapsed(): boolean {
-  if (typeof window === 'undefined') return false;
+function readCookie(): boolean {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === '1';
+    const match = document.cookie.match(
+      new RegExp(`(?:^|; )${COOKIE_NAME}=([^;]*)`),
+    );
+    return match?.[1] === '1';
   } catch {
     return false;
   }
 }
 
+/**
+ * Write the persisted value to `document.cookie`. Browser-only.
+ *
+ * @param next - The new collapse state.
+ */
+function writeCookie(next: boolean): void {
+  try {
+    document.cookie = `${COOKIE_NAME}=${next ? '1' : '0'}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`;
+  } catch {
+    /* swallow cookie errors — preference is non-critical */
+  }
+}
+
+/**
+ * Subscribe to in-tab collapse-state changes. Updates from other tabs would
+ * require a `BroadcastChannel`; cross-tab sync is intentionally out of scope.
+ *
+ * @param onStoreChange - Notification callback from {@link useSyncExternalStore}.
+ * @returns Unsubscribe function.
+ */
+function subscribe(onStoreChange: () => void): () => void {
+  listeners.add(onStoreChange);
+  return () => {
+    listeners.delete(onStoreChange);
+  };
+}
+
+/**
+ * Read the cached collapse state, lazily loading from the cookie on first
+ * access. Cached so {@link useSyncExternalStore}'s repeated `getSnapshot`
+ * calls return a referentially stable value.
+ *
+ * @returns `true` when the sidebar should render collapsed.
+ */
+function getClientSnapshot(): boolean {
+  if (cachedValue !== null) return cachedValue;
+  cachedValue = readCookie();
+  return cachedValue;
+}
+
+/**
+ * Persist a new collapse state and broadcast to in-tab subscribers.
+ *
+ * @param next - The new collapse state.
+ */
+function persist(next: boolean): void {
+  cachedValue = next;
+  writeCookie(next);
+  listeners.forEach((l) => l());
+}
+
 interface SidebarCollapseProviderProps {
+  /** Initial collapse state read from the cookie on the server. */
+  initialCollapsed: boolean;
   /** @param children - Subtree that can read/update the collapsed state. */
   children: ReactNode;
 }
@@ -46,25 +105,31 @@ interface SidebarCollapseProviderProps {
  * Client provider exposing the sidebar collapse toggle to any descendant.
  * Mounted by the (server) {@link AppShell} so the {@link Sidebar} chevron
  * and the in-canvas fold button stay in sync without explicit prop drilling.
- * Persists to `localStorage` so the preference survives navigation.
+ *
+ * Uses {@link useSyncExternalStore} with a server snapshot derived from the
+ * `mymir-sidebar-collapsed` cookie — SSR renders the persisted width
+ * directly, so refreshing on a collapsed sidebar paints collapsed-first
+ * with no flash.
  *
  * @param props - Provider configuration.
  * @returns Context provider element.
  */
-export function SidebarCollapseProvider({ children }: SidebarCollapseProviderProps) {
-  const [collapsed, setCollapsedState] = useState<boolean>(() => readInitialCollapsed());
+export function SidebarCollapseProvider({
+  initialCollapsed,
+  children,
+}: SidebarCollapseProviderProps) {
+  const collapsed = useSyncExternalStore(
+    subscribe,
+    getClientSnapshot,
+    () => initialCollapsed,
+  );
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
-    } catch {
-      /* swallow storage errors — preference is non-critical */
-    }
-  }, [collapsed]);
-
-  const toggle = useCallback(() => setCollapsedState((c) => !c), []);
-  const setCollapsed = useCallback((next: boolean) => setCollapsedState(next), []);
+  const toggle = useCallback(() => {
+    persist(!getClientSnapshot());
+  }, []);
+  const setCollapsed = useCallback((next: boolean) => {
+    persist(next);
+  }, []);
 
   return (
     <SidebarCollapseContext value={{ collapsed, toggle, setCollapsed }}>
