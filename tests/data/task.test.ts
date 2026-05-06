@@ -39,6 +39,30 @@ test("concurrent updateTask calls preserve every history entry", async () => {
   expect(final.history.length).toBe(7);
 });
 
+test("concurrent updateTask calls preserve every appended decision", async () => {
+  const f = await seedUserOrgProject("decisionrace");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  // Fire 5 concurrent updates, each appending one unique decision.
+  const calls = Array.from({ length: 5 }, (_, i) =>
+    updateTask(ctx, task.id, { decisions: [`Decision ${i}`] }),
+  );
+  await Promise.all(calls);
+
+  const final = await getTaskFull(ctx, task.id);
+  const decisions = final.decisions as { text: string }[];
+  expect(decisions.length).toBe(5);
+  const texts = decisions.map((d) => d.text).sort();
+  expect(texts).toEqual([
+    "Decision 0",
+    "Decision 1",
+    "Decision 2",
+    "Decision 3",
+    "Decision 4",
+  ]);
+});
+
 test("searchTasksPaged paginates by (order, id) cursor", async () => {
   const f = await seedUserOrgProject("searchpage");
   const ctx = makeAuthContext(f.userId);

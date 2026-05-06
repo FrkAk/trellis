@@ -33,9 +33,6 @@ const isNeon = (): boolean => process.env.MYMIR_DB_DRIVER === "neon";
  */
 function buildAppDb(): AppDb {
   const url = process.env.DATABASE_URL!;
-  console.log(
-    `[mymir/db] buildAppDb fired driver=${isNeon() ? "neon" : "postgres-js"} ts=${new Date().toISOString()}`,
-  );
   if (isNeon()) {
     const pool = new NeonPool({ connectionString: url });
     return drizzleNeon(pool, { schema: appSchema }) as unknown as AppDb;
@@ -50,9 +47,6 @@ function buildAppDb(): AppDb {
  */
 function buildAuthDb(): AuthDb {
   const url = process.env.DATABASE_URL!;
-  console.log(
-    `[mymir/db] buildAuthDb fired driver=${isNeon() ? "neon" : "postgres-js"} ts=${new Date().toISOString()}`,
-  );
   if (isNeon()) {
     const pool = new NeonPool({ connectionString: url });
     return drizzleNeon(pool, { schema: authSchema }) as unknown as AuthDb;

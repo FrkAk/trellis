@@ -17,6 +17,7 @@ import {
   findMemberById,
   previewTeamDelete,
 } from "@/lib/data/membership";
+import { parseMemberRoles } from "@/lib/auth/permissions";
 import {
   RESERVED_SLUGS,
   SLUG_MAX,
@@ -102,40 +103,6 @@ const updateTeamSchema = z
 const deleteTeamSchema = z.object({
   organizationId: uuidSchema,
 });
-
-/**
- * Parse a Better Auth `member.role` value and return the set of role
- * names it carries. BA 1.6.x stores roles as a comma-separated string
- * (`"owner"`, `"owner,admin"`); a future serializer change to a JSON
- * array (`'["owner","admin"]'`) is tolerated by attempting JSON parse
- * first and falling back to the comma split. Whitespace and empty
- * fragments are stripped.
- *
- * Pinned against `better-auth@1.6.x crud-members.mjs:255`.
- *
- * @param role - Raw `member.role` string from the DB.
- * @returns Lowercased role names present on the member.
- */
-function parseMemberRoles(role: string): string[] {
-  const trimmed = role.trim();
-  if (trimmed.startsWith("[")) {
-    try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) {
-        return parsed
-          .filter((v): v is string => typeof v === "string")
-          .map((v) => v.trim())
-          .filter((v) => v.length > 0);
-      }
-    } catch {
-      // fall through to comma split
-    }
-  }
-  return trimmed
-    .split(",")
-    .map((v) => v.trim())
-    .filter((v) => v.length > 0);
-}
 
 /** Convenience: does `role` carry the `owner` grant? */
 function roleIncludesOwner(role: string): boolean {

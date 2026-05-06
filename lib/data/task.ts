@@ -18,6 +18,7 @@ import type { AuthContext } from "@/lib/auth/context";
 import {
   assertProjectAccess,
   assertTaskAccess,
+  ForbiddenError,
 } from "@/lib/auth/authorization";
 import {
   decodeOrderCursor,
@@ -903,7 +904,7 @@ export async function updateTask(
   input: TaskUpdate,
   overwriteArrays = false,
 ) {
-  const current = await assertTaskAccess(taskId, ctx);
+  await assertTaskAccess(taskId, ctx);
 
   let changes: Record<string, unknown> = { ...input };
   for (const key of PROTECTED_TASK_FIELDS) {
@@ -948,61 +949,76 @@ export async function updateTask(
 
   changes = await formatTaskMarkdownFields(changes);
 
-  if (!overwriteArrays) {
-    if (Array.isArray(changes.decisions)) {
-      const existing = (current.decisions ?? []) as Record<string, unknown>[];
-      const incoming = changes.decisions as Record<string, unknown>[];
-      const incomingIds = new Set(incoming.map((c) => c.id));
-      const incomingTexts = new Set(incoming.map((c) => c.text));
-      changes.decisions = [
-        ...existing.filter(
-          (c) => !incomingIds.has(c.id) && !incomingTexts.has(c.text),
-        ),
-        ...incoming,
-      ];
-    }
-    if (Array.isArray(changes.acceptanceCriteria)) {
-      const existing = (current.acceptanceCriteria ?? []) as Record<
-        string,
-        unknown
-      >[];
-      const incoming = changes.acceptanceCriteria as Record<string, unknown>[];
-      const incomingIds = new Set(incoming.map((c) => c.id));
-      const incomingTexts = new Set(incoming.map((c) => c.text));
-      changes.acceptanceCriteria = [
-        ...existing.filter(
-          (c) => !incomingIds.has(c.id) && !incomingTexts.has(c.text),
-        ),
-        ...incoming,
-      ];
-    }
-    if (Array.isArray(changes.files)) {
-      const existing = (current.files ?? []) as string[];
-      const merged = new Set([...existing, ...(changes.files as string[])]);
-      changes.files = [...merged];
-    }
-  }
+  const updated = await db.transaction(async (tx) => {
+    // Re-read the row under FOR UPDATE so the merge sees the committed
+    // state from any concurrent updateTask. Without the lock, two callers
+    // both reading from outside the tx would compute their merged arrays
+    // against the same baseline and the second write would clobber the
+    // first's contribution.
+    const [current] = await tx
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .for("update");
+    if (!current) throw new ForbiddenError("Forbidden", "task", taskId);
 
-  const isStatusChange =
-    "status" in changes && current.status !== changes.status;
-  const entry = makeHistoryEntry({
-    type: isStatusChange ? "status_change" : "refined",
-    label: isStatusChange
-      ? `Status: ${current.status} → ${changes.status}`
-      : "Task updated",
-    description: `Updated task fields: ${Object.keys(changes).join(", ")}.`,
-    actor: "ai",
+    if (!overwriteArrays) {
+      if (Array.isArray(changes.decisions)) {
+        const existing = (current.decisions ?? []) as Record<string, unknown>[];
+        const incoming = changes.decisions as Record<string, unknown>[];
+        const incomingIds = new Set(incoming.map((c) => c.id));
+        const incomingTexts = new Set(incoming.map((c) => c.text));
+        changes.decisions = [
+          ...existing.filter(
+            (c) => !incomingIds.has(c.id) && !incomingTexts.has(c.text),
+          ),
+          ...incoming,
+        ];
+      }
+      if (Array.isArray(changes.acceptanceCriteria)) {
+        const existing = (current.acceptanceCriteria ?? []) as Record<
+          string,
+          unknown
+        >[];
+        const incoming = changes.acceptanceCriteria as Record<string, unknown>[];
+        const incomingIds = new Set(incoming.map((c) => c.id));
+        const incomingTexts = new Set(incoming.map((c) => c.text));
+        changes.acceptanceCriteria = [
+          ...existing.filter(
+            (c) => !incomingIds.has(c.id) && !incomingTexts.has(c.text),
+          ),
+          ...incoming,
+        ];
+      }
+      if (Array.isArray(changes.files)) {
+        const existing = (current.files ?? []) as string[];
+        const merged = new Set([...existing, ...(changes.files as string[])]);
+        changes.files = [...merged];
+      }
+    }
+
+    const isStatusChange =
+      "status" in changes && current.status !== changes.status;
+    const entry = makeHistoryEntry({
+      type: isStatusChange ? "status_change" : "refined",
+      label: isStatusChange
+        ? `Status: ${current.status} → ${changes.status}`
+        : "Task updated",
+      description: `Updated task fields: ${Object.keys(changes).join(", ")}.`,
+      actor: "ai",
+    });
+
+    const [row] = await tx
+      .update(tasks)
+      .set({
+        ...changes,
+        history: sql`${tasks.history} || ${JSON.stringify([entry])}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, taskId))
+      .returning();
+    return row;
   });
-
-  const [updated] = await db
-    .update(tasks)
-    .set({
-      ...changes,
-      history: sql`${tasks.history} || ${JSON.stringify([entry])}::jsonb`,
-      updatedAt: new Date(),
-    })
-    .where(eq(tasks.id, taskId))
-    .returning();
 
   notifyChange();
   return updated;

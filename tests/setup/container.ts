@@ -20,7 +20,7 @@ export async function startContainer(): Promise<string> {
   if (globalThis.__mymirTestUrl) return globalThis.__mymirTestUrl;
   // Use log-message wait strategy: the default health-check + port-check
   // strategy uses `docker exec` streams which hang in Bun's runtime.
-  const container = await new PostgreSqlContainer("postgres:17")
+  const container = await new PostgreSqlContainer("postgres:17.6")
     .withDatabase("mymir_test")
     .withUsername("mymir")
     .withPassword("mymir")
