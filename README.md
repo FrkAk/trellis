@@ -205,14 +205,6 @@ Zoom out and the full graph renders your entire context network. Clusters, bottl
 
 ---
 
-## How is it going
-
-69 of 106 tasks done. We are almost there.
-
-![Progress](assets/progress.png)
-
----
-
 ## What's coming
 
 We're working on a hosted version for those who want the full experience without the setup. Run from anywhere, access your team's projects, collaborate across sessions. Privacy is a core value, which is why it's taking longer than usual to get right.
