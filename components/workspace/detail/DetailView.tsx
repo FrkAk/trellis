@@ -125,7 +125,7 @@ export function DetailView({
               neighbors={neighbors}
               downstream={downstream}
               decisions={task.decisions ?? []}
-              files={(task.files as string[] | null) ?? []}
+              files={Array.from(new Set((task.files as string[] | null) ?? []))}
               executionRecord={task.executionRecord}
               bundles={bundles}
               onSelectTask={onSelectNode}

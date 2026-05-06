@@ -309,7 +309,7 @@ export default function WorkspacePage() {
       projectTags={projectTags}
       edges={taskEdges}
       taskMap={taskMap}
-      files={(selectedTask.files as string[] | null) ?? []}
+      files={Array.from(new Set((selectedTask.files as string[] | null) ?? []))}
       projectIdentifier={graph.identifier}
       projectName={graph.title}
       onSelectNode={handleSelectNode}
