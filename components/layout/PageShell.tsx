@@ -10,14 +10,17 @@ interface PageShellProps {
 }
 
 /**
- * Centered page container with TopBar offset padding.
+ * Centered page container that fills the AppShell main column. TopBar is
+ * now in flow at the top of the column so no top offset is required.
  * @param props - Page shell configuration.
- * @returns A centered content container element.
+ * @returns A scrollable content container element with a centered max-width inner.
  */
 export function PageShell({ children, className = '' }: PageShellProps) {
   return (
-    <div className={`mx-auto max-w-3xl lg:max-w-4xl xl:max-w-5xl px-4 sm:px-6 lg:px-8 pt-[74px] pb-12 ${className}`}>
-      {children}
+    <div className="flex-1 overflow-y-auto">
+      <div className={`mx-auto max-w-3xl px-4 pb-12 pt-6 sm:px-6 lg:max-w-4xl lg:px-8 xl:max-w-5xl ${className}`}>
+        {children}
+      </div>
     </div>
   );
 }

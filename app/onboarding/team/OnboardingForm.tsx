@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Button } from "@/components/shared/Button";
+import { motion } from "motion/react";
 import { TabSwitcher } from "@/components/shared/TabSwitcher";
+import { AuthInput } from "@/components/auth/AuthInput";
+import { AuthSubmit } from "@/components/auth/AuthSubmit";
 import {
   INVITE_CODE_ALPHABET_PATTERN_SOURCE,
   INVITE_CODE_LENGTH,
@@ -12,24 +14,27 @@ import { acceptInviteCode, createTeam } from "./actions";
 const INVITE_CODE_HTML_PATTERN = `${INVITE_CODE_ALPHABET_PATTERN_SOURCE}{${INVITE_CODE_LENGTH}}`;
 const INVITE_CODE_PLACEHOLDER = "8K3jH-pX9_aW2nQ7vB4mF";
 
-/** Personalize the team-name placeholder using the caller's first name. */
+/**
+ * Build the team-name placeholder from the caller's first name.
+ *
+ * @param name - Caller display name; may be null/undefined.
+ * @returns "{Name}'s Team" or a generic fallback.
+ */
 function teamNamePlaceholder(name: string | null | undefined): string {
   const first = name?.trim().split(/\s+/)[0];
   return first ? `${first}'s Team` : "My Team";
 }
 
-/** Slug placeholder mirrors the team-name placeholder, lowercased and hyphenated. */
+/**
+ * Build the slug placeholder — the team-name placeholder lowercased and hyphenated.
+ *
+ * @param name - Caller display name; may be null/undefined.
+ * @returns "{name}-team" or a generic fallback.
+ */
 function slugPlaceholder(name: string | null | undefined): string {
   const first = name?.trim().split(/\s+/)[0]?.toLowerCase();
   return first ? `${first}-team` : "my-team";
 }
-
-const INPUT_CLASS =
-  "w-full rounded-lg border border-border-strong bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
-
-const LABEL_CLASS = "mb-1 block text-xs font-medium text-text-secondary";
-
-const HELP_CLASS = "mt-1 block text-xs text-text-muted";
 
 const TABS = [
   { id: "create", label: "Create team" },
@@ -48,6 +53,7 @@ interface OnboardingFormProps {
  * existing one with a 21-char invite code. Both branches dispatch to
  * server actions in `./actions.ts` which delegate to `lib/actions/team.ts`
  * and `lib/actions/team-invite-code.ts`.
+ *
  * @param props - Optional caller display name for personalized placeholders.
  * @returns Card-shaped form panel with create/join tabs.
  */
@@ -58,6 +64,7 @@ export function OnboardingForm({ userName }: OnboardingFormProps = {}) {
 
   /**
    * Switch tabs and clear any stale error from the previous tab.
+   *
    * @param next - Tab id to activate.
    */
   function handleTabChange(next: string) {
@@ -66,7 +73,14 @@ export function OnboardingForm({ userName }: OnboardingFormProps = {}) {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-card)]">
+    <div
+      className="rounded-[10px] border p-5"
+      style={{
+        background: "var(--color-surface)",
+        borderColor: "var(--color-border)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
       <TabSwitcher
         tabs={[...TABS]}
         activeTab={tab}
@@ -75,66 +89,56 @@ export function OnboardingForm({ userName }: OnboardingFormProps = {}) {
         className="mb-5"
       />
 
-      {tab === "create" ? (
-        <form
-          action={(formData) => {
-            const name = String(formData.get("name") ?? "");
-            const slug = String(formData.get("slug") ?? "");
-            startTransition(async () => {
-              const result = await createTeam({ name, slug });
-              if (!result.ok) setError(result.message);
-            });
-          }}
-          className="space-y-4"
-        >
-          <label className="block">
-            <span className={LABEL_CLASS}>Team name</span>
-            <input
+      <motion.div
+        layout
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        style={{ overflow: "hidden" }}
+      >
+        {tab === "create" ? (
+          <form
+            action={(formData) => {
+              const name = String(formData.get("name") ?? "");
+              const slug = String(formData.get("slug") ?? "");
+              startTransition(async () => {
+                const result = await createTeam({ name, slug });
+                if (!result.ok) setError(result.message);
+              });
+            }}
+            className="flex flex-col gap-3"
+          >
+            <AuthInput
+              label="Team name"
               name="name"
               required
               maxLength={64}
               placeholder={teamNamePlaceholder(userName)}
-              className={INPUT_CLASS}
             />
-          </label>
-          <label className="block">
-            <span className={LABEL_CLASS}>URL slug</span>
-            <input
+            <AuthInput
+              label="URL slug"
               name="slug"
               required
               minLength={2}
               maxLength={32}
               pattern="[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
               placeholder={slugPlaceholder(userName)}
-              className={`${INPUT_CLASS} font-mono`}
+              hint="Lowercase letters, digits, hyphens. 2–32 characters."
+              className="font-mono"
             />
-            <span className={HELP_CLASS}>
-              Lowercase letters, digits, hyphens. 2–32 characters.
-            </span>
-          </label>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={pending}
-            className="w-full"
+            <AuthSubmit isLoading={pending}>Create team</AuthSubmit>
+          </form>
+        ) : (
+          <form
+            action={(formData) => {
+              const code = String(formData.get("code") ?? "");
+              startTransition(async () => {
+                const result = await acceptInviteCode({ code });
+                if (!result.ok) setError(result.message);
+              });
+            }}
+            className="flex flex-col gap-3"
           >
-            Create team
-          </Button>
-        </form>
-      ) : (
-        <form
-          action={(formData) => {
-            const code = String(formData.get("code") ?? "");
-            startTransition(async () => {
-              const result = await acceptInviteCode({ code });
-              if (!result.ok) setError(result.message);
-            });
-          }}
-          className="space-y-4"
-        >
-          <label className="block">
-            <span className={LABEL_CLASS}>Invite code</span>
-            <input
+            <AuthInput
+              label="Invite code"
               name="code"
               required
               minLength={INVITE_CODE_LENGTH}
@@ -143,27 +147,24 @@ export function OnboardingForm({ userName }: OnboardingFormProps = {}) {
               autoComplete="off"
               spellCheck={false}
               placeholder={INVITE_CODE_PLACEHOLDER}
-              className={`${INPUT_CLASS} font-mono tracking-wider`}
+              hint="Paste the 21-character invite code your team admin shared."
+              className="font-mono tracking-wider"
             />
-            <span className={HELP_CLASS}>
-              Paste the 21-character invite code your team admin shared.
-            </span>
-          </label>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={pending}
-            className="w-full"
-          >
-            Join team
-          </Button>
-        </form>
-      )}
+            <AuthSubmit isLoading={pending}>Join team</AuthSubmit>
+          </form>
+        )}
+      </motion.div>
 
       {error && (
         <p
           role="alert"
-          className="mt-4 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger"
+          className="mt-4 rounded-md border px-3 py-2 text-[12px] text-danger"
+          style={{
+            background:
+              "color-mix(in srgb, var(--color-danger) 10%, transparent)",
+            borderColor:
+              "color-mix(in srgb, var(--color-danger) 24%, transparent)",
+          }}
         >
           {error}
         </p>

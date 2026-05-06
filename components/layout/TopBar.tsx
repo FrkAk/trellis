@@ -1,123 +1,128 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/layout/ThemeProvider';
 import { ProjectBreadcrumb } from '@/components/layout/ProjectBreadcrumb';
-import { signOut } from '@/lib/auth-client';
+import { Kbd } from '@/components/shared/Kbd';
+import {
+  IconMoon,
+  IconSearch,
+  IconSun,
+} from '@/components/shared/icons';
 
 interface TopBarProps {
-  /** @param projectName - Optional breadcrumb project name. */
+  /** @param projectName - Optional project crumb label. When set, renders the project breadcrumb pill. */
   projectName?: string;
-  /** @param stageLabel - Optional center stage label (e.g. task counts). */
-  stageLabel?: string;
-  /** @param taskStats - Optional center task completion stats. */
-  taskStats?: string;
-  /** @param projectId - Optional project UUID. Required alongside onOpenProjectSettings for the settings trigger. */
+  /** @param projectId - Project UUID. Required alongside `onOpenProjectSettings` for the settings trigger. */
   projectId?: string;
   /** @param projectStatus - Optional project lifecycle status for the inline chip. */
   projectStatus?: string;
-  /** @param team - Optional owning team. Forwarded to the breadcrumb so the team chip leads the pill. */
+  /** @param team - Optional owning team. Forwarded to {@link ProjectBreadcrumb}. */
   team?: { id: string; name: string };
-  /** @param onOpenProjectSettings - Called when the project breadcrumb button is clicked. */
+  /** @param onOpenProjectSettings - Called when the project crumb is clicked. */
   onOpenProjectSettings?: () => void;
+  /** @param pageLabel - Optional override for the leading non-project crumb (defaults derive from pathname). */
+  pageLabel?: string;
 }
 
 /**
- * Fixed top navigation bar with logo, breadcrumb, theme toggle, and sign-out button.
+ * In-flow top bar that sits at the head of the main column inside
+ * {@link AppShell}. Renders the workspace breadcrumb (when available),
+ * an optional page or project crumb, and the right-side action cluster
+ * (Jump, theme toggle, avatar).
+ *
  * @param props - TopBar configuration.
- * @returns A fixed-position navigation bar element.
+ * @returns Sticky header element styled per the design spec.
  */
-export function TopBar({ projectName, stageLabel, taskStats, projectId, projectStatus, team, onOpenProjectSettings }: TopBarProps) {
+export function TopBar({
+  projectName,
+  projectId,
+  projectStatus,
+  team,
+  onOpenProjectSettings,
+  pageLabel,
+}: TopBarProps) {
   const { theme, setTheme } = useTheme();
-  const router = useRouter();
+  const pathname = usePathname() ?? '/';
+
+  const derivedPageLabel = derivePageLabel({ projectName, pageLabel, pathname });
 
   /** Toggle between light and dark theme and persist the choice. */
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
-  /** Sign out and redirect to sign-in page. */
-  const handleSignOut = async () => {
-    await signOut();
-    router.replace('/sign-in');
-  };
-
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex h-14 items-center bg-base/80 backdrop-blur-md pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-      <div className="flex w-full items-center justify-between px-4 sm:px-6">
-        {/* Left: Logo + breadcrumb */}
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-text-primary text-lg font-semibold tracking-tight no-underline">
-            mymir
-          </Link>
-          {projectName && (
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-text-muted">/</span>
-              {projectId && onOpenProjectSettings ? (
-                <ProjectBreadcrumb
-                  projectName={projectName}
-                  projectStatus={projectStatus}
-                  team={team}
-                  onOpenSettings={onOpenProjectSettings}
-                />
-              ) : (
-                <span className="text-sm text-text-secondary">{projectName}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Center: Phase info */}
-        {(stageLabel || taskStats) && (
-          <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-3 font-mono text-xs text-text-muted">
-            {stageLabel && <span>{stageLabel}</span>}
-            {taskStats && <span>{taskStats}</span>}
-          </div>
+    <header
+      className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-base/80 px-3 backdrop-blur-md"
+      style={{ height: 'var(--topbar-h)' }}
+    >
+      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5">
+        {projectName && (
+          projectId && onOpenProjectSettings ? (
+            <ProjectBreadcrumb
+              projectName={projectName}
+              projectStatus={projectStatus}
+              team={team}
+              onOpenSettings={onOpenProjectSettings}
+            />
+          ) : (
+            <span className="truncate text-[13px] font-semibold text-text-primary">
+              {projectName}
+            </span>
+          )
         )}
+        {!projectName && derivedPageLabel && (
+          <span className="truncate text-[13px] font-semibold text-text-primary">
+            {derivedPageLabel}
+          </span>
+        )}
+      </nav>
 
-        {/* Right: Theme toggle + Settings + Sign out */}
-        <div className="flex items-center gap-1 sm:gap-3">
-          <button
-            onClick={toggleTheme}
-            className="cursor-pointer rounded-md p-2.5 sm:p-1.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {theme === 'dark' ? (
-              <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-              </svg>
-            )}
-          </button>
-          <Link
-            href="/settings"
-            aria-label="Settings"
-            title="Settings"
-            className="cursor-pointer rounded-md p-2.5 sm:p-1.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-              <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-            </svg>
-          </Link>
-          <button
-            onClick={handleSignOut}
-            className="cursor-pointer rounded-md p-2.5 sm:p-1.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
-            title="Sign out"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-              <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h5a1 1 0 100-2H4V5h4a1 1 0 100-2H3zm10.293 3.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L14.586 11H7a1 1 0 110-2h7.586l-1.293-1.293a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
-        </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          disabled
+          aria-label="Jump — coming soon"
+          title="Jump — coming soon"
+          className="flex h-7 cursor-not-allowed items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium text-text-muted opacity-80"
+        >
+          <IconSearch size={12} />
+          <span className="hidden sm:inline">Jump</span>
+          <Kbd dim>⌘K</Kbd>
+        </button>
+        <span aria-hidden="true" className="mx-1 hidden h-4 w-px bg-border md:inline-block" />
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
+        >
+          {theme === 'dark' ? <IconMoon size={14} /> : <IconSun size={14} />}
+        </button>
       </div>
-      {/* Bottom gradient line */}
-      <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-accent/20 via-accent/5 to-transparent" />
     </header>
   );
+}
+
+interface DerivePageLabelInput {
+  projectName?: string;
+  pageLabel?: string;
+  pathname: string;
+}
+
+/**
+ * Choose the trailing crumb when no project crumb is in play.
+ * @param input - Project name override, explicit page label, current path.
+ * @returns Crumb label or null when nothing should render.
+ */
+function derivePageLabel({ projectName, pageLabel, pathname }: DerivePageLabelInput): string | null {
+  if (projectName) return null;
+  if (pageLabel) return pageLabel;
+  if (pathname === '/') return 'Projects';
+  if (pathname.startsWith('/settings')) return 'Settings';
+  return null;
 }
 
 export default TopBar;

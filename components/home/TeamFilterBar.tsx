@@ -103,7 +103,7 @@ export function TeamFilterBar({
 
   return (
     <div
-      className="sticky top-[var(--topbar-h,3.5rem)] z-10 -mx-1 mb-6 flex items-center gap-2 bg-base/85 px-1 py-3 backdrop-blur-md"
+      className="sticky top-0 z-10 -mx-1 mb-6 flex items-center gap-2 bg-base/85 px-1 py-3 backdrop-blur-md"
       role="toolbar"
       aria-label="Filter by team"
     >

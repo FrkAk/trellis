@@ -3,13 +3,27 @@ import { ForbiddenError } from "@/lib/auth/authorization";
 import { ok, error } from "@/lib/api/response";
 import { buildAgentContext } from "@/lib/context/_core/agent";
 import { buildPlanningContext } from "@/lib/context/_core/planning";
+import {
+  buildWorkingContext,
+  formatWorkingContext,
+} from "@/lib/context/_core/working";
 
 /**
- * POST handler for fetching task context (agent + planning).
- * @param req - Request with { taskId } as JSON body.
- * @returns JSON { agent, planning } with context strings.
+ * POST handler for fetching task context bundles.
+ *
+ * Returns the three formatted bundles the BundlePreview can surface so the
+ * UI shows what the agent would actually receive at every lifecycle stage:
+ * `agent` (in_progress), `planning` (draft/plannable/ready), `working`
+ * (planned 1-hop).
+ *
+ * @param req - Request with `{ taskId }` JSON body.
+ * @param ctx - Route param wrapper carrying `projectId` from the URL.
+ * @returns JSON `{ agent, planning, working }` with markdown context strings.
  */
-export async function POST(req: Request) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ projectId: string }> },
+) {
   let ctx;
   try {
     ctx = await getAuthContext();
@@ -27,12 +41,16 @@ export async function POST(req: Request) {
   const { taskId } = body;
   if (!taskId) return error("taskId is required", 400);
 
+  const { projectId } = await params;
+
   try {
-    const [agent, planning] = await Promise.all([
+    const [agent, planning, workingRaw] = await Promise.all([
       buildAgentContext(ctx, taskId),
       buildPlanningContext(ctx, taskId),
+      buildWorkingContext(ctx, taskId, projectId),
     ]);
-    return ok({ agent, planning });
+    const working = await formatWorkingContext(workingRaw);
+    return ok({ agent, planning, working });
   } catch (err) {
     if (err instanceof ForbiddenError) {
       return error("Task not found", 404);

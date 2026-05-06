@@ -3,6 +3,7 @@ import { listUserTeamsAction, type TeamView } from '@/lib/actions/team-list';
 import { requireMembership } from '@/lib/auth/membership';
 import { roleHasProjectPermission } from '@/lib/auth/permissions';
 import { TopBar } from '@/components/layout/TopBar';
+import { AppShell } from '@/components/layout/AppShell';
 import { PageShell } from '@/components/layout/PageShell';
 import { ProjectCard } from '@/components/home/ProjectCard';
 import { NewProjectButton } from '@/components/home/NewProjectButton';
@@ -65,30 +66,34 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const activeProject = projects.find((p) => p.status === 'active');
 
   return (
-    <>
+    <AppShell>
       <AutoRefresh />
       <TopBar />
       <PageShell>
-        <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        {!teamFilter && activeProject && (
+          <ContinueBanner
+            projectId={activeProject.id}
+            projectName={activeProject.title}
+            projectIdentifier={activeProject.identifier}
+            lastActiveNode={`${activeProject.taskStats.done}/${Math.max(activeProject.taskStats.total - activeProject.taskStats.cancelled, 0)} tasks done`}
+            lastActive={dateFormatter.format(activeProject.updatedAt)}
+          />
+        )}
+
+        <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="mb-1 text-2xl font-semibold text-text-primary">
-              Your Projects
+            <p className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+              Workspace
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-text-primary">
+              Projects
             </h1>
-            <p className="text-sm text-text-muted">
+            <p className="mt-1 text-sm text-text-muted">
               Track projects across every team you&apos;re a member of.
             </p>
           </div>
           <NewProjectButton hasProjects={projects.length > 0} />
         </header>
-
-        {!teamFilter && activeProject && (
-          <ContinueBanner
-            projectId={activeProject.id}
-            projectName={activeProject.title}
-            lastActiveNode={`${activeProject.taskStats.done}/${Math.max(activeProject.taskStats.total - activeProject.taskStats.cancelled, 0)} tasks done`}
-            lastActive={dateFormatter.format(activeProject.updatedAt)}
-          />
-        )}
 
         {teams.length > 1 ? (
           <TeamFilterBar
@@ -116,7 +121,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <FlatGrid projects={filteredProjects} />
         )}
       </PageShell>
-    </>
+    </AppShell>
   );
 }
 

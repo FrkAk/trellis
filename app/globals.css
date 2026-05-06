@@ -8,6 +8,7 @@
 
   /* Dark mode (default) — Raycast near-black blue */
   --color-base: #07080a;
+  --color-base-2: #0d0e11;
   --color-surface: #101111;
   --color-surface-raised: #1b1c1e;
   --color-surface-hover: #252829;
@@ -19,6 +20,7 @@
   --color-text-muted: #6a6b6c;
 
   --color-accent: #818cf8;
+  --color-accent-2: #6ee7d8;
   --color-accent-light: #a5b4fc;
   --color-accent-glow: rgba(129, 140, 248, 0.12);
 
@@ -38,15 +40,34 @@
   --color-depends: #55b3ff;
   --color-relates: #a78bfa;
 
+  /* Status glyph fills — graph + list */
+  --color-glyph-draft: rgba(156, 163, 175, 0.45);
+  --color-glyph-planned: #55b3ff;
+  --color-glyph-ready: #818cf8;
+  --color-glyph-progress: #ffbc33;
+  --color-glyph-done: #5fc992;
+  --color-glyph-blocked: #e57373;
+  --color-glyph-cancelled: #6a6b6c;
+
   /* Depth shadows — used alongside border-border for the modern hybrid look */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
   --shadow-button: inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.08);
   --shadow-glow-accent: 0 0 8px rgba(129, 140, 248, 0.3);
+  --shadow-glow-accent-2: 0 0 8px rgba(110, 231, 216, 0.3);
   --shadow-glow-done: 0 0 8px rgba(95, 201, 146, 0.3);
 
-  --topbar-h: 3.5rem;
+  --sidebar-w: 224px;
+  --rail-w: 280px;
+  --row-h: 56px;
+  --topbar-h: 2.75rem;
+}
+
+/* Brand gradient — declared outside @theme so Tailwind doesn't try to coerce it into a single color utility. */
+:root {
+  --color-accent-grad: linear-gradient(135deg, #818cf8 0%, #6ee7d8 100%);
+  --color-accent-grad-soft: linear-gradient(135deg, rgba(129, 140, 248, 0.18) 0%, rgba(110, 231, 216, 0.14) 100%);
 }
 
 /* ===========================================
@@ -54,6 +75,7 @@
    =========================================== */
 html.light {
   --color-base: #f0f1f3;
+  --color-base-2: #f6f7f9;
   --color-surface: #ffffff;
   --color-surface-raised: #f5f6f8;
   --color-surface-hover: #e8eaed;
@@ -65,18 +87,39 @@ html.light {
   --color-text-muted: #9a9a9a;
 
   --color-accent: #6366f1;
-  --color-accent-light: #818cf8;
+  --color-accent-2: #14b8a6;
+  --color-accent-light: #4338ca;
   --color-accent-glow: rgba(99, 102, 241, 0.08);
+  --color-accent-grad: linear-gradient(135deg, #6366f1 0%, #14b8a6 100%);
+  --color-accent-grad-soft: linear-gradient(135deg, rgba(99, 102, 241, 0.16) 0%, rgba(20, 184, 166, 0.12) 100%);
+
+  /* Chip palette — saturated dark hues so `text-X` reads on pale `bg-X/15`. */
+  --color-planned: #2563eb;
+  --color-done: #059669;
+  --color-progress: #d97706;
+  --color-cancelled: #c25454;
+  --color-depends: #2563eb;
+  --color-relates: #7c3aed;
 
   --color-done-bg: rgba(95, 201, 146, 0.08);
   --color-progress-bg: rgba(255, 188, 51, 0.08);
   --color-todo-bg: rgba(106, 107, 108, 0.06);
   --color-cancelled-bg: rgba(229, 115, 115, 0.08);
 
+  /* Status glyph fills — light variants */
+  --color-glyph-draft: rgba(107, 114, 128, 0.55);
+  --color-glyph-planned: #2563eb;
+  --color-glyph-ready: #6366f1;
+  --color-glyph-progress: #d97706;
+  --color-glyph-done: #059669;
+  --color-glyph-blocked: #dc2626;
+  --color-glyph-cancelled: #94a3b8;
+
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.08);
   --shadow-button: inset 0 1px 0 0 rgba(255, 255, 255, 0.8), 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-glow-accent-2: 0 0 8px rgba(20, 184, 166, 0.25);
 }
 
 :root {
@@ -112,7 +155,7 @@ html {
   color: var(--color-text-primary);
   font-family: var(--font-body);
   font-weight: 500;
-  letter-spacing: 0.012em;
+  letter-spacing: 0.005em;
   font-feature-settings: "calt" 1, "kern" 1, "liga" 1, "ss03" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -136,22 +179,7 @@ html:not(.light) body::before {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(ellipse 80% 50% at 15% -10%, rgba(129, 140, 248, 0.05) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 85% 100%, rgba(99, 102, 241, 0.03) 0%, transparent 50%);
-}
-
-html:not(.light) body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image:
-    linear-gradient(rgba(129, 140, 248, 0.015) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(129, 140, 248, 0.015) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 120% 80% at 50% 30%, black 30%, transparent 80%);
-  -webkit-mask-image: radial-gradient(ellipse 120% 80% at 50% 30%, black 30%, transparent 80%);
+    radial-gradient(ellipse 80% 50% at 15% -10%, rgba(129, 140, 248, 0.05) 0%, transparent 60%);
 }
 
 /* Light mode: subtle cool texture */

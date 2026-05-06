@@ -1,129 +1,59 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { signIn } from "@/lib/auth-client";
+import Link from 'next/link';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthBrand } from '@/components/auth/AuthBrand';
+import { AuthHero } from '@/components/auth/AuthHero';
+import { SocialButtons } from '@/components/auth/SocialButtons';
+import { SignInForm } from '@/components/auth/SignInForm';
 
 /**
- * Sign-in page — email/password authentication form.
- * Redirects to home on success.
- * @returns Client-side sign-in form.
+ * Sign-in page — two-column auth surface matching the design prototype.
+ *
+ * Left column hosts the email/password form plus disabled-with-tooltip
+ * GitHub and Google buttons (backend providers not yet wired in
+ * `lib/auth.ts`). Right column renders the static `AuthHero` mock; the
+ * webapp never streams live agent data — Mymir is MCP-first.
+ *
+ * The post-sign-in redirect targets `/`, where `requireMembership`
+ * forwards new accounts to `/onboarding/team`.
+ *
+ * @returns Server-rendered auth shell composing the client form.
  */
 export default function SignInPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  /**
-   * Handle email/password sign-in submission.
-   * @param e - Form submit event.
-   */
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    const { error: authError } = await signIn.email({
-      email,
-      password,
-    });
-
-    if (authError) {
-      setError(authError.message ?? "Sign in failed");
-      setLoading(false);
-      return;
-    }
-
-    router.push("/");
-    router.refresh();
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="text-center space-y-1">
-        <h1 className="text-xl font-semibold text-text-primary">
-          Sign in to mymir
-        </h1>
-        <p className="text-sm text-text-muted">
-          Enter your credentials to continue
-        </p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-2">
-          <label
-            htmlFor="email"
-            className="block text-xs font-medium text-text-secondary"
+    <AuthShell
+      form={
+        <>
+          <AuthBrand />
+          <h1
+            className="text-[26px] font-semibold text-text-primary"
+            style={{ letterSpacing: '-0.01em', lineHeight: 1.15 }}
           >
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-            placeholder="you@example.com"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label
-            htmlFor="password"
-            className="block text-xs font-medium text-text-secondary"
+            Walk into every session knowing what to do next.
+          </h1>
+          <p
+            className="mb-7 mt-2.5 text-[13.5px] text-text-muted"
+            style={{ lineHeight: 1.55 }}
           >
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-            placeholder="Min 8 characters"
-          />
-        </div>
-
-        {error && (
-          <p className="text-xs text-danger" role="alert">
-            {error}
+            The agent-native project graph. Sign in to continue, or onboard
+            a repo from your CLI.
           </p>
-        )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {loading ? (
-            <span className="flex items-center justify-center gap-1">
-              <span className="loading-dot h-1.5 w-1.5 rounded-full bg-current" />
-              <span className="loading-dot h-1.5 w-1.5 rounded-full bg-current" />
-              <span className="loading-dot h-1.5 w-1.5 rounded-full bg-current" />
-            </span>
-          ) : (
-            "Sign in"
-          )}
-        </button>
-      </form>
+          <SocialButtons />
+          <SignInForm />
 
-      <p className="text-center text-xs text-text-muted">
-        Don&apos;t have an account?{" "}
-        <Link
-          href="/sign-up"
-          className="text-accent underline underline-offset-2 hover:opacity-80"
-        >
-          Sign up
-        </Link>
-      </p>
-    </div>
+          <p className="mt-3.5 text-center text-[12px] text-text-muted">
+            New to Mymir?{' '}
+            <Link
+              href="/sign-up"
+              className="text-accent-light hover:underline"
+              style={{ color: 'var(--color-accent-light)' }}
+            >
+              Create an account
+            </Link>
+          </p>
+        </>
+      }
+      hero={<AuthHero />}
+    />
   );
 }

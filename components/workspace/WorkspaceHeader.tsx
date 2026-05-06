@@ -25,10 +25,6 @@ interface WorkspaceHeaderProps {
   taskCount: number;
   /** @param canRename - True when the caller's role in the project's team grants identifier rename. */
   canRename: boolean;
-  /** @param stageLabel - Optional stage label shown in TopBar center. */
-  stageLabel?: string;
-  /** @param taskStats - Optional task stats shown in TopBar center. */
-  taskStats?: string;
 }
 
 /**
@@ -48,8 +44,6 @@ export function WorkspaceHeader({
   team,
   taskCount,
   canRename,
-  stageLabel,
-  taskStats,
 }: WorkspaceHeaderProps) {
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -68,8 +62,6 @@ export function WorkspaceHeader({
     <>
       <TopBar
         projectName={projectName}
-        stageLabel={stageLabel}
-        taskStats={taskStats}
         projectId={projectId}
         projectStatus={status}
         team={team}

@@ -1,43 +1,90 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import dynamic from 'next/dynamic';
-import { TabSwitcher } from '@/components/shared/TabSwitcher';
-import { StructureView } from './navigator/StructureView';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useCallback, useMemo, useState } from 'react';
+import { FilterBar, type GroupKey, type SortKey, type WorkspaceView } from './structure/FilterBar';
+import { StructureView } from './structure/StructureView';
 import type { Task, TaskEdge } from '@/lib/db/schema';
 
-const ForceGraph = dynamic(() => import('@/components/graph/ForceGraph'), { ssr: false });
-
-const TABS = [
-  { id: 'structure', label: 'Structure' },
-  { id: 'graph', label: 'Graph' },
-];
-
 interface NavigatorPanelProps {
-  /** @param tasks - All project tasks (augmented with taskRef). */
+  /** All project tasks, augmented with composed `taskRef`. */
   tasks: (Task & { taskRef: string })[];
-  /** @param edges - All project task edges. */
+  /** All project edges. */
   edges: TaskEdge[];
-  /** @param categories - Project-level categories for drawer grouping. */
+  /** Project-level categories. */
   categories: string[];
-  /** @param projectId - UUID of the project. */
+  /** Project UUID. */
   projectId: string;
-  /** @param selectedNodeId - Currently selected task ID. */
+  /** Currently selected task ID. */
   selectedNodeId: string | null;
-  /** @param onSelectNode - Called when a task is clicked. */
+  /** Click a task to open the detail. */
   onSelectNode: (taskId: string) => void;
-  /** @param onGraphChange - Called after graph mutations to trigger re-fetch. */
+  /** Refresh the graph after a mutation. */
   onGraphChange?: () => void;
-  /** @param onDeselect - Called when clicking empty space in graph to clear selection. */
-  onDeselect?: () => void;
-  /** @param className - Additional CSS classes. */
+  /** Additional CSS classes. */
   className?: string;
 }
 
 /**
- * Left-panel navigator with two switchable views: Structure and Graph.
+ * Read the current URL search params and count active filters — used to
+ * badge the filter button in the header bar.
+ *
+ * @param searchParams - Live `URLSearchParams` from `useSearchParams`.
+ * @returns Cumulative count across all filter keys.
+ */
+function readFilterCount(searchParams: URLSearchParams): number {
+  let count = 0;
+  for (const key of ['tags', 'cat', 'status'] as const) {
+    const value = searchParams.get(key);
+    if (value) count += value.split(',').filter(Boolean).length;
+  }
+  if (searchParams.get('q')?.trim()) count += 1;
+  return count;
+}
+
+/**
+ * Resolve the active view from the URL — defaults to `structure` when the
+ * key is missing or unrecognised.
+ *
+ * @param raw - Raw `view` query param.
+ * @returns Workspace view identifier.
+ */
+function readView(raw: string | null): WorkspaceView {
+  if (raw === 'graph') return 'graph';
+  return 'structure';
+}
+
+/**
+ * Read the active sort key from the URL — defaults to `status`.
+ *
+ * @param raw - Raw `sort` query param.
+ * @returns Sort key.
+ */
+function readSort(raw: string | null): SortKey {
+  if (raw === 'updated' || raw === 'identifier') return raw;
+  return 'status';
+}
+
+/**
+ * Read the active group key from the URL — defaults to `status` so the
+ * default Linear-style status grouping survives a refresh.
+ *
+ * @param raw - Raw `group` query param.
+ * @returns Group key.
+ */
+function readGroup(raw: string | null): GroupKey {
+  if (raw === 'category' || raw === 'none') return raw;
+  return 'status';
+}
+
+/**
+ * Workspace navigator — top-aligned filter bar with view tabs, then the
+ * active view body. Persists view + sort to the URL so the workspace is
+ * shareable; filter chips and the search query live in the URL too via
+ * StructureView's own sync.
+ *
  * @param props - Navigator panel configuration.
- * @returns Navigator panel element with tab switcher.
+ * @returns Navigator panel element.
  */
 export function NavigatorPanel({
   tasks,
@@ -47,71 +94,66 @@ export function NavigatorPanel({
   selectedNodeId,
   onSelectNode,
   onGraphChange,
-  onDeselect,
   className = '',
 }: NavigatorPanelProps) {
-  const [activeTab, setActiveTab] = useState('structure');
-  const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const handleRefresh = useCallback(async () => {
-    if (refreshing || !onGraphChange) return;
-    setRefreshing(true);
-    await onGraphChange();
-    setRefreshing(false);
-  }, [refreshing, onGraphChange]);
+  const view = readView(searchParams.get('view'));
+  const sort = readSort(searchParams.get('sort'));
+  const group = readGroup(searchParams.get('group'));
+  const filterCount = useMemo(() => readFilterCount(new URLSearchParams(searchParams.toString())), [searchParams]);
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  const updateParam = useCallback((key: string, value: string | null) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === null || value === '') next.delete(key);
+    else next.set(key, value);
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [router, pathname, searchParams]);
+
+  const handleViewChange = useCallback((next: WorkspaceView) => {
+    updateParam('view', next === 'structure' ? null : next);
+    if (next !== 'structure') setFilterOpen(false);
+  }, [updateParam]);
+
+  const handleSortChange = useCallback((next: SortKey) => {
+    updateParam('sort', next === 'status' ? null : next);
+  }, [updateParam]);
+
+  const handleGroupChange = useCallback((next: GroupKey) => {
+    updateParam('group', next === 'status' ? null : next);
+  }, [updateParam]);
 
   return (
-    <div className={`flex h-full flex-col ${className}`}>
-      <div className="shrink-0 border-b border-border px-3 py-2">
-        <TabSwitcher
-          tabs={TABS}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          stretch
-          className="w-full"
-          trailing={
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="ml-auto cursor-pointer rounded-md p-1.5 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text-secondary disabled:cursor-not-allowed"
-              aria-label="Refresh data"
-              title="Refresh data"
-            >
-              <svg
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
-              >
-                <path d="M8 3a5 5 0 00-4.546 2.914.5.5 0 01-.908-.418A6 6 0 0114 8a6 6 0 01-6 6 6 6 0 01-5.454-3.496.5.5 0 01.908-.418A5 5 0 108 3z" />
-                <path d="M8 1a.5.5 0 01.5.5v3a.5.5 0 01-1 0v-3A.5.5 0 018 1z" />
-                <path d="M10.354 2.354a.5.5 0 010 .707l-2 2a.5.5 0 01-.708-.707l2-2a.5.5 0 01.708 0z" />
-              </svg>
-            </button>
-          }
-        />
-      </div>
+    <div className={`flex h-full flex-col ${className}`} data-panel="navigator">
+      <FilterBar
+        view={view}
+        onViewChange={handleViewChange}
+        sort={sort}
+        onSortChange={handleSortChange}
+        group={group}
+        onGroupChange={handleGroupChange}
+        filterOpen={filterOpen}
+        filterCount={filterCount}
+        onToggleFilter={() => setFilterOpen((v) => !v)}
+      />
 
-      <div className={`flex-1 ${activeTab === 'graph' ? 'overflow-hidden bg-base' : 'overflow-y-auto'}`}>
-        {activeTab === 'structure' && (
-          <StructureView
-            tasks={tasks}
-            edges={edges}
-            categories={categories}
-            projectId={projectId}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={onSelectNode}
-            onGraphChange={onGraphChange}
-          />
-        )}
-        {activeTab === 'graph' && (
-          <ForceGraph
-            tasks={tasks}
-            edges={edges}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={onSelectNode}
-            onDeselect={onDeselect}
-          />
-        )}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <StructureView
+          tasks={tasks}
+          edges={edges}
+          projectId={projectId}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={onSelectNode}
+          onGraphChange={onGraphChange}
+          filterOpen={filterOpen}
+          sort={sort}
+          group={group}
+          categories={categories}
+        />
       </div>
     </div>
   );

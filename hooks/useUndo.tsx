@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { IconUndo } from '@/components/shared/icons';
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -101,16 +102,15 @@ export function UndoButton({ canUndo, onUndo, className = '' }: UndoButtonProps)
     <AnimatePresence>
       {canUndo && (
         <motion.button
+          type="button"
           initial={{ opacity: 0, x: 4 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 4 }}
           transition={{ duration: 0.12 }}
           onClick={onUndo}
-          className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-accent transition-colors duration-150 hover:bg-surface hover:text-accent-light ${className}`}
+          className={`inline-flex h-5 cursor-pointer items-center gap-1 rounded-md px-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text-secondary ${className}`}
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="h-2.5 w-2.5">
-            <path d="M1.5 2a.75.75 0 01.75.75v2.19l1.97-1.97a6.5 6.5 0 119.193 9.193.75.75 0 01-1.06-1.06 5 5 0 10-7.072-7.072L7.25 5.94H5a.75.75 0 010-1.5h4.5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0V7.06l-1.97 1.97A6.5 6.5 0 011.5 2z" />
-          </svg>
+          <IconUndo size={11} />
           Undo
         </motion.button>
       )}

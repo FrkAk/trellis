@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { motion } from 'motion/react';
 import { initials } from '@/lib/ui/initials';
@@ -16,6 +15,12 @@ interface TeamCardProps {
   team: TeamView;
   /** Briefly highlight this card on render — used after creation. */
   glow?: boolean;
+  /** Whether this card matches the team currently open in the manage panel. */
+  active?: boolean;
+  /** Called when the Manage action is triggered. */
+  onManage: (teamId: string) => void;
+  /** Hover/focus hint that the manage panel is likely to open soon. */
+  onPrefetch: (teamId: string) => void;
   /** Called after a successful Leave to remove the row. */
   onLeft: (organizationId: string) => void;
   /** Surface a transient error from any team action. */
@@ -45,6 +50,9 @@ function roleStyle(role: string) {
 export function TeamCard({
   team,
   glow,
+  active = false,
+  onManage,
+  onPrefetch,
   onLeft,
   onError,
 }: TeamCardProps) {
@@ -119,7 +127,9 @@ export function TeamCard({
       }
       exit={{ opacity: 0, y: -6, scale: 0.98 }}
       transition={{ duration: 0.25 }}
-      className="relative flex items-center gap-4 rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-card)] transition-colors hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
+      className={`relative flex items-center gap-4 rounded-xl border bg-surface p-5 shadow-[var(--shadow-card)] transition-colors hover:border-border-strong hover:shadow-[var(--shadow-card-hover)] ${
+        active ? 'border-accent/50 bg-accent/5' : 'border-border'
+      }`}
     >
       <div
         aria-hidden="true"
@@ -148,12 +158,15 @@ export function TeamCard({
 
       <div className="flex shrink-0 items-center gap-1">
         {isAdminOrOwner ? (
-          <Link
-            href={`/settings/teams/${team.id}`}
+          <button
+            type="button"
+            onClick={() => onManage(team.id)}
+            onMouseEnter={() => onPrefetch(team.id)}
+            onFocus={() => onPrefetch(team.id)}
             className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs font-semibold text-text-primary shadow-[var(--shadow-button)] transition-opacity hover:opacity-60"
           >
             Manage
-          </Link>
+          </button>
         ) : null}
 
         <div className="relative" ref={menuRef}>
@@ -194,9 +207,12 @@ export function TeamCard({
                 </button>
               ) : null}
               <InlineLeaveItem
-                teamId={team.id}
                 soleOwner={soleOwner}
                 teamName={team.name}
+                onManage={() => {
+                  setMenuOpen(false);
+                  onManage(team.id);
+                }}
                 onLeave={handleLeave}
               />
             </motion.div>
@@ -208,12 +224,12 @@ export function TeamCard({
 }
 
 interface InlineLeaveItemProps {
-  /** Team id — used for the sole-owner manage-redirect link. */
-  teamId: string;
   /** True when leaving would orphan the team (only-owner guard). */
   soleOwner: boolean;
   /** Team display name for the confirm prompt. */
   teamName: string;
+  /** Open the manage panel — used by the sole-owner recovery path. */
+  onManage: () => void;
   /** Async callback that leaves the team. */
   onLeave: () => Promise<void>;
 }
@@ -221,18 +237,19 @@ interface InlineLeaveItemProps {
 /**
  * Menu-item wrapper around InlineConfirm so Leave gets a two-step
  * confirmation without leaving the menu's visual flow. Sole-owner case
- * is replaced with a link into the team-settings page where both
- * recovery paths (promote-to-owner, delete-team) are surfaced.
+ * routes the user into the manage panel where both recovery paths
+ * (promote-to-owner, delete-team) are surfaced.
  *
  * @param props - Configuration.
  * @returns Menu-item-styled trigger that morphs into a confirm row.
  */
-function InlineLeaveItem({ teamId, soleOwner, teamName, onLeave }: InlineLeaveItemProps) {
+function InlineLeaveItem({ soleOwner, teamName, onManage, onLeave }: InlineLeaveItemProps) {
   if (soleOwner) {
     return (
-      <Link
-        href={`/settings/teams/${teamId}`}
+      <button
+        type="button"
         role="menuitem"
+        onClick={onManage}
         className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
       >
         <LeaveGlyph />
@@ -242,7 +259,7 @@ function InlineLeaveItem({ teamId, soleOwner, teamName, onLeave }: InlineLeaveIt
             Promote a successor or delete the team
           </span>
         </span>
-      </Link>
+      </button>
     );
   }
   return (

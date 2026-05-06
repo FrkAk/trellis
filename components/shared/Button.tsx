@@ -1,27 +1,18 @@
 'use client';
 
 import { motion } from 'motion/react';
-import { type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { Kbd } from './Kbd';
 
-/** Button size presets. */
-const sizes = {
-  sm: 'px-3 py-1.5 text-xs min-h-9',
-  md: 'px-4 py-2 text-sm min-h-10',
-  lg: 'px-6 py-3 text-base min-h-11',
+/** Pixel sizing per `size` preset. Heights match prototype: sm 24, md 28, lg 36. */
+const SIZES = {
+  sm: { height: 24, padX: 8, font: 12 },
+  md: { height: 28, padX: 10, font: 12.5 },
+  lg: { height: 36, padX: 14, font: 13 },
 } as const;
 
-/** Button variant style maps. */
-const variants = {
-  primary:
-    'bg-transparent text-text-primary font-semibold border border-border-strong shadow-[var(--shadow-button)] rounded-full',
-  secondary:
-    'bg-transparent text-text-primary border border-border-strong shadow-[var(--shadow-button)] rounded-md',
-  ghost: 'bg-transparent text-text-muted hover:text-text-primary',
-  copy: 'font-mono border border-border-strong hover:border-accent text-text-secondary text-xs rounded-md',
-} as const;
-
-type ButtonVariant = keyof typeof variants;
-type ButtonSize = keyof typeof sizes;
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'copy' | 'danger';
+type ButtonSize = keyof typeof SIZES;
 
 interface ButtonProps {
   /** @param variant - Visual style of the button. */
@@ -40,11 +31,60 @@ interface ButtonProps {
   onClick?: () => void;
   /** @param type - HTML button type attribute. */
   type?: 'button' | 'submit' | 'reset';
+  /** @param icon - Optional leading icon. */
+  icon?: ReactNode;
+  /** @param kbd - Optional trailing keyboard hint, rendered as a Kbd chip. */
+  kbd?: ReactNode;
+  /** @param fullWidth - Stretch to fill the parent's inline size. */
+  fullWidth?: boolean;
+}
+
+/** Visual style values per variant. Returned as a `React.CSSProperties` object so the inline style merges cleanly with Tailwind utility classes. */
+function variantStyle(variant: ButtonVariant): React.CSSProperties {
+  switch (variant) {
+    case 'primary':
+      return {
+        background: 'var(--color-accent-grad)',
+        color: '#0b0c10',
+        border: '1px solid transparent',
+        fontWeight: 600,
+      };
+    case 'secondary':
+      return {
+        background: 'var(--color-surface-raised)',
+        color: 'var(--color-text-primary)',
+        border: '1px solid var(--color-border-strong)',
+        boxShadow: 'var(--shadow-button)',
+        fontWeight: 500,
+      };
+    case 'ghost':
+      return {
+        background: 'transparent',
+        color: 'var(--color-text-secondary)',
+        border: '1px solid transparent',
+        fontWeight: 500,
+      };
+    case 'copy':
+      return {
+        background: 'transparent',
+        color: 'var(--color-text-secondary)',
+        border: '1px solid var(--color-border-strong)',
+        fontFamily: 'var(--font-mono)',
+        fontWeight: 500,
+      };
+    case 'danger':
+      return {
+        background: 'color-mix(in srgb, var(--color-danger) 14%, transparent)',
+        color: 'var(--color-danger)',
+        border: '1px solid color-mix(in srgb, var(--color-danger) 28%, transparent)',
+        fontWeight: 500,
+      };
+  }
 }
 
 /**
- * Animated button with variant styles.
- * @param props - Button props including variant, size, and standard button attributes.
+ * Animated button with variant styles, optional leading icon and trailing kbd hint.
+ * @param props - Button props.
  * @returns A motion-animated button element.
  */
 export function Button({
@@ -56,19 +96,36 @@ export function Button({
   children,
   onClick,
   type = 'button',
+  icon,
+  kbd,
+  fullWidth = false,
 }: ButtonProps) {
   const isDisabled = disabled || isLoading;
+  const dims = SIZES[size];
+  const radius = size === 'lg' ? 8 : 6;
+
+  const baseStyle: React.CSSProperties = {
+    height: dims.height,
+    padding: `0 ${dims.padX}px`,
+    fontSize: dims.font,
+    borderRadius: radius,
+    letterSpacing: '0.005em',
+    width: fullWidth ? '100%' : undefined,
+    ...variantStyle(variant),
+  };
 
   return (
     <motion.button
-      whileHover={isDisabled ? undefined : { scale: 1.02 }}
+      whileHover={isDisabled ? undefined : { scale: 1.01 }}
       whileTap={isDisabled ? undefined : { scale: 0.98 }}
+      transition={{ duration: 0.12 }}
       disabled={isDisabled}
       aria-busy={isLoading || undefined}
       aria-disabled={isDisabled || undefined}
       type={type}
       onClick={onClick}
-      className={`inline-flex items-center justify-center transition-opacity hover:opacity-60 ${variants[variant]} ${sizes[size]} ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 transition-[background,border-color,opacity] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-0 ${isDisabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'} ${className}`}
+      style={baseStyle}
     >
       {isLoading ? (
         <span className="flex items-center gap-1">
@@ -76,7 +133,13 @@ export function Button({
           <span className="loading-dot h-1.5 w-1.5 rounded-full bg-current" />
           <span className="loading-dot h-1.5 w-1.5 rounded-full bg-current" />
         </span>
-      ) : children}
+      ) : (
+        <>
+          {icon ? <span className="inline-flex shrink-0 items-center">{icon}</span> : null}
+          <span className="inline-flex items-center whitespace-nowrap">{children}</span>
+          {kbd ? <Kbd className="ml-1">{kbd}</Kbd> : null}
+        </>
+      )}
     </motion.button>
   );
 }

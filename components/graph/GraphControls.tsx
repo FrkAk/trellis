@@ -10,14 +10,24 @@ interface GraphControlsProps {
   onReset: () => void;
   /** @param onFitToScreen - Called when the fit-to-screen button is clicked. */
   onFitToScreen: () => void;
-  /** @param zoomLevel - Current zoom scale (1 = 100%). */
+  /** @param zoomLevel - Current zoom scale (1 = 100%). Rendered as a small caption when provided. */
   zoomLevel?: number;
+  /**
+   * @param rightInset - Pixels on the right edge of the canvas that are
+   *   obscured by an overlay (e.g. a detail slide-over). The control panel
+   *   shifts left by this amount with a matching ease curve so it rides the
+   *   overlay edge instead of getting eaten by it.
+   */
+  rightInset?: number;
   /** @param className - Additional CSS classes. */
   className?: string;
 }
 
 /**
  * Floating overlay with zoom and view controls for the force graph.
+ * Stacked column with hairline dividers, matching the workspace graph
+ * prototype.
+ *
  * @param props - Control callbacks and optional className.
  * @returns Rendered control panel element.
  */
@@ -27,66 +37,73 @@ export function GraphControls({
   onReset,
   onFitToScreen,
   zoomLevel,
+  rightInset = 0,
   className = "",
 }: GraphControlsProps) {
   return (
     <div
-      className={`absolute bottom-4 right-4 flex flex-col gap-1 rounded-lg border border-border bg-surface p-1 shadow-[var(--shadow-float)] ${className}`}
+      className={`absolute bottom-4 z-10 flex w-7 flex-col overflow-hidden rounded-md border border-border bg-surface shadow-[var(--shadow-float)] ${className}`}
+      style={{
+        right: 16 + rightInset,
+        transition: 'right 240ms cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
     >
-      <ControlButton label="Zoom in" onClick={onZoomIn}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <ControlButton label="Zoom in" onClick={onZoomIn} divider>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       </ControlButton>
-      {zoomLevel !== undefined && (
-        <span className="text-center font-mono text-[10px] text-text-muted select-none">
-          {Math.round(zoomLevel * 100)}%
-        </span>
-      )}
-      <ControlButton label="Zoom out" onClick={onZoomOut}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <ControlButton label="Zoom out" onClick={onZoomOut} divider>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       </ControlButton>
-      <div className="mx-auto my-0.5 h-px w-4 bg-border" />
-      <ControlButton label="Fit to screen" onClick={onFitToScreen}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <ControlButton label="Fit to screen" onClick={onFitToScreen} divider>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
           <path
             d="M2 6V3a1 1 0 011-1h3M10 2h3a1 1 0 011 1v3M14 10v3a1 1 0 01-1 1h-3M6 14H3a1 1 0 01-1-1v-3"
             stroke="currentColor"
-            strokeWidth="1.5"
+            strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>
       </ControlButton>
       <ControlButton label="Reset simulation" onClick={onReset}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
           <path
             d="M2 8a6 6 0 0110.89-3.48M14 2v4h-4M14 8a6 6 0 01-10.89 3.48M2 14v-4h4"
             stroke="currentColor"
-            strokeWidth="1.5"
+            strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>
       </ControlButton>
+      {zoomLevel !== undefined && (
+        <span className="block border-t border-border py-0.5 text-center font-mono text-[8.5px] leading-none tabular-nums text-text-faint select-none">
+          {Math.round(zoomLevel * 100)}%
+        </span>
+      )}
     </div>
   );
 }
 
 /**
  * Single icon button in the controls overlay.
- * @param props - Button props including label, click handler, and children.
+ *
+ * @param props - Button props including label, click handler, optional divider, and children.
  * @returns Rendered button element.
  */
 function ControlButton({
   label,
   onClick,
+  divider,
   children,
 }: {
   label: string;
   onClick: () => void;
+  divider?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -95,7 +112,9 @@ function ControlButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+      className={`flex h-7 w-7 cursor-pointer items-center justify-center text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary ${
+        divider ? "border-b border-border" : ""
+      }`}
     >
       {children}
     </button>

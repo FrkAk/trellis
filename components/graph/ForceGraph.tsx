@@ -36,9 +36,40 @@ interface ForceGraphProps {
   onSelectNode: (nodeId: string) => void;
   /** @param onDeselect - Called when the canvas background is clicked. */
   onDeselect?: () => void;
+  /**
+   * @param hoveredIdHint - External hover hint (e.g. driven by a paired list
+   *   rail). Brightens the matched node without dimming the rest of the graph.
+   */
+  hoveredIdHint?: string | null;
+  /** @param onHoverNode - Called when the canvas-driven hover changes. */
+  onHoverNode?: (nodeId: string | null) => void;
+  /**
+   * @param hiddenStatuses - Statuses to hide from the canvas. Controlled by
+   *   the parent so the legend can live outside this component. When omitted,
+   *   no statuses are hidden.
+   */
+  hiddenStatuses?: Set<string>;
+  /**
+   * @param hiddenEdgeTypes - Edge types to hide. Filtered alongside
+   *   `hiddenStatuses` before the simulation runs.
+   */
+  hiddenEdgeTypes?: Set<EdgeType>;
+  /**
+   * @param rightInset - Pixels on the right edge of the canvas that are
+   *   obscured by an overlay (e.g. a detail slide-over). Drives both the
+   *   re-centre target (so the focused node sits inside the visible region)
+   *   and the floating GraphControls position (so the controls ride the
+   *   overlay edge instead of getting hidden beneath it).
+   */
+  rightInset?: number;
   /** @param className - Additional CSS classes. */
   className?: string;
 }
+
+/** Empty set fallback used when no filter prop is provided. */
+const EMPTY_STATUS_SET: ReadonlySet<string> = new Set();
+/** Empty set fallback used when no edge filter prop is provided. */
+const EMPTY_EDGE_SET: ReadonlySet<EdgeType> = new Set();
 
 /**
  * Detect if light mode is active by checking the HTML class.
@@ -61,6 +92,11 @@ export function ForceGraph({
   selectedNodeId,
   onSelectNode,
   onDeselect,
+  hoveredIdHint = null,
+  onHoverNode,
+  hiddenStatuses,
+  hiddenEdgeTypes,
+  rightInset = 0,
   className = "",
 }: ForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,20 +104,28 @@ export function ForceGraph({
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [light, setLight] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(new Set());
 
-  // Filter tasks/edges by hidden statuses
+  const statusFilter = hiddenStatuses ?? EMPTY_STATUS_SET;
+  const edgeFilter = hiddenEdgeTypes ?? EMPTY_EDGE_SET;
+
+  // Filter tasks/edges by hidden statuses + hidden edge types
   const filteredTasks = useMemo(
-    () => tasks.filter(t => !hiddenStatuses.has(t.status)),
-    [tasks, hiddenStatuses],
+    () => tasks.filter(t => !statusFilter.has(t.status)),
+    [tasks, statusFilter],
   );
   const filteredTaskIds = useMemo(
     () => new Set(filteredTasks.map(t => t.id)),
     [filteredTasks],
   );
   const filteredEdges = useMemo(
-    () => edges.filter(e => filteredTaskIds.has(e.sourceTaskId) && filteredTaskIds.has(e.targetTaskId)),
-    [edges, filteredTaskIds],
+    () =>
+      edges.filter(
+        (e) =>
+          filteredTaskIds.has(e.sourceTaskId) &&
+          filteredTaskIds.has(e.targetTaskId) &&
+          !edgeFilter.has(e.edgeType as EdgeType),
+      ),
+    [edges, filteredTaskIds, edgeFilter],
   );
 
   // Theme detection with mutation observer
@@ -313,17 +357,24 @@ export function ForceGraph({
 
     const hasSelection = selectedNodeId !== null;
     const connected = connectedSetRef.current;
-    const hovered = hoveredRef.current;
+    // Treat the rail-driven hint exactly like a canvas hover for visual purposes:
+    // brighter ring + label, no dimming of the rest of the graph.
+    const hovered = hoveredRef.current ?? hoveredIdHint;
     const zoomScale = t.scale;
 
-    // Advance per-node animations
+    // Advance per-node animations — gentle lerps for buttery transitions.
     for (const n of nodes) {
       const shouldDim = hasSelection && !connected.has(n.id);
       const dimTarget = shouldDim ? 1 : 0;
-      n._dimT += (dimTarget - n._dimT) * 0.12;
+      n._dimT += (dimTarget - n._dimT) * 0.085;
 
       const glowTarget = n.id === selectedNodeId ? 1 : 0;
-      n._selectGlow += (glowTarget - n._selectGlow) * 0.15;
+      n._selectGlow += (glowTarget - n._selectGlow) * 0.10;
+
+      // Hover/focus scale — fires for both pointer hover and selection so the
+      // selected node carries the same lift visual without an instant snap.
+      const focusTarget = n.id === hovered || n.id === selectedNodeId ? 1 : 0;
+      n._hoverT += (focusTarget - n._hoverT) * 0.14;
     }
 
     // --- Parallel edge index ---
@@ -533,12 +584,16 @@ export function ForceGraph({
 
       ctx.save();
       ctx.translate(n.x, n.y);
-      ctx.scale(entranceScale, entranceScale);
+      // Combine entrance + hover/focus scale so a selected node lifts
+      // smoothly (1 → ~1.18) instead of snapping bigger on click.
+      const focusScale = 1 + 0.18 * easeOutCubic(n._hoverT);
+      const finalScale = entranceScale * focusScale;
+      ctx.scale(finalScale, finalScale);
 
       // Ambient glow behind node
       if (n._dimT < 0.5) {
         const glowGrad = ctx.createRadialGradient(0, 0, sz * 0.5, 0, 0, sz * 2.5);
-        glowGrad.addColorStop(0, `rgba(${sr},${sg},${sb},${0.12 * (1 - n._dimT)})`);
+        glowGrad.addColorStop(0, `rgba(${sr},${sg},${sb},${theme.haloAlpha * (1 - n._dimT)})`);
         glowGrad.addColorStop(1, `rgba(${sr},${sg},${sb},0)`);
         ctx.fillStyle = glowGrad;
         ctx.beginPath();
@@ -559,8 +614,8 @@ export function ForceGraph({
       ctx.beginPath();
       ctx.arc(0, 0, sz, 0, Math.PI * 2);
       const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, sz);
-      grad.addColorStop(0, `rgba(${sr},${sg},${sb},0.6)`);
-      grad.addColorStop(1, `rgba(${sr},${sg},${sb},0.05)`);
+      grad.addColorStop(0, `rgba(${sr},${sg},${sb},${theme.fillInnerAlpha})`);
+      grad.addColorStop(1, `rgba(${sr},${sg},${sb},${theme.fillOuterAlpha})`);
       ctx.fillStyle = grad;
       ctx.fill();
 
@@ -626,7 +681,7 @@ export function ForceGraph({
         ctx.textBaseline = "top";
 
         const metrics = ctx.measureText(label);
-        const ly = n.y + sz * entranceScale + 8;
+        const ly = n.y + sz * finalScale + 8;
         const pw = 5, ph = 3;
         const lw = metrics.width + pw * 2;
         const lh = 14 + ph * 2;
@@ -672,7 +727,58 @@ export function ForceGraph({
       ctx.fillText(tip.text, tx + pw, ty + th / 2);
       ctx.restore();
     }
-  }, [nodes, links, size, selectedNodeId, theme, linkCounts]);
+  }, [nodes, links, size, selectedNodeId, theme, linkCounts, hoveredIdHint]);
+
+  // Redraw whenever the external hint changes so the highlight is responsive.
+  useEffect(() => {
+    needsRedrawRef.current = true;
+  }, [hoveredIdHint]);
+
+  // Recenter the camera on the newly-selected node. Fires on selection change
+  // and when the right-edge padding changes (e.g. a detail overlay slides in
+  // and the visible canvas region shifts left).
+  const prevSelectedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevSelectedRef.current;
+    prevSelectedRef.current = selectedNodeId;
+
+    if (selectedNodeId) {
+      const raf = requestAnimationFrame(() => {
+        const node = nodesForFitRef.current.find((n) => n.id === selectedNodeId);
+        if (!node || node.x == null || node.y == null) return;
+        const sz = sizeRef.current;
+        const visibleW = Math.max(120, sz.width - rightInset);
+        const cx = visibleW / 2;
+        const cy = sz.height / 2;
+        // Gentle zoom-in only — never zoom out from the user's current scale.
+        const targetScale = Math.max(transformRef.current.scale, 0.9);
+        shouldAutoFitRef.current = false;
+        animateTransform(
+          {
+            x: cx - node.x * targetScale,
+            y: cy - node.y * targetScale,
+            scale: targetScale,
+          },
+          380,
+        );
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+
+    // Transitioned from selection → no selection: breathe back to a full-graph
+    // fit so the operator sees the whole project again instead of remaining
+    // zoomed in on the last task.
+    if (prev !== null) {
+      const raf = requestAnimationFrame(() => {
+        const target = computeFitTransform(nodesForFitRef.current, sizeRef.current);
+        if (target) {
+          animateTransform(target, 480);
+          shouldAutoFitRef.current = true;
+        }
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [selectedNodeId, rightInset, animateTransform, computeFitTransform]);
 
   // --- Render loop with idle detection ---
   useEffect(() => {
@@ -698,7 +804,17 @@ export function ForceGraph({
       }
 
       const hasInProgress = nodes.some((n) => n.status === "in_progress");
-      const hasAnimating = nodes.some((n) => n._enterT < 0.99 || Math.abs(n._dimT - (selectedNodeId && !connectedSetRef.current.has(n.id) ? 1 : 0)) > 0.01 || Math.abs(n._selectGlow - (n.id === selectedNodeId ? 1 : 0)) > 0.01);
+      const hoveredId = hoveredRef.current ?? hoveredIdHint;
+      const hasAnimating = nodes.some((n) => {
+        if (n._enterT < 0.99) return true;
+        const dimTarget = selectedNodeId && !connectedSetRef.current.has(n.id) ? 1 : 0;
+        if (Math.abs(n._dimT - dimTarget) > 0.01) return true;
+        const glowTarget = n.id === selectedNodeId ? 1 : 0;
+        if (Math.abs(n._selectGlow - glowTarget) > 0.01) return true;
+        const focusTarget = n.id === hoveredId || n.id === selectedNodeId ? 1 : 0;
+        if (Math.abs(n._hoverT - focusTarget) > 0.01) return true;
+        return false;
+      });
       const hasFlowDots = links.some((l) => l.type === "depends_on");
       if (needsRedrawRef.current || ticking || hasAnimating || hasInProgress || hasFlowDots || animRef.current) {
         draw();
@@ -708,7 +824,7 @@ export function ForceGraph({
     };
     raf = requestAnimationFrame(loop);
     return () => { running = false; cancelAnimationFrame(raf); };
-  }, [draw, ticking, nodes, links, selectedNodeId]);
+  }, [draw, ticking, nodes, links, selectedNodeId, hoveredIdHint]);
 
   // --- Pointer events ---
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -760,7 +876,10 @@ export function ForceGraph({
         const hit = hitTest(wx, wy);
         const prevHovered = hoveredRef.current;
         hoveredRef.current = hit?.id ?? null;
-        if (prevHovered !== hoveredRef.current) needsRedrawRef.current = true;
+        if (prevHovered !== hoveredRef.current) {
+          needsRedrawRef.current = true;
+          onHoverNode?.(hoveredRef.current);
+        }
 
         // Edge hover detection
         if (!hit) {
@@ -781,7 +900,7 @@ export function ForceGraph({
         if (hit) needsRedrawRef.current = true;
       });
     }
-  }, [screenToWorld, hitTest, edgeHitTest, nodes, reheat, ticking]);
+  }, [screenToWorld, hitTest, edgeHitTest, nodes, reheat, ticking, onHoverNode]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const drag = dragRef.current;
@@ -871,15 +990,6 @@ export function ForceGraph({
     reset();
   }, [reset]);
 
-  const toggleStatus = useCallback((status: string) => {
-    setHiddenStatuses(prev => {
-      const next = new Set(prev);
-      if (next.has(status)) next.delete(status);
-      else next.add(status);
-      return next;
-    });
-  }, []);
-
   const isEmpty = filteredTasks.length === 0 && tasks.length === 0;
   const allFiltered = filteredTasks.length === 0 && tasks.length > 0;
 
@@ -891,13 +1001,10 @@ export function ForceGraph({
           <p className="mt-1 text-xs text-text-muted">Add tasks to see your project graph.</p>
         </div>
       ) : allFiltered ? (
-        <>
-          <div className="flex h-full w-full flex-col items-center justify-center p-8">
-            <p className="text-sm text-text-secondary">All tasks are hidden by filters</p>
-            <p className="mt-1 text-xs text-text-muted">Toggle status filters to show tasks.</p>
-          </div>
-          <GraphLegend hiddenStatuses={hiddenStatuses} onToggleStatus={toggleStatus} />
-        </>
+        <div className="flex h-full w-full flex-col items-center justify-center p-8">
+          <p className="text-sm text-text-secondary">All tasks are hidden by filters</p>
+          <p className="mt-1 text-xs text-text-muted">Toggle status filters to show tasks.</p>
+        </div>
       ) : (
         <>
           <canvas
@@ -910,98 +1017,15 @@ export function ForceGraph({
             onDoubleClick={handleDoubleClick}
             onWheel={handleWheel}
           />
-          <GraphLegend hiddenStatuses={hiddenStatuses} onToggleStatus={toggleStatus} />
           <GraphControls
             onZoomIn={zoomIn}
             onZoomOut={zoomOut}
             onReset={resetView}
             onFitToScreen={fitToScreen}
             zoomLevel={zoomLevel}
+            rightInset={rightInset}
           />
         </>
-      )}
-    </div>
-  );
-}
-
-const STATUS_ITEMS: { status: string; label: string; color: string }[] = [
-  { status: "done", label: "Done", color: "#10b981" },
-  { status: "in_progress", label: "Active", color: "#f59e0b" },
-  { status: "planned", label: "Planned", color: "#22d3ee" },
-  { status: "draft", label: "Draft", color: "#64748b" },
-  { status: "cancelled", label: "Cancelled", color: "#e57373" },
-];
-
-/**
- * Collapsible legend overlay with edge types and status filter toggles.
- * @param props - Hidden statuses set and toggle callback.
- * @returns Positioned legend element.
- */
-function GraphLegend({ hiddenStatuses, onToggleStatus }: {
-  hiddenStatuses: Set<string>;
-  onToggleStatus: (status: string) => void;
-}) {
-  const [collapsed, setCollapsed] = useState(false);
-  return (
-    <div className="absolute bottom-4 left-3 z-10 rounded-lg border border-border bg-surface px-2.5 py-2 shadow-[var(--shadow-float)]">
-      <button
-        type="button"
-        onClick={() => setCollapsed((c) => !c)}
-        className="flex w-full items-center justify-between gap-2 font-mono text-[10px] font-semibold text-text-muted"
-      >
-        <span>Legend</span>
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          fill="currentColor"
-          className={`transition-transform ${collapsed ? "rotate-180" : ""}`}
-        >
-          <path d="M2 6.5l3-3 3 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-        </svg>
-      </button>
-      {!collapsed && (
-        <div className="mt-1.5">
-          {/* Edge types */}
-          <div className="flex items-center gap-2 py-0.5">
-            <svg width="16" height="6" viewBox="0 0 16 6">
-              <line x1="0" y1="3" x2="16" y2="3" stroke={EDGE_COLOR.depends_on} strokeWidth="1.5" />
-              <polygon points="13,1 16,3 13,5" fill={EDGE_COLOR.depends_on} />
-            </svg>
-            <span className="font-mono text-[10px] font-semibold text-text-muted">depends</span>
-          </div>
-          <div className="flex items-center gap-2 py-0.5">
-            <svg width="16" height="6" viewBox="0 0 16 6">
-              <line x1="0" y1="3" x2="16" y2="3" stroke={EDGE_COLOR.relates_to} strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
-            </svg>
-            <span className="font-mono text-[10px] font-semibold text-text-muted">relates</span>
-          </div>
-          {/* Divider */}
-          <div className="my-1.5 h-px bg-border" />
-          {/* Status filters */}
-          {STATUS_ITEMS.map(({ status, label, color }) => {
-            const isHidden = hiddenStatuses.has(status);
-            return (
-              <button
-                key={status}
-                type="button"
-                onClick={() => onToggleStatus(status)}
-                className={`flex w-full items-center gap-2 rounded py-0.5 transition-opacity ${
-                  isHidden ? "opacity-30" : "opacity-100"
-                }`}
-                title={`${isHidden ? "Show" : "Hide"} ${label}`}
-              >
-                <span
-                  className="block h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: color }}
-                />
-                <span className={`font-mono text-[10px] font-semibold text-text-muted ${isHidden ? "line-through" : ""}`}>
-                  {label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
       )}
     </div>
   );

@@ -6,6 +6,7 @@ import { useRef, useCallback } from 'react';
 interface Tab {
   id: string;
   label: string;
+  /** Decorative pulse dot on the tab corner (e.g. a tab with new activity). */
   glow?: boolean;
 }
 
@@ -25,7 +26,12 @@ interface TabSwitcherProps {
 }
 
 /**
- * Horizontal pill tab selector with animated sliding indicator.
+ * Horizontal pill segmented tab control with an animated sliding indicator.
+ *
+ * Designed to match the prototype's segmented buttons; pairs `surface-raised` with the
+ * accent gradient on the active tab indicator. Use {@link import('./ViewTabs').ViewTabs}
+ * when a sub-page navigation with an underline is desired instead.
+ *
  * @param props - Tab switcher configuration.
  * @returns A styled tab switcher element.
  */
@@ -52,34 +58,64 @@ export function TabSwitcher({ tabs, activeTab, onTabChange, trailing, stretch, c
   );
 
   return (
-    <div role="tablist" aria-label="Tab navigation" className={`flex items-center gap-0.5 rounded-lg bg-surface-raised/60 p-0.5 ${className}`}>
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          ref={(el) => { if (el) tabRefs.current.set(tab.id, el); }}
-          role="tab"
-          aria-selected={activeTab === tab.id}
-          tabIndex={activeTab === tab.id ? 0 : -1}
-          onClick={() => onTabChange(tab.id)}
-          onKeyDown={handleKeyDown}
-          className={`relative cursor-pointer rounded-md px-3 py-1.5 text-sm transition-opacity min-h-9 ${stretch ? 'flex-1' : ''} ${
-            activeTab === tab.id ? 'text-text-primary font-medium' : 'text-text-muted hover:text-text-secondary hover:opacity-80'
-          }`}
-        >
-          {activeTab === tab.id && (
-            <motion.div
-              layoutId="tab-indicator"
-              className="absolute inset-0 rounded-md bg-surface shadow-[var(--shadow-button)]"
-              style={{ zIndex: -1 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            />
-          )}
-          {tab.label}
-          {tab.glow && activeTab !== tab.id && (
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-accent animate-pulse" />
-          )}
-        </button>
-      ))}
+    <div
+      role="tablist"
+      aria-label="Tab navigation"
+      className={`${stretch ? 'flex w-full' : 'inline-flex'} items-center gap-0.5 rounded-md p-0.5 ${className}`}
+      style={{
+        background: 'color-mix(in srgb, var(--color-surface-raised) 70%, transparent)',
+        border: '1px solid var(--color-border)',
+      }}
+    >
+      {tabs.map((tab) => {
+        const active = activeTab === tab.id;
+        return (
+          <button
+            key={tab.id}
+            ref={(el) => {
+              if (el) tabRefs.current.set(tab.id, el);
+              else tabRefs.current.delete(tab.id);
+            }}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onTabChange(tab.id)}
+            onKeyDown={handleKeyDown}
+            className={`relative cursor-pointer rounded-md px-3 transition-colors ${stretch ? 'flex-1' : ''}`}
+            style={{
+              height: 24,
+              fontSize: 12,
+              fontWeight: active ? 600 : 500,
+              color: active ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+              letterSpacing: '0.005em',
+            }}
+          >
+            {active ? (
+              <motion.span
+                layoutId="tab-indicator"
+                aria-hidden="true"
+                className="absolute inset-0 rounded-md"
+                style={{
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border-strong)',
+                  boxShadow: 'var(--shadow-button)',
+                  zIndex: 0,
+                }}
+                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              />
+            ) : null}
+            <span className="relative z-[1] whitespace-nowrap">{tab.label}</span>
+            {tab.glow && !active ? (
+              <span
+                aria-hidden="true"
+                className="absolute -top-0.5 -right-0.5 status-pulse"
+                style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-accent)' }}
+              />
+            ) : null}
+          </button>
+        );
+      })}
       {trailing}
     </div>
   );
