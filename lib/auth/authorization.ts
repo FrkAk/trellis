@@ -8,8 +8,9 @@ import {
   type Project,
   type Task,
 } from "@/lib/db/schema";
-import { member } from "@/lib/db/auth-schema";
+import { member, organization } from "@/lib/db/auth-schema";
 import type { AuthContext } from "@/lib/auth/context";
+import type { ProjectListOrganization } from "@/lib/data/views";
 import {
   roleHasProjectPermission,
   type ProjectAction,
@@ -89,6 +90,8 @@ export type ProjectAccess = {
    * that need a follow-up capability check (e.g. "can rename") without
    * issuing a second `member` lookup. */
   memberRole: string;
+  /** The owning team — projected from the same JOIN to save a round-trip. */
+  organization: ProjectListOrganization;
 };
 
 /**
@@ -131,6 +134,11 @@ export async function assertProjectAccess(
     .select({
       project: getTableColumns(projects),
       memberRole: member.role,
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+      },
     })
     .from(projects)
     .innerJoin(
@@ -140,6 +148,7 @@ export async function assertProjectAccess(
         eq(member.userId, ctx.userId),
       ),
     )
+    .innerJoin(organization, eq(organization.id, projects.organizationId))
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) throw new ForbiddenError("Forbidden", "project", projectId);
@@ -149,7 +158,7 @@ export async function assertProjectAccess(
   ) {
     throw new InsufficientRoleError(required.project, "project", projectId);
   }
-  return { project: row.project, memberRole: row.memberRole };
+  return { project: row.project, memberRole: row.memberRole, organization: row.organization };
 }
 
 /**
