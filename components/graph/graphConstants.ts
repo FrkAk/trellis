@@ -26,6 +26,8 @@ export interface GraphNode {
   _dimT: number;
   /** Selection glow progress 0->1. */
   _selectGlow: number;
+  /** Hover/focus scale progress 0->1 (driven by hover or selection). */
+  _hoverT: number;
 }
 
 /** A link between two graph nodes. */
@@ -107,6 +109,16 @@ export interface ThemeColors {
   statusDone: string;
   statusCancelled: string;
   surface: string;
+  /** True when rendering against the light theme. Drives node halo/fill
+   *  alpha boosts so colored pixels stay visible against a near-white
+   *  surface (the dark-mode tuning relies on additive contrast). */
+  isLight: boolean;
+  /** Alpha at the centre of the ambient radial halo behind each node. */
+  haloAlpha: number;
+  /** Alpha at the centre of the radial gradient that fills the node body. */
+  fillInnerAlpha: number;
+  /** Alpha at the outer edge of the node fill gradient. */
+  fillOuterAlpha: number;
 }
 
 export const DARK_THEME: ThemeColors = {
@@ -123,6 +135,10 @@ export const DARK_THEME: ThemeColors = {
   statusDone: "#5fc992",
   statusCancelled: "#e57373",
   surface: "rgba(7,8,10,0.85)",
+  isLight: false,
+  haloAlpha: 0.12,
+  fillInnerAlpha: 0.6,
+  fillOuterAlpha: 0.05,
 };
 
 export const LIGHT_THEME: ThemeColors = {
@@ -139,6 +155,10 @@ export const LIGHT_THEME: ThemeColors = {
   statusDone: "#059669",
   statusCancelled: "#c25454",
   surface: "rgba(255,255,255,0.85)",
+  isLight: true,
+  haloAlpha: 0.22,
+  fillInnerAlpha: 0.85,
+  fillOuterAlpha: 0.20,
 };
 
 /**

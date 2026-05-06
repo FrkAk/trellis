@@ -3,6 +3,7 @@ import { getProject } from '@/lib/graph/queries';
 import { requireMembership } from '@/lib/auth/membership';
 import { ForbiddenError } from '@/lib/auth/authorization';
 import { roleHasProjectPermission } from '@/lib/auth/permissions';
+import { AppShell } from '@/components/layout/AppShell';
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
 import { notFound, redirect } from 'next/navigation';
 
@@ -35,14 +36,10 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
   }
 
   const canRename = roleHasProjectPermission(project.memberRole, ['rename']);
-
-  const doneCount = project.tasks.filter((t) => t.status === 'done').length;
-  const totalCount = project.tasks.length;
-  const cancelledCount = project.tasks.filter((t) => t.status === 'cancelled').length;
-  const activeCount = Math.max(totalCount - cancelledCount, 0);
+  const taskCount = project.tasks.length;
 
   return (
-    <>
+    <AppShell>
       <WorkspaceHeader
         projectId={projectId}
         projectName={project.title}
@@ -51,14 +48,12 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
         status={project.status}
         categories={project.categories}
         team={{ id: project.organization.id, name: project.organization.name }}
-        taskCount={totalCount}
+        taskCount={taskCount}
         canRename={canRename}
-        stageLabel={`${totalCount} tasks`}
-        taskStats={`${doneCount}/${activeCount} tasks done${cancelledCount > 0 ? `, ${cancelledCount} cancelled` : ''}`}
       />
-      <div className="pt-[var(--topbar-h)]">
+      <div className="flex min-h-0 flex-1 flex-col">
         {children}
       </div>
-    </>
+    </AppShell>
   );
 }

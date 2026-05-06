@@ -32,11 +32,55 @@ function trapTabFocus(event: KeyboardEvent, panel: HTMLElement | null): void {
 }
 
 /**
- * Wires modal chrome behavior: Escape to close, Tab focus trap, and focus restore on unmount.
+ * Active modal handle tracked by the global stack — capturing onClose
+ * and panel bounds so the topmost dialog can handle Escape and trap Tab
+ * focus, even when modals are nested.
+ */
+interface ModalHandle {
+  panelRef: React.RefObject<HTMLElement | null>;
+  onClose: () => void;
+}
+
+const modalStack: ModalHandle[] = [];
+let globalListenerInstalled = false;
+
+/**
+ * Install the single document-level keydown listener responsible for
+ * dispatching to the topmost active modal. Idempotent — installs once
+ * and stays registered for the lifetime of the page so subsequent
+ * modal mounts only push/pop the stack.
+ */
+function ensureGlobalListenerInstalled(): void {
+  if (globalListenerInstalled) return;
+  globalListenerInstalled = true;
+  document.addEventListener('keydown', (e) => {
+    const top = modalStack[modalStack.length - 1];
+    if (!top) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      top.onClose();
+      return;
+    }
+    if (e.key === 'Tab') {
+      trapTabFocus(e, top.panelRef.current);
+    }
+  });
+}
+
+/**
+ * Wires modal chrome behavior: Escape to close, Tab focus trap, and
+ * focus restore on unmount. Stack-aware so nested modals (e.g. a
+ * destructive confirm dialog opened from inside a settings modal) are
+ * each handled by the topmost dialog only — outer modals stay open
+ * until the inner one dismisses.
+ *
  * @param open - Whether the modal is currently open.
- * @param onClose - Callback invoked on Escape or backdrop click.
- * @param panelRef - Ref to the modal panel (used for focus trap bounds).
- * @returns Nothing.
+ * @param onClose - Callback invoked when Escape pops this modal off
+ *   the stack. Closure identity may change across renders; the hook
+ *   always dispatches the latest `onClose`.
+ * @param panelRef - Ref to the modal panel — used to bound the focus
+ *   trap and to seed initial focus.
  */
 export function useModalChrome(
   open: boolean,
@@ -44,10 +88,22 @@ export function useModalChrome(
   panelRef: React.RefObject<HTMLElement | null>,
 ): void {
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
-    previousFocusRef.current = (document.activeElement as HTMLElement | null) ?? null;
+    ensureGlobalListenerInstalled();
+    previousFocusRef.current =
+      (document.activeElement as HTMLElement | null) ?? null;
+
+    const handle: ModalHandle = {
+      panelRef,
+      onClose: () => onCloseRef.current(),
+    };
+    modalStack.push(handle);
 
     const frame = window.requestAnimationFrame(() => {
       const panel = panelRef.current;
@@ -58,20 +114,11 @@ export function useModalChrome(
       focusable?.focus();
     });
 
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      trapTabFocus(e, panelRef.current);
-    };
-    document.addEventListener('keydown', handleKey);
     return () => {
       window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', handleKey);
+      const idx = modalStack.indexOf(handle);
+      if (idx !== -1) modalStack.splice(idx, 1);
       previousFocusRef.current?.focus?.();
     };
-  }, [open, onClose, panelRef]);
+  }, [open, panelRef]);
 }

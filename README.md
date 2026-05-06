@@ -201,7 +201,7 @@ Graph mode overlays the context network so you can see how tasks, decisions, and
 
 Zoom out and the full graph renders your entire context network. Clusters, bottlenecks, and orphaned work become obvious at a glance.
 
-![Full graph](assets/graphonlyview.png)
+![Full graph](assets/graphonlyview_light.png)
 
 ---
 

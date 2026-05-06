@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { TopBar } from '@/components/layout/TopBar';
-import { PageShell } from '@/components/layout/PageShell';
+import { AppShell } from '@/components/layout/AppShell';
 import { getSession } from '@/lib/auth/session';
 import { listOAuthSessionsAction } from '@/lib/actions/oauth-session';
 import { listUserTeamsAction } from '@/lib/actions/team-list';
@@ -10,9 +10,10 @@ import { SettingsView } from './_components/SettingsView';
 export const dynamic = 'force-dynamic';
 
 /**
- * Settings page — three tabs (Profile / Devices / Teams) under the standard
- * page chrome. Renders even when the user has no team memberships yet so
- * they can create one without bouncing through `/onboarding/team`.
+ * Settings page — sub-shell with a 240px left rail (Account / Teams /
+ * Agents & devices / Notifications / Billing) plus a content column.
+ * Renders even when the user has no team memberships yet so they can
+ * create one without bouncing through `/onboarding/team`.
  *
  * @returns Server-rendered settings shell with hydrated initial data.
  */
@@ -29,26 +30,18 @@ export default async function SettingsPage() {
   const initialTeams = teamsResult.ok ? teamsResult.data : [];
 
   return (
-    <>
+    <AppShell>
       <TopBar />
-      <PageShell>
-        <header className="mb-8">
-          <h1 className="mb-1 text-2xl font-semibold text-text-primary">Settings</h1>
-          <p className="text-sm text-text-muted">
-            Manage your profile, devices, and teams.
-          </p>
-        </header>
-        <SettingsView
-          user={{
-            id: session.user.id,
-            name: session.user.name,
-            email: session.user.email,
-            createdAt: session.user.createdAt,
-          }}
-          initialSessions={initialSessions}
-          initialTeams={initialTeams}
-        />
-      </PageShell>
-    </>
+      <SettingsView
+        user={{
+          id: session.user.id,
+          name: session.user.name,
+          email: session.user.email,
+          createdAt: session.user.createdAt,
+        }}
+        initialSessions={initialSessions}
+        initialTeams={initialTeams}
+      />
+    </AppShell>
   );
 }

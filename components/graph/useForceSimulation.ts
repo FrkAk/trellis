@@ -63,6 +63,7 @@ function buildGraph(
       _enterT: saved ? 1 : 0,
       _dimT: 0,
       _selectGlow: 0,
+      _hoverT: 0,
     });
     nodeIds.add(t.id);
   }

@@ -56,19 +56,22 @@ export default function ConsentPage() {
 
   if (done) {
     return (
-      <div className="space-y-4 text-center">
-        <h1 className="text-xl font-semibold text-text-primary">
-          Authorization sent
-        </h1>
-        <p className="text-sm text-text-muted">
-          Return to your application to finish signing in. You can close this tab.
-        </p>
+      <div className="flex min-h-[100dvh] items-center justify-center px-4">
+        <div className="w-full max-w-sm space-y-4 text-center">
+          <h1 className="text-xl font-semibold text-text-primary">
+            Authorization sent
+          </h1>
+          <p className="text-sm text-text-muted">
+            Return to your application to finish signing in. You can close this tab.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-[100dvh] items-center justify-center px-4">
+      <div className="w-full max-w-sm space-y-6">
       <div className="text-center space-y-1">
         <h1 className="text-xl font-semibold text-text-primary">
           Authorize access
@@ -140,6 +143,7 @@ export default function ConsentPage() {
           </button>
         </div>
       </div>
+    </div>
     </div>
   );
 }

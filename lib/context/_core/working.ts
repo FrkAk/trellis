@@ -37,15 +37,14 @@ type WorkingContext = {
  *
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
- * @param projectId - UUID of the project (for taskRef and sibling lookup).
  * @returns Working context with task data, ancestors, edges, and siblings.
  */
 export async function buildWorkingContext(
   ctx: AuthContext,
   taskId: string,
-  projectId: string,
 ): Promise<WorkingContext> {
   const task = await assertTaskAccess(taskId, ctx);
+  const projectId = task.projectId;
 
   const [projectRow, ancestors, detailedEdges, siblings] = await Promise.all([
     db

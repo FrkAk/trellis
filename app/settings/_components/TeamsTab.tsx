@@ -1,23 +1,38 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import { Button } from '@/components/shared/Button';
+import { IconLink, IconPlus } from '@/components/shared/icons';
 import {
   listUserTeamsAction,
   type TeamView,
 } from '@/lib/actions/team-list';
+import { invalidateTeamManageCache } from './team-manage-cache';
 import { CreateTeamPanel } from './CreateTeamPanel';
 import { EmptyState } from './EmptyState';
 import { JoinTeamPanel } from './JoinTeamPanel';
 import { TeamCard } from './TeamCard';
 
 interface TeamsTabProps {
-  /** Initial team list, hydrated from the server component. */
-  initialTeams: TeamView[];
+  /** Live team list owned by the parent SettingsView. */
+  teams: TeamView[];
+  /** Setter for the team list — used after create/join/leave to update in place. */
+  setTeams: Dispatch<SetStateAction<TeamView[]>>;
   /** Caller's display name — used to personalize the create-team placeholder. */
   userName?: string | null;
+  /** Currently open team in the manage panel, or `null` when no panel is open. */
+  activeTeamId: string | null;
+  /** Open the manage panel for a team. */
+  onManage: (teamId: string) => void;
+  /** Hint that the manage panel is likely to open soon — warms the cache. */
+  onPrefetch: (teamId: string) => void;
 }
 
 /**
@@ -32,16 +47,22 @@ function sortTeams(list: TeamView[]): TeamView[] {
 
 /**
  * Teams tab — lists every team the user belongs to with role badges and
- * a Manage link for admins/owners. A New-team panel slides in above the
- * list when triggered. The workspace spans every team the user is a
- * member of, so there is no team-switcher here.
+ * a Manage button that opens the slide-over panel. Owns the
+ * create/join/leave UX; team list data lives in the parent so the panel
+ * can find the active team without duplicating state.
  *
- * @param props - Hydrated teams list.
+ * @param props - Controlled team list + callbacks.
  * @returns Rendered tab body.
  */
-export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
+export function TeamsTab({
+  teams,
+  setTeams,
+  userName,
+  activeTeamId,
+  onManage,
+  onPrefetch,
+}: TeamsTabProps) {
   const router = useRouter();
-  const [teams, setTeams] = useState<TeamView[]>(() => sortTeams(initialTeams));
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,23 +83,23 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
    *
    * @returns `true` if the list was refreshed, `false` if the action
    *   failed. Callers must surface the failure when their UX depends on
-   *   the new state being visible — `router.refresh()` alone won't fix
-   *   it because `useState(initialTeams)` only seeds the first render.
+   *   the new state being visible.
    */
   const refresh = useCallback(async (): Promise<boolean> => {
     const result = await listUserTeamsAction();
     if (!result.ok) return false;
     setTeams(sortTeams(result.data));
     return true;
-  }, []);
+  }, [setTeams]);
 
   const handleLeft = useCallback(
     (organizationId: string) => {
       setError(null);
       setTeams((prev) => prev.filter((t) => t.id !== organizationId));
+      invalidateTeamManageCache(organizationId);
       router.refresh();
     },
-    [router],
+    [router, setTeams],
   );
 
   const handleAdded = useCallback(
@@ -101,36 +122,37 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
   );
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-          Your teams · {teams.length}
+    <section className="space-y-4">
+      <header>
+        <h1 className="text-[22px] font-semibold leading-tight text-text-primary">
+          Teams
+        </h1>
+        <p className="mt-1 text-[13px] text-text-muted">
+          Workspaces you collaborate in. Projects belong to teams; agents
+          inherit team permissions.
         </p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={startJoining}
-            disabled={joining}
-          >
-            Join team
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={startCreating}
-            disabled={creating}
-          >
-            New team
-          </Button>
-        </div>
-      </div>
+      </header>
 
-      {teams.length > 0 ? (
-        <p className="text-xs leading-relaxed text-text-muted">
-          You can browse and edit projects in every team you&apos;re a member of from the home grid. When your coding agent creates a project, it will ask which team it belongs to.
-        </p>
-      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="secondary"
+          size="md"
+          icon={<IconPlus size={12} />}
+          onClick={startCreating}
+          disabled={creating}
+        >
+          Create team
+        </Button>
+        <Button
+          variant="ghost"
+          size="md"
+          icon={<IconLink size={12} />}
+          onClick={startJoining}
+          disabled={joining}
+        >
+          Join with code
+        </Button>
+      </div>
 
       {error ? (
         <div
@@ -203,6 +225,9 @@ export function TeamsTab({ initialTeams, userName }: TeamsTabProps) {
                 key={team.id}
                 team={team}
                 glow={glowId === team.id}
+                active={activeTeamId === team.id}
+                onManage={onManage}
+                onPrefetch={onPrefetch}
                 onLeft={handleLeft}
                 onError={setError}
               />
