@@ -914,7 +914,7 @@ export async function handleContext(
               `Run mymir_query type='search' to find the correct projectId.`,
           );
         }
-        const result = await buildWorkingContext(ctx, p.taskId, p.projectId);
+        const result = await buildWorkingContext(ctx, p.taskId);
         return ok(await formatWorkingContext(result));
       }
       case "agent":

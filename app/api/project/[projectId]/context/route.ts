@@ -14,16 +14,14 @@ import {
  * Returns the three formatted bundles the BundlePreview can surface so the
  * UI shows what the agent would actually receive at every lifecycle stage:
  * `agent` (in_progress), `planning` (draft/plannable/ready), `working`
- * (planned 1-hop).
+ * (planned 1-hop). Authorization is anchored on the task — the URL
+ * `projectId` is decorative; the project is derived from the authorized
+ * task to prevent cross-project enumeration.
  *
  * @param req - Request with `{ taskId }` JSON body.
- * @param ctx - Route param wrapper carrying `projectId` from the URL.
  * @returns JSON `{ agent, planning, working }` with markdown context strings.
  */
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ projectId: string }> },
-) {
+export async function POST(req: Request) {
   let ctx;
   try {
     ctx = await getAuthContext();
@@ -41,13 +39,11 @@ export async function POST(
   const { taskId } = body;
   if (!taskId) return error("taskId is required", 400);
 
-  const { projectId } = await params;
-
   try {
     const [agent, planning, workingRaw] = await Promise.all([
       buildAgentContext(ctx, taskId),
       buildPlanningContext(ctx, taskId),
-      buildWorkingContext(ctx, taskId, projectId),
+      buildWorkingContext(ctx, taskId),
     ]);
     const working = await formatWorkingContext(workingRaw);
     return ok({ agent, planning, working });
