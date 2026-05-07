@@ -211,22 +211,25 @@ export function BundlePreview(props: BundlePreviewProps) {
   const stage = resolveStage(status, isReady, isPlannable);
   const sectionIds = SHAPE_BY_STAGE[stage];
   const bundleName = BUNDLE_NAME[stage];
+  const source = BUNDLE_SOURCE[stage];
 
   const [expanded, setExpanded] = useState<Set<SectionId>>(() => new Set<SectionId>([sectionIds[0]]));
   const [showRaw, setShowRaw] = useState(false);
 
   const qc = useQueryClient();
+  // Stages whose raw bundle is the local `executionRecord` prop need no
+  // network round-trip — skip the context fetch entirely so toggling MD on
+  // a `done` / `cancelled` task doesn't burn a request.
   const { data: bundles, isFetching: bundlesFetching } = useQuery({
     queryKey: taskKeys.context(projectId, taskId),
     queryFn: fetchTaskContext(qc, projectId, taskId),
-    enabled: showRaw,
+    enabled: showRaw && source !== 'execution',
   });
 
   const rawText = useMemo(() => {
-    const source = BUNDLE_SOURCE[stage];
     if (source === 'execution') return executionRecord ?? '';
     return bundles?.[source] ?? '';
-  }, [stage, bundles, executionRecord]);
+  }, [source, bundles, executionRecord]);
 
   const weights = useMemo(() => {
     const out = {} as Record<SectionId, number>;

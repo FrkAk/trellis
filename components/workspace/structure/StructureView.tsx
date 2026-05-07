@@ -8,7 +8,7 @@ import { createTask, deleteTask } from '@/lib/graph/mutations';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
 import { isPlannable, isReady, buildStatusMap } from '@/lib/ui/taskState';
 import { IconSearch, IconTrash, IconX } from '@/components/shared/icons';
-import type { Task, TaskEdge } from '@/lib/db/schema';
+import type { TaskEdge } from '@/lib/db/schema';
 import type { TaskGraphSlim, TaskFull } from '@/lib/data/views';
 import type { TaskStatus } from '@/lib/types';
 import { taskKeys } from '@/lib/query/keys';
@@ -145,7 +145,7 @@ interface DeletedTask {
   /** Task title for the undo toast. */
   title: string;
   /** Snapshot used to recreate the task on undo. */
-  taskData: Task;
+  taskData: TaskFull;
 }
 
 /**
@@ -203,7 +203,7 @@ export function StructureView({
   const [addingToGroup, setAddingToGroup] = useState<TaskGroupKey | null>(null);
   const [addTitle, setAddTitle] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const pendingDeleteBodyRef = useRef<Map<string, Promise<Task | null>>>(new Map());
+  const pendingDeleteBodyRef = useRef<Map<string, Promise<TaskFull | null>>>(new Map());
   const filtersRef = useRef({ tags: activeTags, categories: activeCategories, statuses: activeStatuses, search });
 
   filtersRef.current = { tags: activeTags, categories: activeCategories, statuses: activeStatuses, search };
@@ -423,7 +423,7 @@ export function StructureView({
           queryKey: taskKeys.detail(projectId, id),
           queryFn: fetchTaskBody(queryClient, projectId, id),
         })
-        .then((data) => (data as Task | undefined) ?? null)
+        .then((data) => (data as TaskFull | undefined) ?? null)
         .catch(() => null),
     );
   }, [confirmDelete, queryClient, projectId]);
