@@ -12,7 +12,7 @@ import { WorkspaceGraphView } from '@/components/workspace/graph/WorkspaceGraphV
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import type { ProjectGraphSlim, TaskFull } from '@/lib/data/views';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { DeferredLoadingSpinner } from '@/components/shared/DeferredLoadingSpinner';
 import { dedupedFetch } from '@/lib/fetch-dedupe';
 
 /** Workspace view identifier — mirrors the navigator's FilterBar value. */
@@ -262,7 +262,7 @@ export default function WorkspacePage() {
   if (!graph) {
     return (
       <div className="flex h-[calc(var(--viewport-height)-var(--topbar-h))] items-center justify-center">
-        <LoadingSpinner />
+        <DeferredLoadingSpinner />
       </div>
     );
   }
@@ -431,7 +431,7 @@ function EmptyDetail() {
 function DetailLoading() {
   return (
     <div className="flex h-full items-center justify-center">
-      <LoadingSpinner />
+      <DeferredLoadingSpinner />
     </div>
   );
 }
