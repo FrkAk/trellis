@@ -9,12 +9,14 @@ import { error } from '@/lib/api/response';
  *
  * Returns the full task row + composed `taskRef`. The slim project graph
  * deliberately drops description / implementationPlan / decisions /
- * acceptanceCriteria / executionRecord — TaskTab fetches them lazily
- * through this endpoint when a task is selected.
+ * acceptanceCriteria / executionRecord — the workspace fetches them
+ * lazily through this endpoint when a task is selected.
  *
- * `Last-Modified` is the row's `updatedAt`; the row itself must be
- * loaded to compare so the savings on a 304 come from skipping JSON
- * serialization, not the keyed lookup.
+ * `Last-Modified` is the row's `updatedAt`. The row must be loaded to
+ * obtain the validator, so a 304 here only saves JSON serialization +
+ * wire bytes — not the keyed lookup. The conditional contract is
+ * primarily here for the upcoming TanStack Query integration; the
+ * current client does not yet send `If-Modified-Since` for this route.
  *
  * @param req - Incoming request.
  * @param taskId - Task UUID from the route params.

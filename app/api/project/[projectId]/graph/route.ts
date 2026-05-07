@@ -4,7 +4,7 @@ import {
 } from '@/lib/data/project';
 import { getAuthContext } from '@/lib/auth/context';
 import { ForbiddenError } from '@/lib/auth/authorization';
-import { conditionalRespond } from '@/lib/api/conditional';
+import { conditionalRespond, isNotModified } from '@/lib/api/conditional';
 import { error } from '@/lib/api/response';
 
 /**
@@ -36,17 +36,7 @@ async function handle(req: Request, projectId: string): Promise<Response> {
   try {
     const max = await getProjectMaxUpdatedAt(ctx, projectId);
 
-    const ifModifiedSince = req.headers.get('if-modified-since');
-    if (ifModifiedSince) {
-      const since = new Date(ifModifiedSince).getTime();
-      if (
-        Number.isFinite(since) &&
-        Math.floor(max.getTime() / 1000) <= Math.floor(since / 1000)
-      ) {
-        return conditionalRespond(req, null, max);
-      }
-    }
-    if (req.method === 'HEAD') {
+    if (req.method === 'HEAD' || isNotModified(req, max)) {
       return conditionalRespond(req, null, max);
     }
 

@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { conditionalRespond } from "@/lib/api/conditional";
+import { conditionalRespond, isNotModified } from "@/lib/api/conditional";
 
 test("returns 200 with body and Last-Modified when no If-Modified-Since", async () => {
   const req = new Request("http://test/x");
@@ -7,6 +7,7 @@ test("returns 200 with body and Last-Modified when no If-Modified-Since", async 
   const res = conditionalRespond(req, { ok: 1 }, lm);
   expect(res.status).toBe(200);
   expect(res.headers.get("Last-Modified")).toBe(lm.toUTCString());
+  expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
   expect(await res.json()).toEqual({ ok: 1 });
 });
 
@@ -18,7 +19,29 @@ test("returns 304 with no body when If-Modified-Since at Last-Modified", async (
   const res = conditionalRespond(req, { ok: 1 }, lm);
   expect(res.status).toBe(304);
   expect(res.headers.get("Last-Modified")).toBe(lm.toUTCString());
+  expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
   expect(await res.text()).toBe("");
+});
+
+test("isNotModified mirrors the conditionalRespond branch", () => {
+  const lm = new Date("2026-05-07T10:00:00Z");
+  const fresh = new Request("http://test/x");
+  expect(isNotModified(fresh, lm)).toBe(false);
+
+  const matching = new Request("http://test/x", {
+    headers: { "If-Modified-Since": lm.toUTCString() },
+  });
+  expect(isNotModified(matching, lm)).toBe(true);
+
+  const older = new Request("http://test/x", {
+    headers: { "If-Modified-Since": new Date("2026-05-07T09:00:00Z").toUTCString() },
+  });
+  expect(isNotModified(older, lm)).toBe(false);
+
+  const malformed = new Request("http://test/x", {
+    headers: { "If-Modified-Since": "not a date" },
+  });
+  expect(isNotModified(malformed, lm)).toBe(false);
 });
 
 test("returns 304 with no body when If-Modified-Since after Last-Modified", async () => {
