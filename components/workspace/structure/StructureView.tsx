@@ -8,6 +8,7 @@ import { useUndo, UndoButton } from '@/hooks/useUndo';
 import { isPlannable, isReady, buildStatusMap } from '@/lib/ui/taskState';
 import { IconSearch, IconTrash, IconX } from '@/components/shared/icons';
 import type { Task, TaskEdge } from '@/lib/db/schema';
+import type { TaskGraphSlim } from '@/lib/data/views';
 import type { TaskStatus } from '@/lib/types';
 import { TaskRow } from './TaskRow';
 import { TaskGroup, type TaskGroupKey } from './TaskGroup';
@@ -29,7 +30,7 @@ const GROUP_ORDER: readonly TaskGroupKey[] = [
   'cancelled',
 ];
 
-type TaskWithRef = Task & { taskRef: string };
+type TaskWithRef = TaskGraphSlim;
 
 /** Discriminated union describing a group section's identity and label source. */
 type GroupSection =
@@ -199,6 +200,7 @@ export function StructureView({
   const [addingToGroup, setAddingToGroup] = useState<TaskGroupKey | null>(null);
   const [addTitle, setAddTitle] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const pendingDeleteBodyRef = useRef<Map<string, Promise<Task | null>>>(new Map());
   const filtersRef = useRef({ tags: activeTags, categories: activeCategories, statuses: activeStatuses, search });
 
   filtersRef.current = { tags: activeTags, categories: activeCategories, statuses: activeStatuses, search };
@@ -402,9 +404,34 @@ export function StructureView({
     keyboard: { panelSelector: '[data-panel="navigator"]' },
   });
 
+  // Prefetch the heavy task body when the inline confirm dialog opens. The
+  // user's confirmation pause hides the round-trip so `handleDelete` can
+  // resolve the cached promise instead of blocking on a fresh fetch.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const id = confirmDelete;
+    if (pendingDeleteBodyRef.current.has(id)) return;
+    pendingDeleteBodyRef.current.set(
+      id,
+      fetch(`/api/task/${id}`)
+        .then((r) => (r.ok ? (r.json() as Promise<Task>) : null))
+        .catch(() => null),
+    );
+  }, [confirmDelete]);
+
   const handleDelete = useCallback(async (taskId: string) => {
-    const data = tasks.find((t) => t.id === taskId);
-    if (data) pushUndo({ title: data.title, taskData: data });
+    const slim = tasks.find((t) => t.id === taskId);
+    const bodyPromise =
+      pendingDeleteBodyRef.current.get(taskId) ??
+      fetch(`/api/task/${taskId}`)
+        .then((r) => (r.ok ? (r.json() as Promise<Task>) : null))
+        .catch(() => null);
+    // Await the GET before firing the DELETE so the server reads the
+    // pre-deletion state — a parallel `Promise.all` could let the DELETE
+    // win the race and the GET return 404.
+    const full = await bodyPromise;
+    pendingDeleteBodyRef.current.delete(taskId);
+    if (slim && full) pushUndo({ title: slim.title, taskData: full });
     await deleteTask(taskId);
     setConfirmDelete(null);
     onGraphChange?.();
