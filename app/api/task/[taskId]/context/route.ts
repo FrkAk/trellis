@@ -9,6 +9,7 @@ import {
   formatWorkingContext,
 } from "@/lib/context/_core/working";
 import { conditionalRespond, isNotModified } from "@/lib/api/conditional";
+import { internalError } from "@/lib/api/error";
 import { error } from "@/lib/api/response";
 
 /**
@@ -54,8 +55,7 @@ async function handle(req: Request, taskId: string): Promise<Response> {
     if (err instanceof ForbiddenError) {
       return error("Task not found", 404);
     }
-    console.error("[task-context] error:", err);
-    return error(err instanceof Error ? err.message : "Internal error", 500);
+    return internalError("task-context", err);
   }
 }
 

@@ -52,13 +52,18 @@ export function RealtimeBridge() {
           qc.invalidateQueries({ queryKey: projectKeys.graph(ev.projectId) });
           break;
         case "task":
+          // Slim-graph invalidation is intentionally NOT fired here — every
+          // `task` dispatch in `lib/realtime/events.ts` is paired with a
+          // `project` dispatch that already invalidates the graph. Firing
+          // both produces a redundant in-flight fetch per mutation that
+          // Query then aborts. If `emitTaskEvent` ever stops emitting the
+          // paired project event, restore the graph invalidation here.
           qc.invalidateQueries({
             queryKey: taskKeys.detail(ev.projectId, ev.taskId),
           });
           qc.invalidateQueries({
             queryKey: taskKeys.context(ev.projectId, ev.taskId),
           });
-          qc.invalidateQueries({ queryKey: projectKeys.graph(ev.projectId) });
           break;
         case "project-list":
           qc.invalidateQueries({ queryKey: projectKeys.list() });

@@ -210,6 +210,13 @@ export function StructureView({
 
   useEffect(() => {
     const qs = serializeFilters(searchParams, filtersRef.current);
+    const currentQs = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    // Skip the no-op `router.replace` on mount when filter state already
+    // mirrors the URL (initial state is parsed FROM the URL via
+    // `searchParams.get(...)` above). Each `router.replace` triggers an
+    // RSC refetch of the project layout — strict-mode dev would fire it
+    // twice. Comparing against the current querystring elides both.
+    if (qs === currentQs) return;
     router.replace(`${pathname}${qs}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTags, activeCategories, activeStatuses, search]);

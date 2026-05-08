@@ -29,9 +29,9 @@ export async function getProjectListMaxUpdatedAtRaw(
       WITH accessible AS (
         SELECT p.id AS project_id, p.updated_at AS project_updated_at
         FROM ${projects} p
-        INNER JOIN ${member} m
-          ON m.organization_id = p.organization_id
-         AND m.user_id = ${userId}
+        INNER JOIN ${member}
+          ON ${member.organizationId} = p.organization_id
+         AND ${member.userId} = ${userId}
       )
       SELECT GREATEST(
         COALESCE((SELECT MAX(project_updated_at) FROM accessible), TO_TIMESTAMP(0)),

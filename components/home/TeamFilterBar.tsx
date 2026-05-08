@@ -86,6 +86,7 @@ export function TeamFilterBar({
     if (teamId) params.set('team', teamId);
     else params.delete('team');
     const query = params.toString();
+    if (query === searchParams.toString()) return;
     startTransition(() => {
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     });
@@ -96,6 +97,7 @@ export function TeamFilterBar({
     if (groupActive) params.delete('group');
     else params.set('group', 'team');
     const query = params.toString();
+    if (query === searchParams.toString()) return;
     startTransition(() => {
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     });

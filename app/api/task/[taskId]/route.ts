@@ -3,6 +3,7 @@ import { getAuthContext } from '@/lib/auth/context';
 import { ForbiddenError, assertTaskAccess } from '@/lib/auth/authorization';
 import { conditionalRespond } from '@/lib/api/conditional';
 import { broker } from '@/lib/realtime/broker';
+import { internalError } from '@/lib/api/error';
 import { error } from '@/lib/api/response';
 
 /** TTL for fetch-implicit task subscriptions — 10 minutes. */
@@ -48,8 +49,7 @@ async function handle(req: Request, taskId: string): Promise<Response> {
     if (err instanceof ForbiddenError) {
       return error('Task not found', 404);
     }
-    console.error('[task] error:', err);
-    return error(err instanceof Error ? err.message : 'Internal error', 500);
+    return internalError('task', err);
   }
 }
 

@@ -8,6 +8,7 @@ import {
   getProjectGraphSlim,
   getProjectChrome,
   getProjectMaxUpdatedAt,
+  getProjectListMaxUpdatedAt,
   listProjectsSlim,
 } from "@/lib/data/project";
 import { makeAuthContext } from "@/lib/auth/context";
@@ -148,6 +149,49 @@ test("getProjectMaxUpdatedAt returns the latest updated_at across project + task
   } finally {
     await sqlc.end({ timeout: 5 });
   }
+});
+
+test("getProjectListMaxUpdatedAt joins neon_auth.member by camelCase columns", async () => {
+  // Regression: the raw SQL referenced `m.organization_id` / `m.user_id`
+  // (snake_case), but Better Auth's `neon_auth.member` defines those
+  // columns as quoted camelCase (`"organizationId"`, `"userId"`). Hitting
+  // the helper used to throw `column m.organization_id does not exist`;
+  // every `/api/projects` call returned 500. This test exercises the
+  // happy path against the testcontainer schema and asserts a real
+  // timestamp comes back.
+  const f = await seedUserOrgProject("listmax");
+  const ctx = makeAuthContext(f.userId);
+
+  const sqlc = postgres(getConnectionString(), { max: 1 });
+  try {
+    const future = new Date(Date.now() + 3600_000);
+    await sqlc`
+      INSERT INTO tasks ("project_id", "title", "sequence_number", "updated_at")
+      VALUES (${f.projectId}, 'T1', 1, ${future})
+    `;
+    const result = await getProjectListMaxUpdatedAt(ctx);
+    expect(result).toBeInstanceOf(Date);
+    expect(result.getTime()).toBeGreaterThanOrEqual(future.getTime() - 1000);
+  } finally {
+    await sqlc.end({ timeout: 5 });
+  }
+});
+
+test("getProjectListMaxUpdatedAt returns epoch when caller has no projects", async () => {
+  const f = await seedUserOrgProject("listmax-empty");
+  const ctx = makeAuthContext(f.userId);
+
+  const sqlc = postgres(getConnectionString(), { max: 1 });
+  try {
+    // Drop the seeded project so the user has zero accessible projects.
+    await sqlc`DELETE FROM projects WHERE id = ${f.projectId}`;
+  } finally {
+    await sqlc.end({ timeout: 5 });
+  }
+
+  const result = await getProjectListMaxUpdatedAt(ctx);
+  expect(result).toBeInstanceOf(Date);
+  expect(result.getTime()).toBe(0);
 });
 
 test("listProjectsSlim aggregates statuses via grouped COUNT", async () => {

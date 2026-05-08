@@ -5,6 +5,7 @@ import {
 import { getAuthContext } from '@/lib/auth/context';
 import { ForbiddenError } from '@/lib/auth/authorization';
 import { conditionalRespond, isNotModified } from '@/lib/api/conditional';
+import { internalError } from '@/lib/api/error';
 import { error } from '@/lib/api/response';
 
 /**
@@ -46,8 +47,7 @@ async function handle(req: Request, projectId: string): Promise<Response> {
     if (err instanceof ForbiddenError) {
       return error('Project not found', 404);
     }
-    console.error('[graph] error:', err);
-    return error(err instanceof Error ? err.message : 'Internal error', 500);
+    return internalError('graph', err);
   }
 }
 

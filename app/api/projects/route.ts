@@ -4,6 +4,7 @@ import {
   listProjectsSlim,
 } from "@/lib/data/project";
 import { conditionalRespond, isNotModified } from "@/lib/api/conditional";
+import { internalError } from "@/lib/api/error";
 import { error } from "@/lib/api/response";
 
 /**
@@ -33,8 +34,7 @@ async function handle(req: Request): Promise<Response> {
     const { rows } = await listProjectsSlim(ctx);
     return conditionalRespond(req, rows, max);
   } catch (err) {
-    console.error("[projects] error:", err);
-    return error(err instanceof Error ? err.message : "Internal error", 500);
+    return internalError("projects", err);
   }
 }
 
