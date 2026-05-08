@@ -93,7 +93,7 @@ The caller's account spans every membership. There is no 'active' team. Read too
 ## Find work
 Lead with \`mymir_analyze\`. All variants are slim.
 - \`critical_path\`: longest dependency chain, the project bottleneck. Most important for prioritization. Lead with this on continue / resume / "what should I work on".
-- \`ready\`: tasks with all dependencies done. Pick from the intersection of \`ready\` and \`critical_path\`.
+- \`ready\`: planned tasks with all dependencies done (drafts with satisfied deps surface as \`plannable\`, not \`ready\`). Pick from the intersection of \`ready\` and \`critical_path\`.
 - \`plannable\`: draft tasks with description plus criteria, ready for planning when nothing is ready to code.
 - \`blocked\`: tasks waiting on unfinished dependencies, with blocker detail.
 
@@ -228,16 +228,16 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
     {
       description: DESCRIPTIONS.mymir_task,
       inputSchema: z.object({
-        action: z.enum(["create", "update", "delete", "reorder"])
-          .describe("create=new task. update=modify fields (pass only what changed). delete=remove (preview by default). reorder=change position."),
+        action: z.enum(["create", "update", "delete"])
+          .describe("create=new task. update=modify fields (pass only what changed). delete=remove (preview by default)."),
         taskId: z.uuid().optional()
-          .describe("Task UUID. Required for update/delete/reorder."),
+          .describe("Task UUID (not the 'MYM-N' taskRef; refs are display-only). Required for update/delete."),
         projectId: z.uuid().optional()
           .describe("Project UUID. Required for create. Project's team scope is inherited."),
         title: z.string().optional()
-          .describe("Verb+noun, short. Required for create (e.g. 'Implement JWT auth')."),
+          .describe("Verb+noun, imperative. Required for create (e.g. 'Implement JWT auth', not 'Auth'). Artifacts §1."),
         description: z.string().optional()
-          .describe("2-4 sentences: what to build, why it matters, key technical approach. Required for create."),
+          .describe("2-4 sentences (up to 6-8 for genuinely complex tasks; single-sentence rejected): what + who it serves + where it fits in the architecture. Required for create. Artifacts §1."),
         status: z.enum(["draft", "planned", "in_progress", "done", "cancelled"]).optional()
           .describe("Lifecycle: draft → planned → in_progress → done. cancelled = terminal abandoned work; populate executionRecord with rationale. Cancelled deps are transparent: dependents stay blocked through the cancelled task's own unsatisfied deps. Excluded from progress and critical path."),
         acceptanceCriteria: z.array(
@@ -246,25 +246,23 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
             z.object({ id: z.string().optional(), text: z.string(), checked: z.boolean().optional() }),
           ]),
         ).optional()
-          .describe("2-4 testable done conditions. Pass strings for new criteria, or objects with {text, checked} to set check state on existing rows."),
+          .describe("2-4 binary items (reviewer answers YES/NO; single-AC and vague ACs like 'works correctly' rejected). Pass strings for new criteria, or {text, checked} objects to evaluate existing rows. Artifacts §1."),
         decisions: z.array(z.string()).optional()
           .describe("Technical choices and constraints. One-liner per decision (CHOICE + WHY)."),
         tags: z.array(z.string()).optional()
           .describe("Kebab-case. Every task carries: exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces touched), exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Run mymir_query type='overview' before coining new tags."),
         category: z.string().optional()
-          .describe("Drawer group for this task. Should match a project category. Run mymir_project action='list' or mymir_query type='overview' to see available categories."),
+          .describe("Architectural layer / subsystem this task belongs to (exactly one). Reuse a project category; do not silently coin mid-task. The project's 4-8 categories are set on creation or via decompose/onboarding gates. Run mymir_query type='overview' to see them. Artifacts §4."),
         files: z.array(z.string()).optional()
-          .describe("Every file path this task touches (relative to repo root)."),
+          .describe("Repo-relative paths created or modified (no leading slash, no absolute). Pass `files=[]` when nothing was touched (unscaffolded repo, research/spec-review/decision-only); never invent paths."),
         implementationPlan: z.string().optional()
-          .describe("Implementation plan written during planning phase. Markdown."),
+          .describe("Implementation plan (markdown, unabridged; do not summarize). Pass with `status='planned'` to transition draft → planned; without the status change the task stays incomplete (lifecycle §1)."),
         executionRecord: z.string().optional()
-          .describe("Summary of what was built during implementation. 3-5 sentences with concrete details (function names, file paths, endpoints). Markdown."),
-        order: z.number().int().optional()
-          .describe("0-based position. For create: initial order. For reorder: new position."),
+          .describe("3-5 sentences on HOW it was built (function names, file paths, endpoints; distinct from description=scope). For cancelled: rationale + what was tried instead. Draft tasks must not carry this. Iron Law: cite real code, omit what you cannot. Markdown. Artifacts §1."),
         preview: z.boolean().optional().default(true)
           .describe("Delete only: true=show impact (default), false=actually delete."),
         overwriteArrays: z.boolean().optional().default(false)
-          .describe("Update only: true=replace decisions/acceptanceCriteria/files entirely. Default false=append."),
+          .describe("Update only. true=replace decisions/acceptanceCriteria/files; default false=append. Destructive, NO undo; confirm with user first."),
       }),
       annotations: {
         title: "Manage Task",
@@ -300,7 +298,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
         edgeType: z.enum(["depends_on", "relates_to"]).optional()
           .describe("depends_on = source needs target done first. relates_to = informational link, neither blocks the other. Required for create."),
         note: z.string().optional()
-          .describe("Why this relationship exists. Propagates to agent context for downstream tasks. Strongly recommended on create."),
+          .describe("Why this relationship exists. Propagates to agent context for downstream tasks, so write it as a brief to the developer about to start the source task: what specifically does this task get from the target? REQUIRED on create; placeholders ('needed', 'depends', 'related') are rejected."),
       }),
       annotations: {
         title: "Manage Edge",
@@ -361,7 +359,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       inputSchema: z.object({
         taskId: z.uuid().describe("Task UUID."),
         depth: z.enum(["summary", "working", "agent", "planning"]).default("working")
-          .describe("summary=quick (status, edge counts). working=detailed (criteria, decisions, 1-hop edges, siblings). agent=multi-hop deps + execution records (use BEFORE coding). planning=spec for pre-implementation (project description, prereqs, acceptance criteria, downstream specs)."),
+          .describe("summary=task header + description + counts + 1-hop edges with notes (folds in `mymir_query type='edges'`). working=criteria, decisions, 1-hop edges, siblings (does NOT render executionRecord, files, or implementationPlan). agent=multi-hop deps + upstream execution records + files + downstream; renders the task's own executionRecord when status is done/cancelled (use BEFORE coding, and to read a finished task's record). planning=project description, prereqs, ACs, downstream specs (use BEFORE writing the implementation plan)."),
         projectId: z.uuid().optional()
           .describe("Project UUID. Required for 'working' depth."),
       }),
@@ -389,7 +387,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       description: DESCRIPTIONS.mymir_analyze,
       inputSchema: z.object({
         type: z.enum(["ready", "blocked", "downstream", "critical_path", "plannable"])
-          .describe("ready=unblocked work to start. blocked=waiting tasks with blocker details. downstream=transitive dependents (impact analysis before changes). critical_path=longest dep chain (project bottleneck). plannable=draft tasks with description+criteria, ready for planning."),
+          .describe("ready=planned tasks with all deps done (drafts with deps satisfied surface as plannable, not ready). blocked=waiting tasks with blocker details. downstream=transitive dependents (impact analysis before changes). critical_path=longest dep chain (project bottleneck). plannable=draft tasks with description+criteria, ready for planning."),
         taskId: z.uuid().optional()
           .describe("Task UUID. Required for 'downstream'."),
         projectId: z.uuid().optional()

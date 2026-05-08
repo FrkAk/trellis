@@ -21,7 +21,6 @@ import {
   updateTask,
   deleteTask,
   deleteTaskPreview,
-  reorderTask,
   searchTasks,
   getProjectTasksSlim,
 } from "@/lib/data/task";
@@ -280,7 +279,7 @@ function overwriteShrinkHints(
       hints.push(
         `overwriteArrays=true replaced ${name} (${before.length} → ${next.length}, ${
           before.length - next.length
-        } lost). Confirm with the user before continuing; the prior values are recoverable only via the task's history entries.`,
+        } lost). The lost entries cannot be recovered — the task history is an audit log of which fields changed, not a snapshot of prior values. Confirm with the user before continuing.`,
       );
     }
   };
@@ -452,9 +451,9 @@ const STATE_HINTS: Record<TaskState, string> = {
     "Blocked. Cannot advance until upstream deps complete. Run mymir_analyze type='blocked' for blocker details, or fetch depth='summary' for this task's edges. Surface the choices to the user/leader: pick a different ready task, or unblock by completing a dep. Do not pick silently.",
   in_progress:
     "Claimed (one worker per task; lifecycle §1). Take-over is not automatic: confirm with the user (direct mode) or orchestrator (dispatched mode) that the prior worker has gone away before resuming. After confirmation: fetch depth='agent', read prior notes plus upstream executionRecords. To finish: populate executionRecord, decisions, files, evaluate every AC (do not auto-check), open a PR if files changed, then follow the Completion Protocol (lifecycle §2).",
-  done: "Terminal. Fetch depth='working' for the full executionRecord, decisions, files (depth='summary' for slim header). Then mymir_analyze type='downstream' to propagate decisions onto dependents (edge notes, descriptions, new edges, stale edges). After propagation, ask the user/leader what's next; do not auto-proceed to another task.",
+  done: "Terminal. Fetch depth='agent' for the full executionRecord, decisions, and files (depth='working' renders ACs/decisions/edges but not executionRecord or files; depth='summary' is just the header + edges). Then mymir_analyze type='downstream' to propagate decisions onto dependents (edge notes, descriptions, new edges, stale edges). After propagation, ask the user/leader what's next; do not auto-proceed to another task.",
   cancelled:
-    "Terminal (abandoned). Fetch depth='working' for the cancellation rationale and decisions. Edges remain in place; cancellation is transparent (dependents stay blocked through this task's own unsatisfied deps; lifecycle §3). Ask the user/leader: is there a replacement? If yes, rewire dependents to it. If not, dependents may need cancelling or re-scoping. Do not decide silently.",
+    "Terminal (abandoned). Fetch depth='agent' for the cancellation rationale (lives in executionRecord) and decisions; depth='working' renders decisions but not the rationale. Edges remain in place; cancellation is transparent (dependents stay blocked through this task's own unsatisfied deps; lifecycle §3). Ask the user/leader: is there a replacement? If yes, rewire dependents to it. If not, dependents may need cancelling or re-scoping. Do not decide silently.",
   draft:
     "Draft. Not ready to plan. Recommend refinement to the user (direct mode) or orchestrator (dispatched mode); wait for confirmation before editing. After confirmation: fetch depth='working' and tighten description to 2-4 sentences with 2-4 binary acceptance criteria. Before refining, explore: search related tasks, read current docs, check the codebase. Push back on vagueness; rewrite single-sentence descriptions and 'works correctly' ACs. Once description and ACs are present, the task becomes plannable.",
 };
@@ -593,9 +592,9 @@ export const DESCRIPTIONS = {
     "create=new project; multi-team accounts MUST pass organizationId (server rejects ambiguous calls with the team list inline; auto-resolves single-team). " +
     "update=title, description, status, categories, or identifier. Renaming identifier cascades every taskRef and breaks external references (PR titles, docs, commits).",
   mymir_task:
-    "Create, update, delete, or reorder tasks. Lifecycle: draft → planned → in_progress → done. cancelled is terminal abandoned work with transparent dep semantics (dependents stay blocked through the cancelled task's own unsatisfied prereqs; populate executionRecord with rationale). " +
+    "Create, update, or delete tasks. Lifecycle: draft → planned → in_progress → done. cancelled is terminal abandoned work with transparent dep semantics (dependents stay blocked through the cancelled task's own unsatisfied prereqs; populate executionRecord with rationale). " +
     "create requires title (verb+noun, imperative), description (2-4 sentences; single-sentence rejected), 2-4 binary acceptanceCriteria, all four tag dimensions (work-type, cross-cutting, tech, priority), one project category. " +
-    "update: pass only changed fields. Array fields (acceptanceCriteria, decisions, files) APPEND by default; overwriteArrays=true REPLACES them. Destructive, no undo except history; confirm with the user before using. " +
+    "update: pass only changed fields. Array fields (acceptanceCriteria, decisions, files) APPEND by default; overwriteArrays=true REPLACES them. Destructive, NO undo (history is an audit log); confirm with user first. " +
     "delete: preview=true (default) shows impact; preview=false executes. Prefer status='cancelled' for abandoned scope so the rationale is preserved. " +
     "Done means: executionRecord (3-5 sentences, what was built), decisions (CHOICE+WHY), files (every path), acceptanceCriteria evaluated. Open a PR if files non-empty; run mymir_analyze type='downstream' to propagate.",
   mymir_edge:
@@ -648,7 +647,7 @@ export type ProjectParams = {
 
 /** Params for mymir_task. */
 export type TaskParams = {
-  action: "create" | "update" | "delete" | "reorder";
+  action: "create" | "update" | "delete";
   projectId?: string;
   taskId?: string;
   title?: string;
@@ -661,7 +660,6 @@ export type TaskParams = {
   files?: string[];
   implementationPlan?: string;
   executionRecord?: string;
-  order?: number;
   preview?: boolean;
   overwriteArrays?: boolean;
 };
@@ -825,7 +823,6 @@ export async function handleTask(
           title: p.title,
           description: p.description,
           status: p.status,
-          order: p.order ?? 0,
           acceptanceCriteria: (p.acceptanceCriteria ?? []) as unknown as {
             id: string;
             text: string;
@@ -1073,15 +1070,6 @@ export async function handleTask(
           });
         }
         return ok(await deleteTask(ctx, p.taskId));
-      }
-      case "reorder": {
-        if (!p.taskId)
-          return fail(
-            "taskId required for reorder. Use mymir_query type='search' to find it.",
-          );
-        if (p.order === undefined)
-          return fail("order required for reorder (0-based position).");
-        return ok(await reorderTask(ctx, p.taskId, p.order));
       }
     }
   } catch (e) {
