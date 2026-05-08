@@ -111,8 +111,13 @@ export function NavigatorPanel({
     const next = new URLSearchParams(searchParams.toString());
     if (value === null || value === '') next.delete(key);
     else next.set(key, value);
-    const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    const nextQs = next.toString();
+    const currentQs = searchParams.toString();
+    // Skip when nothing changed — e.g. clicking the already-active option.
+    // Each `router.replace` triggers an RSC refetch of the project layout,
+    // so eliding no-op replaces avoids unnecessary server work.
+    if (nextQs === currentQs) return;
+    router.replace(nextQs ? `${pathname}?${nextQs}` : pathname, { scroll: false });
   }, [router, pathname, searchParams]);
 
   const handleViewChange = useCallback((next: WorkspaceView) => {
