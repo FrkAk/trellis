@@ -48,7 +48,7 @@ draft → planned → in_progress → done
 ### `cancelled` (terminal, reachable from any non-terminal state)
 
 - **What it means.** Abandoned work. Carries `executionRecord` (rationale: why abandoned, what was tried) and `decisions` (anything learned).
-- **Transparent in the dependency graph.** Passable but never satisfying. A dependent only becomes ready when every active task reachable through cancelled middles is `done`.
+- **Transparent in the dependency graph.** Passable but never satisfying. A dependent only becomes unblocked when every active task reachable through cancelled middles is `done`.
 - **Excluded from:** progress percentages, critical-path calculations, blocked listings.
 
 ---

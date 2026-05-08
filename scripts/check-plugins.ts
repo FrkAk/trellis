@@ -177,22 +177,44 @@ function hashContent(content: string): string {
 }
 
 /**
+ * Removes a single mapping field from a markdown file's leading YAML frontmatter
+ * (the first `---...---` block). Lines outside the frontmatter are never touched.
+ * No-op when the file lacks frontmatter or the field is not present.
+ * @param content - Markdown content as UTF-8 string.
+ * @param field - Frontmatter field name to remove (matched as `${field}:` line prefix).
+ * @returns Content with the matching field line removed.
+ */
+function stripFrontmatterField(content: string, field: string): string {
+  const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
+  if (!fmMatch) return content;
+  const fmBody = fmMatch[1];
+  const newFmBody = fmBody
+    .split("\n")
+    .filter((line) => !line.startsWith(`${field}:`))
+    .join("\n");
+  if (newFmBody === fmBody) return content;
+  return content.replace(fmMatch[0], `---\n${newFmBody}\n---\n`);
+}
+
+/**
  * Renders canonical content for a specific copy path by applying platform-specific
- * substitutions. The first matching `pathPrefix` wins; copies whose path matches no
- * platform are returned unchanged. Substitutions run in `subs` insertion order, so
- * longer overlapping patterns must be declared first to avoid being shadowed by a
- * shorter one (e.g. `"the AskUserQuestion tool"` before `"AskUserQuestion"`).
+ * substitutions, then stripping the Claude-Code-only `model` frontmatter field. The
+ * first matching `pathPrefix` wins; copies whose path matches no platform are
+ * returned unchanged. Substitutions run in `subs` insertion order, so longer
+ * overlapping patterns must be declared first to avoid being shadowed by a shorter
+ * one (e.g. `"the AskUserQuestion tool"` before `"AskUserQuestion"`).
  * @param content - Canonical content as UTF-8 string.
  * @param copyPath - Destination path used to select the substitution table.
- * @returns Content with platform substitutions applied.
+ * @returns Content with platform substitutions applied and `model:` stripped.
  */
 function render(content: string, copyPath: string): string {
   const platform = platformSubs.find((p) => copyPath.startsWith(p.pathPrefix));
   if (!platform) return content;
-  return Object.entries(platform.subs).reduce(
+  const substituted = Object.entries(platform.subs).reduce(
     (acc, [from, to]) => acc.replaceAll(from, to),
     content,
   );
+  return stripFrontmatterField(substituted, "model");
 }
 
 /**

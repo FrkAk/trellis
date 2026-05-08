@@ -169,9 +169,9 @@ Never invent. If a decision is not grounded in conversation, code, or the artifa
 
 ### `files`
 
-- **Format:** plain path strings. No backticks, no quoting.
+- **Format:** plain repo-relative path strings. No backticks, no quoting.
 - **Coverage:** every file created or modified for `done` tasks.
-- **Empty `files=[]`** is acceptable only when the task genuinely touched no files: a research task, a pure-decision task, a Mymir-only refinement.
+- **Empty `files=[]` is the correct value whenever paths cannot be cited:** pre-implementation tasks (`draft`, `planned`) where the code does not exist yet, research or decision-only tasks, Mymir-only refinements. **Leave empty rather than speculate.**
 
 ---
 
