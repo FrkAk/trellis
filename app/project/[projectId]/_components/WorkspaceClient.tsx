@@ -104,21 +104,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       if (value === null || value === "") next.delete(key);
       else next.set(key, value);
       const nextQs = next.toString();
-      const currentQs = searchParams.toString();
-      // Skip when nothing changed — re-clicking the active view tab or
-      // the already-set ?team filter would otherwise spawn a redundant
-      // RSC refetch of the project layout via `router.replace`.
-      if (nextQs === currentQs) return;
+      if (nextQs === searchParams.toString()) return;
       router.replace(nextQs ? `${pathname}?${nextQs}` : pathname, { scroll: false });
     },
     [router, pathname, searchParams],
   );
 
+  /**
+   * Select a task. At narrow viewports (`!isXl`), the graph canvas and
+   * detail panel cannot share screen space, so auto-switch back to the
+   * structure view when graph mode is currently active.
+   *
+   * @param taskId - Task to select.
+   */
   const handleSelectNode = useCallback(
     (taskId: string) => {
       setSelectedTaskId(taskId);
-      // At narrow viewports there is no room to show the canvas + detail at
-      // once. Auto-switch back to structure so the user lands on the task.
       if (view === "graph" && !isXl) updateParam("view", null);
     },
     [view, isXl, updateParam],
@@ -132,9 +133,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     updateParam("view", null);
   }, [updateParam]);
 
-  // Render-phase reset: when selection clears, also collapse the detail-
-  // adjacent UI state. Mirrors the old workspace's `prevSelectedTaskId`
-  // pattern so the reset stays in the render cycle (no effect needed).
   const [prevSelectedTaskId, setPrevSelectedTaskId] = useState<string | null>(
     null,
   );

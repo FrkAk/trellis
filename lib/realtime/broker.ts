@@ -69,6 +69,24 @@ class Broker {
   }
 
   /**
+   * Drop every `task:*` subscription for the user. Used by
+   * {@link revokeOrgAccess} to ensure a member removed mid-session cannot
+   * continue receiving task events for the revoked org's tasks until the
+   * 10-minute TTL expires. Bulk drop (rather than a precise filter on the
+   * revoked org's task ids) is correct because re-registering on the next
+   * task fetch is free.
+   *
+   * @param userId - Caller user id.
+   */
+  clearTaskSubs(userId: string): void {
+    const userMap = this.subs.get(userId);
+    if (!userMap) return;
+    for (const key of userMap.keys()) {
+      if (key.startsWith("task:")) userMap.delete(key);
+    }
+  }
+
+  /**
    * Attach a live SSE connection for the user.
    *
    * @param userId - Caller user id.
@@ -81,6 +99,29 @@ class Broker {
       this.conns.set(userId, set);
     }
     set.add(conn);
+  }
+
+  /**
+   * Atomically check the per-user connection cap and add {@link conn} when
+   * room remains. Replaces the racy `isAtConnectionLimit` + `attach` pair as
+   * the authoritative gate inside the SSE route's `start(controller)` —
+   * concurrent `/api/events` requests cannot exceed the cap regardless of
+   * how many pass an out-of-band `isAtConnectionLimit` check.
+   *
+   * @param userId - Caller user id.
+   * @param conn - SSE writer.
+   * @returns True when the connection was added; false when the user is at
+   *   the cap and the connection was rejected.
+   */
+  tryAttach(userId: string, conn: Connection): boolean {
+    let set = this.conns.get(userId);
+    if (set && set.size >= MAX_CONNECTIONS_PER_USER) return false;
+    if (!set) {
+      set = new Set();
+      this.conns.set(userId, set);
+    }
+    set.add(conn);
+    return true;
   }
 
   /**
@@ -142,6 +183,26 @@ class Broker {
         continue;
       }
       yield userId;
+    }
+  }
+
+  /**
+   * Walk the user's submap once and delete entries whose `expiresAt` is in
+   * the past. Bounds the leak surface where TTL'd entries on
+   * never-dispatched keys (opened-and-closed tasks) accumulate over a
+   * long-lived SSE connection — the lazy GC in {@link subscribers} only
+   * fires for the dispatched key, not for unrelated stale entries.
+   *
+   * Intended caller: the SSE heartbeat in `app/api/events/route.ts`.
+   *
+   * @param userId - Caller user id.
+   */
+  pruneExpired(userId: string): void {
+    const userMap = this.subs.get(userId);
+    if (!userMap) return;
+    const now = Date.now();
+    for (const [key, expiresAt] of userMap) {
+      if (expiresAt !== null && expiresAt < now) userMap.delete(key);
     }
   }
 

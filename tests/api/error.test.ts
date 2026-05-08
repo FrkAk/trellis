@@ -81,3 +81,29 @@ test("VERBOSE mode with non-Error throw still returns generic — only Error.mes
   const body = (await res.json()) as { error: string };
   expect(body.error).toBe("Internal error");
 });
+
+test("production NODE_ENV pins verbose to generic even with MYMIR_API_VERBOSE_ERRORS=1", async () => {
+  // Defense-in-depth: an operator who accidentally ships
+  // MYMIR_API_VERBOSE_ERRORS=1 to production must not leak SQL fragments,
+  // bound params, or internal stack traces through 500 response bodies.
+  // The env-var check is the documented contract; the NODE_ENV tripwire
+  // makes verbose mode physically impossible in prod.
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env[ENV_KEY] = "1";
+  Object.defineProperty(process.env, "NODE_ENV", {
+    value: "production",
+    configurable: true,
+  });
+  try {
+    const err = new Error("Failed query: should never reach the client");
+    const res = internalError("projects", err);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Internal error");
+    expect(body.error).not.toContain("Failed query");
+  } finally {
+    Object.defineProperty(process.env, "NODE_ENV", {
+      value: originalNodeEnv,
+      configurable: true,
+    });
+  }
+});

@@ -151,3 +151,24 @@ test("grantOrgAccess swallows errors so caller mutations don't fail", async () =
     grantOrgAccess(userId, "not-a-uuid"),
   ).resolves.toBeUndefined();
 });
+
+test("revokeOrgAccess clears task:* subs in addition to project:* subs when user has connections", async () => {
+  // Regression guard: PR #65's `/api/task/[id]` registers `task:<id>` subs
+  // with a 10-min TTL. Without explicit cleanup on revoke, a removed user
+  // who is still connected on another tab continues to receive
+  // `{ kind: "task", projectId, taskId }` events for org-Y tasks they
+  // previously had access to until the TTL expires — low-severity
+  // information disclosure of task ids and mutation timing.
+  const f = await seedUserOrgProject("rev-task");
+
+  const conn = fakeConn();
+  broker.attach(f.userId, conn);
+  broker.register(f.userId, `project:${f.projectId}`);
+  broker.register(f.userId, "task:t-revoked-1", 60_000);
+  broker.register(f.userId, "task:t-revoked-2", 60_000);
+
+  await revokeOrgAccess(f.userId, f.organizationId);
+
+  expect([...broker.subscribers("task:t-revoked-1")]).toEqual([]);
+  expect([...broker.subscribers("task:t-revoked-2")]).toEqual([]);
+});

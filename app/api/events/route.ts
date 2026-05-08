@@ -72,10 +72,18 @@ export async function GET(req: Request): Promise<Response> {
 
       // Order matters: attach BEFORE register so any dispatch that fires
       // while we're still wiring up sees a non-empty connection set for
-      // this user. Otherwise the `subscribers()` lookup yields the user
-      // but `conns.get(userId)` returns undefined and the event is
-      // silently dropped for that tab.
-      broker.attach(userId, conn);
+      // this user. `tryAttach` is the authoritative gate against
+      // MAX_CONNECTIONS_PER_USER — the outer `isAtConnectionLimit` check
+      // is a fast-path 429; concurrent requests can race past it, but
+      // only `cap` of them land here.
+      if (!broker.tryAttach(userId, conn)) {
+        try {
+          controller.close();
+        } catch {
+          // Stream already closed.
+        }
+        return;
+      }
       for (const id of projectIds) {
         broker.register(userId, `project:${id}`);
       }
@@ -85,6 +93,7 @@ export async function GET(req: Request): Promise<Response> {
 
       const heartbeat = setInterval(() => {
         conn.send(`: heartbeat\n\n`);
+        broker.pruneExpired(userId);
       }, 30_000);
 
       req.signal.addEventListener("abort", () => {

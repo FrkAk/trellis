@@ -125,3 +125,45 @@ test(
     await new Promise((r) => setTimeout(r, 0));
   },
 );
+
+test(
+  "GET /api/events — concurrent attaches respect the cap atomically (closes the TOCTOU race)",
+  async () => {
+    // Regression guard: the outer `isAtConnectionLimit` check is racy —
+    // N concurrent requests can all read `current < cap` before any of
+    // them runs `attach`. The `tryAttach` call inside `start(controller)`
+    // is the authoritative gate; the (cap+1)-th stream must not exceed
+    // the cap once its `start` runs.
+    const f = await seedUserOrgProject("sse-toctou");
+    setSession({ user: { id: f.userId } });
+
+    // Saturate (cap-1) so the next two requests both pass the outer check.
+    for (let i = 0; i < MAX_CONNECTIONS_PER_USER - 1; i++) {
+      broker.attach(f.userId, { send() {}, close() {} });
+    }
+
+    const ac1 = new AbortController();
+    const ac2 = new AbortController();
+    const [r1, r2] = await Promise.all([
+      GET(new Request("http://test/api/events", { signal: ac1.signal })),
+      GET(new Request("http://test/api/events", { signal: ac2.signal })),
+    ]);
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+
+    // Pump both streams so each `start(controller)` runs.
+    await pumpFirstFrame(r1.body as ReadableStream<Uint8Array>);
+    await pumpFirstFrame(r2.body as ReadableStream<Uint8Array>);
+
+    // After both starts run, the broker must hold exactly cap connections —
+    // the second stream's `tryAttach` returned false and closed silently.
+    const set = (broker as unknown as {
+      conns: Map<string, Set<unknown>>;
+    }).conns.get(f.userId);
+    expect(set?.size).toBe(MAX_CONNECTIONS_PER_USER);
+
+    ac1.abort();
+    ac2.abort();
+    await new Promise((r) => setTimeout(r, 0));
+  },
+);

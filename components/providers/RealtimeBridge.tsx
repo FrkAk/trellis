@@ -15,7 +15,13 @@ const MAX_BACKOFF_MS = 30_000;
  *
  * - `project` events invalidate `projectKeys.graph(projectId)` (slim graph
  *   refetch on workspace tabs viewing that project).
- * - `task` events invalidate the task body and the task context bundle.
+ * - `task` events invalidate the task body and the task context bundle but
+ *   intentionally NOT the slim graph: every `task` dispatch in
+ *   `lib/realtime/events.ts` is paired with a `project` dispatch that
+ *   already invalidates the graph. Firing both produces a redundant
+ *   in-flight fetch per mutation that Query then aborts. If
+ *   `emitTaskEvent` ever stops emitting the paired project event, the
+ *   `task` case here must restore the graph invalidation.
  * - `project-list` events invalidate the home grid.
  * - `project-deleted` events invalidate the home grid and remove the
  *   workspace's slim-graph cache entry.
@@ -52,12 +58,6 @@ export function RealtimeBridge() {
           qc.invalidateQueries({ queryKey: projectKeys.graph(ev.projectId) });
           break;
         case "task":
-          // Slim-graph invalidation is intentionally NOT fired here — every
-          // `task` dispatch in `lib/realtime/events.ts` is paired with a
-          // `project` dispatch that already invalidates the graph. Firing
-          // both produces a redundant in-flight fetch per mutation that
-          // Query then aborts. If `emitTaskEvent` ever stops emitting the
-          // paired project event, restore the graph invalidation here.
           qc.invalidateQueries({
             queryKey: taskKeys.detail(ev.projectId, ev.taskId),
           });

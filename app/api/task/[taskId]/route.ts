@@ -22,8 +22,10 @@ const TASK_SUBSCRIPTION_TTL_MS = 10 * 60_000;
  * skips the second `projects.identifier` round-trip that the response
  * body needs for `taskRef`. Without that ordering every 304 still hits
  * the DB twice — for resources users re-select frequently this is the
- * common case. Broker subscription registration is also skipped on
- * HEAD/304 because both are cache probes, not "user is viewing" signals.
+ * common case. Broker subscription registration is also skipped on HEAD/304 (both are
+ * cache probes, not "user is viewing" signals) and when the caller has no
+ * live SSE connection — registering for a connection-less caller would
+ * leak the entry into the user's submap until the 10-min TTL elapses.
  *
  * @param req - Incoming request.
  * @param taskId - Task UUID from the route params.
@@ -55,7 +57,9 @@ async function handle(req: Request, taskId: string): Promise<Response> {
       task.sequenceNumber,
     );
 
-    broker.register(ctx.userId, `task:${taskId}`, TASK_SUBSCRIPTION_TTL_MS);
+    if (broker.hasConnections(ctx.userId)) {
+      broker.register(ctx.userId, `task:${taskId}`, TASK_SUBSCRIPTION_TTL_MS);
+    }
     return conditionalRespond(req, { ...task, taskRef }, task.updatedAt);
   } catch (err) {
     if (err instanceof ForbiddenError) {

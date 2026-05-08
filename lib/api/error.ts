@@ -3,8 +3,11 @@ import { error } from "@/lib/api/response";
 /**
  * Whether internal errors should be returned to the client verbatim. Off
  * by default — in production we never want to leak SQL fragments, bound
- * parameters, or internal stack traces. Flip via `MYMIR_API_VERBOSE_ERRORS=1`
- * in `.env.local` when actively debugging a 500 in dev.
+ * parameters, or internal stack traces. The `NODE_ENV === "production"`
+ * guard is a defense-in-depth tripwire: even if the env var is set in a
+ * production deploy by accident, verbose mode is physically impossible.
+ * Flip via `MYMIR_API_VERBOSE_ERRORS=1` in `.env.local` when actively
+ * debugging a 500 in dev.
  *
  * Read at call time so tests can mutate `process.env` between cases without
  * re-importing the module.
@@ -12,6 +15,7 @@ import { error } from "@/lib/api/response";
  * @returns True when the env var is set to `"1"`.
  */
 function isVerboseErrors(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
   return process.env.MYMIR_API_VERBOSE_ERRORS === "1";
 }
 

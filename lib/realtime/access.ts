@@ -40,15 +40,18 @@ export async function grantOrgAccess(
 /**
  * Cut a departing member off from realtime updates for the org's projects:
  *   1. Unregister every `project:<id>` sub for that user so subsequent
- *      mutations don't leak event timing to them. Skipped when the user has
- *      no live SSE connection — `detach` already cleared the sub map when
- *      their last tab closed, or the subs never existed.
- *   2. Dispatch `project-list:<userId>` so their home grid refetches with
- *      the now-shrunken accessible scope. This is the fix for the stale
- *      304 on `/api/projects` after team revocation: without it, the
- *      project-list validator (`getProjectListMaxUpdatedAt`) can move
- *      backwards as access shrinks, the conditional GET returns 304, and
- *      the client keeps stale projects in the home grid.
+ *      mutations don't leak event timing to them.
+ *   2. Drop every `task:*` sub for the user (bulk, regardless of which
+ *      org the task belongs to). Without this, a removed-but-still-
+ *      connected member continues to receive `{ kind: "task", ... }`
+ *      events for org-Y tasks they previously fetched until the 10-min
+ *      TTL expires. Re-registration on the next accessible-task fetch is
+ *      free, so a precise filter on the revoked org's task ids would be
+ *      extra DB cost for no functional benefit.
+ *   3. Skipped when the user has no live SSE connection — `detach`
+ *      already cleared the sub map when their last tab closed.
+ *   4. Dispatch `project-list:<userId>` so their home grid refetches with
+ *      the now-shrunken accessible scope.
  *
  * Non-throwing for the same reason as {@link grantOrgAccess}.
  *
@@ -65,6 +68,7 @@ export async function revokeOrgAccess(
       for (const id of projectIds) {
         broker.unregister(userId, `project:${id}`);
       }
+      broker.clearTaskSubs(userId);
     }
     emitProjectListForUser(userId, orgId);
   } catch (err) {
