@@ -44,8 +44,11 @@ function err(message: string) {
  * catch. This helper exists to neutralise unexpected throws (e.g. a unique
  * constraint violation that bubbles up from Drizzle without a wrapper).
  *
- * Set `MYMIR_API_VERBOSE_ERRORS=1` in `.env.local` to forward the raw
- * `err.message` to the MCP client when chasing a specific failure in dev.
+ * Verbose mode is whitelist-gated to `NODE_ENV === "development"` (i.e.
+ * `bun run dev`). Production, test, staging, undefined, typos, future
+ * Next.js renames all fall through to the generic body. Fail-safe by
+ * default: a silent env-var change can never start leaking SQL fragments,
+ * bound parameters, or stack traces to MCP clients.
  *
  * @param label - Tool name (e.g. `"mymir_project"`).
  * @param e - The thrown error.
@@ -53,7 +56,7 @@ function err(message: string) {
  */
 function mcpError(label: string, e: unknown) {
   console.error(`[mcp:${label}] error:`, e);
-  const verbose = process.env.MYMIR_API_VERBOSE_ERRORS === "1";
+  const verbose = process.env.NODE_ENV === "development";
   const message = verbose && e instanceof Error ? e.message : "Internal error";
   return err(message);
 }

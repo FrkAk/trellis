@@ -505,9 +505,10 @@ function isUniqueViolation(e: unknown): boolean {
  *   raw query, parameter values, or column list to the client.
  *
  * Anything else falls through to the opaque catch-all: logged server-side
- * with full context, returned to the client as `Internal error`. Set
- * `MYMIR_API_VERBOSE_ERRORS=1` in `.env.local` to forward `err.message`
- * verbatim in dev when chasing a specific failure.
+ * with full context, returned to the client as `Internal error`. Verbose
+ * `err.message` forwarding is whitelist-gated to `NODE_ENV === "development"`
+ * (i.e. `bun run dev`); every other env value falls through to generic so
+ * a silent env change can't start leaking driver internals.
  *
  * The data-layer assertions tag ForbiddenError with `resource`/`resourceId`,
  * so this layer never re-queries the database.
@@ -567,7 +568,7 @@ function translateError(e: unknown): ToolResult {
     return fail("Conflict: a record with that value already exists.");
   }
   console.error("[graph:tool-handlers] unhandled error:", e);
-  const verbose = process.env.MYMIR_API_VERBOSE_ERRORS === "1";
+  const verbose = process.env.NODE_ENV === "development";
   return fail(verbose && e instanceof Error ? e.message : "Internal error");
 }
 
