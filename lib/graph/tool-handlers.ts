@@ -612,14 +612,14 @@ export const DESCRIPTIONS = {
     "overview=full project structure: every task, every edge, full tag vocab, progress. VERY HEAVY. Reserve for unfamiliar-project orientation, decompose's pre-write coverage check, or strategic review. At most once per session.",
   mymir_context:
     "Retrieve task context at varying depth. ALWAYS fetch context before reasoning about a task; pick the lightest depth that answers the question. " +
-    "summary=quick (status, edge counts) for status checks. " +
+    "summary=task header + description + counts (criteria, decisions, plan flag, edge counts) + full 1-hop edges WITH notes. The lightest depth that still carries edge notes; folds in what `mymir_query type='edges'` would give. " +
     "working=detailed (criteria, decisions, 1-hop edges, siblings) for refinement and review. " +
     "agent=multi-hop dependency chains with upstream execution records (~4-8K tokens); fetch BEFORE coding. " +
     "planning=spec-focused (project description, prereqs, acceptance criteria, downstream specs); fetch BEFORE writing the implementation plan.",
   mymir_analyze:
     "Analyze the project dependency graph. All variants slim; lead with these for status, prioritization, 'what's next', 'what's stuck'. " +
     "critical_path=longest dep chain (project bottleneck, minimum duration). Lead with this on continue / resume / 'guide me forward'; the most important type for prioritization. " +
-    "ready=tasks with all deps done. Pick from `ready ∩ critical_path` for the highest-impact unblocked work. " +
+    "ready=planned tasks with all effective deps done (only `status='planned'` reaches this state; drafts with satisfied deps surface as `plannable`, not `ready`). Pick from `ready ∩ critical_path` for the highest-impact unblocked work. " +
     "plannable=draft tasks with description + criteria, ready for planning. Fall back here when nothing is ready to code. " +
     "blocked=tasks waiting on unfinished deps with blocker details. " +
     "downstream=transitive dependents of one task; impact analysis before status change, refinement, or cancellation.",
