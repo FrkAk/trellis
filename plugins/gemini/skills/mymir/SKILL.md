@@ -61,7 +61,8 @@ Six tools. Read tools have cost (slim → very heavy); pick the lightest that an
 | `search` | slim | find tasks by taskRef (e.g. `MYMR-83`), title substring, or tag substring. Pass `tags=[...]` for exact tag match (OR-within); combine with `query` to AND-narrow. Capped at 20 results, ranked by relevance. Read the `_hints` on the result to pick the right `mymir_context` depth. |
 | `list` | medium | browse every task in a project (slim per-task fields, but every task). |
 | `edges` | slim | inspect one task's relationships. |
-| `overview` | **very heavy** | full project structure. Every task, every edge, full tag vocab, progress. Reserve for: initial exploration of an unfamiliar project, the manage agent's strategic review, decompose's pre-write coverage check. **Do not** run on routine status questions. Once per session at most. |
+| `meta` | slim | look up the project's categories, tag vocabulary (with usage counts), description, status, and progress without dragging tasks or edges into context. Use before setting a `category` on a new task, before coining new tags, or for a quick read of where the project stands. |
+| `overview` | **very heavy** | full project structure. Every task, every edge, full tag vocab, progress. Reserve for: initial exploration of an unfamiliar project, the manage agent's strategic review, decompose's pre-write coverage check. **Do not** run on routine status questions. Once per session at most. For just categories or tag vocab, prefer `meta`. |
 
 ### `mymir_context`: task context at varying depth
 
@@ -230,7 +231,7 @@ Use this when **multiple independent ready tasks** exist AND **multiple coding a
 
 ### Create a task
 
-0. Check `mymir_query type='search' tags=[...]` (or `type='list'`) for existing tag and category vocabulary. Reuse before coining.
+0. Check `mymir_query type='meta'` for the project's existing categories and tag vocabulary (with usage counts). Reuse before coining.
 1. `mymir_task action='create'` with: verb+noun title, 2 to 4 sentence description, 2 to 4 binary acceptanceCriteria, one category from project categories, all four tag dimensions (work type, cross-cutting concern, tech, priority. Artifacts §2).
 2. `mymir_edge action='create'` for dependencies. Meaningful notes (artifacts §3). Empty notes ("needed", "depends") are forbidden.
 3. Verify. `mymir_query type='edges'` on the new task.
@@ -247,13 +248,14 @@ Edges to a cancelled task remain in place. Cancellation is transitive-aware. Dep
 Covers explicit "continue" or "resume" requests AND open-ended "what should I focus on", "I'm stuck, where to next", "give me a path forward".
 
 1. `action='list'`, then `action='select'` if not already selected.
-2. **Lead with `mymir_analyze type='critical_path'`.** This is what tells the user the actual shape of the remaining work. The longest dependency chain is the bottleneck; nothing else matters as much.
-3. `mymir_analyze type='ready'`. What can start now.
-4. `mymir_analyze type='blocked'`. What's stuck (and why).
-5. If still nothing actionable: `mymir_analyze type='plannable'`. Drafts ready to plan.
-6. For specific lookups: `mymir_query type='search'` with title or tag.
-7. Reach for `mymir_query type='overview'` only if the user explicitly wants the full picture (and only once per session).
-8. Summarize progress, the critical path's current head, and a concrete top-1 recommendation. Don't dump the full task list.
+2. `mymir_query type='meta'` for fresh project orientation: progress numbers, status, description, categories, tag vocab. Slim. Skip if step 1 ran this turn (list already carries progress per project); call it when the session has been going a while and `list`'s numbers are stale, or when you need the project description or tag vocab for the recommendation.
+3. **Lead with `mymir_analyze type='critical_path'`.** This is what tells the user the actual shape of the remaining work. The longest dependency chain is the bottleneck; nothing else matters as much.
+4. `mymir_analyze type='ready'`. What can start now.
+5. `mymir_analyze type='blocked'`. What's stuck (and why).
+6. If still nothing actionable: `mymir_analyze type='plannable'`. Drafts ready to plan.
+7. For specific lookups: `mymir_query type='search'` with title or tag. For one task's relationships: `type='edges'`.
+8. Reach for `mymir_query type='overview'` only if the user explicitly wants every task and edge. `meta` plus the analyze types already give you the project shape and bottleneck; overview adds the per-task list and full edge graph, which routine "what's next" answers do not need. Once per session.
+9. Summarize progress (sourced from `meta` or `list`), the critical path's current head, and a concrete top-1 recommendation. Don't dump the full task list.
 
 ## Inline playbooks (when not dispatching)
 

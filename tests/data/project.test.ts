@@ -9,6 +9,7 @@ import {
   getProjectChrome,
   getProjectMaxUpdatedAt,
   getProjectListMaxUpdatedAt,
+  getProjectMeta,
   listProjectsSlim,
 } from "@/lib/data/project";
 import { makeAuthContext } from "@/lib/auth/context";
@@ -119,6 +120,74 @@ test("getProjectChrome returns header fields plus task count", async () => {
     "taskCount",
     "title",
   ]);
+});
+
+test("getProjectMeta returns header + tag vocabulary + status-grouped stats", async () => {
+  const f = await seedUserOrgProject("meta");
+  const ctx = makeAuthContext(f.userId);
+
+  const sqlc = postgres(getConnectionString(), { max: 1 });
+  try {
+    await sqlc`
+      INSERT INTO tasks ("project_id", "title", "sequence_number", "status", "tags") VALUES
+        (${f.projectId}, 'A', 1, 'done',        '["feature","core"]'),
+        (${f.projectId}, 'B', 2, 'done',        '["feature","release-blocker"]'),
+        (${f.projectId}, 'C', 3, 'in_progress', '["bug","core"]'),
+        (${f.projectId}, 'D', 4, 'planned',     '["refactor","normal"]'),
+        (${f.projectId}, 'E', 5, 'cancelled',   '["chore","backlog"]')
+    `;
+  } finally {
+    await sqlc.end({ timeout: 5 });
+  }
+
+  const m = await getProjectMeta(ctx, f.projectId);
+
+  expect(m.id).toBe(f.projectId);
+  expect(Object.keys(m).sort()).toEqual([
+    "categories",
+    "description",
+    "id",
+    "identifier",
+    "progress",
+    "status",
+    "tagVocabulary",
+    "taskStats",
+    "title",
+  ]);
+
+  expect(m.taskStats).toEqual({
+    total: 5,
+    done: 2,
+    inProgress: 1,
+    cancelled: 1,
+  });
+  // 2 done out of (5 total - 1 cancelled) = 50%
+  expect(m.progress).toBe(50);
+
+  const tagMap = new Map(m.tagVocabulary.map((t) => [t.tag, t.count]));
+  expect(tagMap.get("feature")).toBe(2);
+  expect(tagMap.get("core")).toBe(2);
+  expect(tagMap.get("bug")).toBe(1);
+  expect(tagMap.get("refactor")).toBe(1);
+  // Sorted by count desc, tie-broken alphabetically
+  const counts = m.tagVocabulary.map((t) => t.count);
+  expect(counts).toEqual([...counts].sort((a, b) => b - a));
+});
+
+test("getProjectMeta on an empty project reports zero stats and empty vocab", async () => {
+  const f = await seedUserOrgProject("meta-empty");
+  const ctx = makeAuthContext(f.userId);
+
+  const m = await getProjectMeta(ctx, f.projectId);
+
+  expect(m.taskStats).toEqual({
+    total: 0,
+    done: 0,
+    inProgress: 0,
+    cancelled: 0,
+  });
+  expect(m.progress).toBe(0);
+  expect(m.tagVocabulary).toEqual([]);
 });
 
 test("getProjectMaxUpdatedAt returns the latest updated_at across project + tasks + edges", async () => {

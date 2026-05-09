@@ -15,6 +15,7 @@ import {
   listProjectsSlim,
   listUserTeams,
   getProjectTags,
+  getProjectMeta,
 } from "@/lib/data/project";
 import {
   createTask,
@@ -62,6 +63,7 @@ import {
   formatTaskList,
   formatDetailedEdges,
   formatOverview,
+  formatProjectMeta,
   formatReadyTasks,
   formatBlockedTasks,
   formatDownstream,
@@ -608,7 +610,8 @@ export const DESCRIPTIONS = {
     "search=tasks by taskRef, title, or tag substring (case-insensitive, up to 20). Pass tags=[...] for exact tag match (OR-within); combine with `query` to AND-narrow. Single-result responses include a state hint pointing to the right next call. " +
     "list=every task in the project (slim, ordered by position). " +
     "edges=relationships on one task (connected title, status, direction, note). " +
-    "overview=full project structure: every task, every edge, full tag vocab, progress. VERY HEAVY. Reserve for unfamiliar-project orientation, decompose's pre-write coverage check, or strategic review. At most once per session.",
+    "meta=slim project metadata: header, description, status, categories, tag vocabulary (with usage counts), progress + status counts. No task list, no edges. Use this to look up categories before setting one, or the tag vocabulary before coining new tags. " +
+    "overview=full project structure: every task, every edge, full tag vocab, progress. VERY HEAVY. Reserve for unfamiliar-project orientation, decompose's pre-write coverage check, or strategic review. At most once per session. For just categories or tag vocab, use meta.",
   mymir_context:
     "Retrieve task context at varying depth. ALWAYS fetch context before reasoning about a task; pick the lightest depth that answers the question. " +
     "summary=task header + description + counts (criteria, decisions, plan flag, edge counts) + full 1-hop edges WITH notes. The lightest depth that still carries edge notes; folds in what `mymir_query type='edges'` would give. " +
@@ -676,7 +679,7 @@ export type EdgeParams = {
 
 /** Params for mymir_query. */
 export type QueryParams = {
-  type: "search" | "list" | "edges" | "overview";
+  type: "search" | "list" | "edges" | "meta" | "overview";
   projectId?: string;
   query?: string;
   tags?: string[];
@@ -896,7 +899,7 @@ export async function handleTask(
         }
         if (!p.category) {
           createHints.push(
-            "No category. Run mymir_query type='overview' to see this project's categories, then set one with mymir_task action='update'.",
+            "No category. Run mymir_query type='meta' to see this project's categories, then set one with mymir_task action='update'.",
           );
         }
         createHints.push("No edges yet. Add dependencies with mymir_edge action='create'.");
@@ -1200,6 +1203,10 @@ export async function handleQuery(
             "taskId required for edges. Use type='search' to find task IDs.",
           );
         return ok(formatDetailedEdges(await getTaskEdgesDetailed(ctx, p.taskId)));
+      }
+      case "meta": {
+        if (!p.projectId) return fail("projectId required for meta. Run mymir_project action='list' first.");
+        return ok(formatProjectMeta(await getProjectMeta(ctx, p.projectId)));
       }
       case "overview": {
         if (!p.projectId) return fail("projectId required for overview. Run mymir_project action='list' first.");

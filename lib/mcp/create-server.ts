@@ -91,13 +91,19 @@ The caller's account spans every membership. There is no 'active' team. Read too
 3. \`mymir_project action='select' projectId='...'\` to confirm. Pass \`projectId\` on every subsequent call.
 
 ## Find work
-Lead with \`mymir_analyze\`. All variants are slim.
-- \`critical_path\`: longest dependency chain, the project bottleneck. Most important for prioritization. Lead with this on continue / resume / "what should I work on".
-- \`ready\`: planned tasks with all dependencies done (drafts with satisfied deps surface as \`plannable\`, not \`ready\`). Pick from the intersection of \`ready\` and \`critical_path\`.
-- \`plannable\`: draft tasks with description plus criteria, ready for planning when nothing is ready to code.
-- \`blocked\`: tasks waiting on unfinished dependencies, with blocker detail.
+Lead with \`mymir_analyze\` (all variants slim):
+- \`critical_path\` first on continue / resume / "what's next"; the bottleneck dictates priority.
+- \`ready\` for unblocked planned tasks (drafts with satisfied deps surface as \`plannable\`, not \`ready\`); pick from \`ready ∩ critical_path\` for the highest-impact unblocked work.
+- \`plannable\` when nothing is ready to code (drafts with description + criteria + deps satisfied).
+- \`blocked\` to diagnose what's stuck (waiting tasks with blocker detail).
+- \`downstream\` for impact analysis before a status change, refinement, or cancellation; not for picking next work.
 
-\`mymir_query type='overview'\` is very heavy (every task, every edge, full tag vocab). Reserve it for unfamiliar projects or strategic review; do not run on routine status questions.
+Drop to \`mymir_query\` for browse / lookup:
+- \`search\` (slim): find a task by taskRef, title fragment, or tag substring; \`tags=[...]\` for exact-tag OR-filter; single-result responses carry a state hint pointing at the right next call.
+- \`list\` (medium): every task in the project, slim per-task fields, ordered by position.
+- \`edges\` (slim): one task's relationships (connected ref, title, status, direction, note).
+- \`meta\` (slim): the project's categories, tag vocabulary with usage counts, description, status, and progress. Use before setting a \`category\` or coining new tags; lighter than overview.
+- \`overview\` (very heavy): full structure (every task, every edge, full tag vocab, progress). Reserve for unfamiliar-project orientation, decompose's pre-write coverage check, or strategic review. At most once per session. Do not run on routine status questions.
 
 ## Refine a task
 1. \`mymir_context taskId='...' depth='working'\` for current state, edges, siblings.
@@ -250,9 +256,9 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
         decisions: z.array(z.string()).optional()
           .describe("Technical choices and constraints. One-liner per decision (CHOICE + WHY)."),
         tags: z.array(z.string()).optional()
-          .describe("Kebab-case. Every task carries: exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces touched), exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Run mymir_query type='overview' before coining new tags."),
+          .describe("Kebab-case. Every task carries: exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces touched), exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Run mymir_query type='meta' before coining new tags."),
         category: z.string().optional()
-          .describe("Architectural layer / subsystem this task belongs to (exactly one). Reuse a project category; do not silently coin mid-task. The project's 4-8 categories are set on creation or via decompose/onboarding gates. Run mymir_query type='overview' to see them. Artifacts §4."),
+          .describe("Architectural layer / subsystem this task belongs to (exactly one). Reuse a project category; do not silently coin mid-task. The project's 4-8 categories are set on creation or via decompose/onboarding gates. Run mymir_query type='meta' to see them. Artifacts §4."),
         files: z.array(z.string()).optional()
           .describe("Repo-relative paths created or modified (no leading slash, no absolute). Pass `files=[]` when nothing was touched (unscaffolded repo, research/spec-review/decision-only); never invent paths."),
         implementationPlan: z.string().optional()
@@ -323,16 +329,16 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
     {
       description: DESCRIPTIONS.mymir_query,
       inputSchema: z.object({
-        type: z.enum(["search", "list", "edges", "overview"])
-          .describe("search=find tasks by taskRef, title, or tag (case-insensitive, up to 20). list=all tasks ordered by position. edges=relationships on a task. overview=full project structure with progress + tag vocab."),
+        type: z.enum(["search", "list", "edges", "meta", "overview"])
+          .describe("search=find tasks by taskRef, title, or tag (case-insensitive, up to 20). list=all tasks ordered by position. edges=relationships on a task. meta=slim project metadata (header, categories, tag vocab with counts, progress); use to look up categories or tag vocab without overview. overview=full project structure with progress + tag vocab + every task + every edge."),
         query: z.string().optional()
           .describe("Search string for type='search'. Matches taskRef, title substring, or tag substring. Optional when `tags` is provided."),
         tags: z.array(z.string()).optional()
-          .describe("Filter to tasks containing ANY of these exact tags (OR-within). Combine with `query` to narrow further. Pick from the Tag vocabulary in `type='overview'`."),
+          .describe("Filter to tasks containing ANY of these exact tags (OR-within). Combine with `query` to narrow further. Pick from the tag vocabulary in `type='meta'`."),
         taskId: z.uuid().optional()
           .describe("Task UUID for type='edges'."),
         projectId: z.uuid().optional()
-          .describe("Project UUID. Required for search/list/overview."),
+          .describe("Project UUID. Required for search/list/meta/overview."),
       }),
       annotations: {
         title: "Query Tasks",

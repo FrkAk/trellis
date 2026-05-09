@@ -28,6 +28,7 @@ import type {
   ProjectChrome,
   ProjectGraphSlim,
   ProjectListEntry,
+  ProjectMeta,
   ProjectSlim,
   ProjectTaskStats,
   TaskGraphSlim,
@@ -361,6 +362,69 @@ export async function getProjectTags(
 ): Promise<ProjectTag[]> {
   await assertProjectAccess(projectId, ctx);
   return aggregateProjectTags(db, projectId);
+}
+
+// ---------------------------------------------------------------------------
+// Project metadata (slim — no tasks, no edges)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slim project-level metadata for agent orientation. Intended as the
+ * lightweight alternative to {@link buildProjectOverview} when the agent
+ * needs categories, tag vocab, or progress without dragging every task and
+ * edge into context. Three queries: project header (via assertProjectAccess),
+ * tag aggregation, and status-grouped count.
+ *
+ * @param ctx - Resolved auth context.
+ * @param projectId - UUID of the project.
+ * @returns Project metadata with category list, tag vocab, and task stats.
+ * @throws ForbiddenError on missing or cross-team project.
+ */
+export async function getProjectMeta(
+  ctx: AuthContext,
+  projectId: string,
+): Promise<ProjectMeta> {
+  const { project } = await assertProjectAccess(projectId, ctx);
+
+  const [tagVocabulary, statusCounts] = await Promise.all([
+    aggregateProjectTags(db, projectId),
+    db
+      .select({
+        status: tasks.status,
+        count: sql<number>`count(*)::int`.as("count"),
+      })
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId))
+      .groupBy(tasks.status),
+  ]);
+
+  const taskStats: ProjectTaskStats = {
+    total: 0,
+    done: 0,
+    inProgress: 0,
+    cancelled: 0,
+  };
+  for (const c of statusCounts) {
+    taskStats.total += c.count;
+    if (c.status === "done") taskStats.done = c.count;
+    else if (c.status === "in_progress") taskStats.inProgress = c.count;
+    else if (c.status === "cancelled") taskStats.cancelled = c.count;
+  }
+  const denominator = taskStats.total - taskStats.cancelled;
+  const progress =
+    denominator > 0 ? Math.round((taskStats.done / denominator) * 100) : 0;
+
+  return {
+    id: project.id,
+    identifier: project.identifier,
+    title: project.title,
+    description: project.description,
+    status: project.status,
+    categories: project.categories,
+    tagVocabulary,
+    taskStats,
+    progress,
+  };
 }
 
 // ---------------------------------------------------------------------------

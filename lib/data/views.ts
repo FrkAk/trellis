@@ -64,6 +64,21 @@ export type ProjectChrome = Pick<
   taskCount: number;
 };
 
+/**
+ * Slim project metadata view for agent orientation. Header fields plus tag
+ * vocabulary, status-grouped task counts, and progress percent. Designed as
+ * the lightweight alternative to the full project overview when the agent
+ * only needs categories, tag vocab, or progress.
+ */
+export type ProjectMeta = Pick<
+  Project,
+  "id" | "identifier" | "title" | "description" | "status" | "categories"
+> & {
+  tagVocabulary: { tag: string; count: number }[];
+  taskStats: ProjectTaskStats;
+  progress: number;
+};
+
 /** Slim view of a project for list/search surfaces. */
 export type ProjectSlim = {
   id: string;
