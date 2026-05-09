@@ -595,7 +595,7 @@ export const DESCRIPTIONS = {
     "update=title, description, status, categories, or identifier. Renaming identifier cascades every taskRef and breaks external references (PR titles, docs, commits).",
   mymir_task:
     "Create, update, or delete tasks. Lifecycle: draft → planned → in_progress → done. cancelled is terminal abandoned work with transparent dep semantics (dependents stay blocked through the cancelled task's own unsatisfied prereqs; populate executionRecord with rationale). " +
-    "create requires title (verb+noun, imperative), description (2-4 sentences; single-sentence rejected), 2-4 binary acceptanceCriteria, all four tag dimensions (work-type, cross-cutting, tech, priority), one project category. " +
+    "create requires title (verb+noun, imperative), description (2-4 sentences; single-sentence rejected), 2-4 binary acceptanceCriteria, all four tag dimensions (work-type, cross-cutting, tech, priority), one project category. After create: search precedents/coordinators by verb+noun+surface, wire mymir_edge, verify with mymir_query type='edges'. Bare tasks orphan from critical_path, downstream, depth='agent'. " +
     "update: pass only changed fields. Array fields (acceptanceCriteria, decisions, files) APPEND by default; overwriteArrays=true REPLACES them. Destructive, NO undo (history is an audit log); confirm with user first. " +
     "delete: preview=true (default) shows impact; preview=false executes. Prefer status='cancelled' for abandoned scope so the rationale is preserved. " +
     "Done means: executionRecord (3-5 sentences, what was built), decisions (CHOICE+WHY), files (every path), acceptanceCriteria evaluated. Open a PR if files non-empty; run mymir_analyze type='downstream' to propagate.",
@@ -902,7 +902,9 @@ export async function handleTask(
             "No category. Run mymir_query type='meta' to see this project's categories, then set one with mymir_task action='update'.",
           );
         }
-        createHints.push("No edges yet. Add dependencies with mymir_edge action='create'.");
+        createHints.push(
+          "No edges yet. Bare tasks orphan from critical_path, downstream, depth='agent' propagation. Search precedents/coordinators by verb + noun + surface; wire mymir_edge with substantive notes; verify with mymir_query type='edges'.",
+        );
         return ok({ ...task, _hints: createHints });
       }
       case "update": {
