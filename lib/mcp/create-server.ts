@@ -260,7 +260,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
         category: z.string().optional()
           .describe("Architectural layer / subsystem this task belongs to (exactly one). Reuse a project category; do not silently coin mid-task. The project's 4-8 categories are set on creation or via decompose/onboarding gates. Run mymir_query type='meta' to see them. Artifacts §4."),
         priority: z.enum(["release-blocker", "core", "normal", "backlog"]).optional()
-          .describe("Priority of the task. First-class field as of MYMR-190 (replaces the old priority tag dimension). release-blocker: cannot ship without; core: central to the release; normal: routine; backlog: deprioritized."),
+          .describe("Priority of the task. release-blocker: cannot ship without; core: central to the release; normal: routine; backlog: deprioritized."),
         estimate: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(5), z.literal(8), z.literal(13)]).optional()
           .describe("Fibonacci story-point estimate. 1 = trivial, 2/3 = routine, 5 = nontrivial, 8/13 = risky or multi-day. If a task feels >13, split it (artifacts §5)."),
         assigneeIds: z.array(z.uuid()).optional()

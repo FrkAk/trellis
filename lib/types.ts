@@ -11,7 +11,7 @@ export type ProjectStatus =
 /** Task lifecycle status. */
 export type TaskStatus = "draft" | "planned" | "in_progress" | "done" | "cancelled";
 
-/** Task priority. Replaces the priority tag dimension as of MYMR-190. */
+/** Task priority. */
 export type Priority = "release-blocker" | "core" | "normal" | "backlog";
 
 /** Fibonacci story-point estimate. */

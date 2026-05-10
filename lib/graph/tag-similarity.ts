@@ -5,10 +5,6 @@
 
 /**
  * Closed-vocabulary work-type tags (one per task) per `artifacts.md` §2.
- *
- * Priority used to share this enforcement layer (`PRIORITY_TAGS`); as of
- * MYMR-190 priority is a first-class column on `tasks`, not a tag, so
- * the closed-vocabulary check covers only work-type.
  */
 export const WORK_TYPE_TAGS: ReadonlySet<string> = new Set([
   "bug",

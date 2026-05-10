@@ -185,8 +185,6 @@ Every task, in every status, must carry tags across the three tag dimensions bel
 | **Cross-cutting concern** | ≥1 | quality attribute (`security`, `a11y`, `dx`, `perf`, `reliability`, `observability`, `i18n`, `compliance`, `safety`) or feature cluster spanning multiple categories (web: `onboarding-flow`, `live-replay`; aerospace: `flight-control`, `mission-planning`; agentic: `agent-loop`, `eval-harness`; ML: `inference-pipeline`, `data-drift`; financial: `risk-engine`, `pricing-model`) |
 | **Tech** | at most 2 | most important stack pieces the task touches; pull from manifest deps |
 
-Priority used to be a fourth tag dimension; as of MYMR-190 it is a first-class column on `tasks` (see below) and must NOT appear in `tags`.
-
 ### First-class fields (priority, estimate, assignees)
 
 These are top-level columns on every task, set via `mymir_task` parameters of the same name. They are NOT tags.
