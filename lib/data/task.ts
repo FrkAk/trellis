@@ -217,19 +217,10 @@ export type TaskStateInput = {
  * *effective* one — cancelled middles are walked through, and the wall is
  * the next non-cancelled prerequisite.
  *
- * Two thresholds drive the state machine:
- *   - `allDepsAtLeastPlanned` — every effective dep has left the draft stage.
- *     This is the bar for `plannable`: a draft can be planned as soon as its
- *     prerequisites have at least a plan, because we know their interfaces.
- *   - `allDepsDone`             — every effective dep is `done`.
- *     This is the bar for `ready`: an agent can only execute the task once
- *     its prerequisites have actually shipped.
- *
- * The previous logic used `allDepsDone` for both checks, which collapsed
- * `plannable` into a no-op state — the moment a draft hit the bar it could
- * also be planned, and the moment it was planned it was already `ready`.
- * Splitting the thresholds restores the intermediate `plannable` and
- * `planned-but-blocked` regions.
+ * Iron-law gate: both `plannable` and `ready` require every effective dep
+ * to be `done`. A draft becomes `plannable` only when its prerequisites
+ * have actually shipped — we don't plan against unshipped interfaces because
+ * the propagation rules in `lifecycle.md` only hold for shipped work.
  *
  * @param task - Slim shape: id, status, plus pre-computed
  *   `hasDescription` / `hasCriteria` booleans the slim payload already
@@ -250,52 +241,20 @@ function deriveTaskState(
 
   const deps = graph.effectiveDeps.get(task.id) ?? new Set<string>();
   let allDepsDone = true;
-  let allDepsAtLeastPlanned = true;
   for (const depId of deps) {
-    const depStatus = graph.activeTasks.get(depId)?.status;
-    if (depStatus !== "done") allDepsDone = false;
-    if (depStatus === "draft") allDepsAtLeastPlanned = false;
-    if (!allDepsDone && !allDepsAtLeastPlanned) break;
+    if (graph.activeTasks.get(depId)?.status !== "done") {
+      allDepsDone = false;
+      break;
+    }
   }
 
   if (task.status === "planned") {
     return allDepsDone ? "ready" : "blocked";
   }
 
-  // Draft path — gate plannable behind `allDepsAtLeastPlanned`, not the
-  // (stricter) `allDepsDone`. A draft is `blocked` only when at least one
-  // dep is still itself a draft.
-  if (!allDepsAtLeastPlanned) return "blocked";
+  if (!allDepsDone) return "blocked";
 
   return task.hasDescription && task.hasCriteria ? "plannable" : "draft";
-}
-
-/**
- * Adapter for callers that have the full task row (`description` +
- * `acceptanceCriteria`) instead of the pre-computed slim booleans.
- *
- * @param task - Task with status, description, and acceptanceCriteria.
- * @param graph - Effective dependency graph for the project.
- * @returns Derived TaskState.
- */
-function deriveTaskStateFromFullTask(
-  task: {
-    id: string;
-    status: string;
-    description: string;
-    acceptanceCriteria: unknown;
-  },
-  graph: Parameters<typeof deriveTaskState>[1],
-): TaskState {
-  const hasDescription = task.description.trim().length > 0;
-  const criteria = task.acceptanceCriteria as
-    | { id: string; text: string; checked: boolean }[]
-    | null;
-  const hasCriteria = Array.isArray(criteria) && criteria.length > 0;
-  return deriveTaskState(
-    { id: task.id, status: task.status, hasDescription, hasCriteria },
-    graph,
-  );
 }
 
 /**
@@ -305,6 +264,10 @@ function deriveTaskStateFromFullTask(
  * Builds the effective dependency graph once and reuses it for every task in
  * the subset, so dep readiness reflects transitive blocking through cancelled
  * middles rather than just direct edges.
+ *
+ * Routes through {@link deriveTaskStatesSlim} after computing the slim
+ * `hasDescription` / `hasCriteria` booleans from the heavy text columns —
+ * single derivation pipeline, no drift.
  *
  * @param projectId - UUID of the project.
  * @param taskSubset - Tasks to derive states for.
@@ -319,12 +282,20 @@ export async function deriveTaskStates(
     acceptanceCriteria: unknown;
   }[],
 ): Promise<Map<string, TaskState>> {
-  const graph = await buildEffectiveDepGraph(projectId);
-  const result = new Map<string, TaskState>();
-  for (const task of taskSubset) {
-    result.set(task.id, deriveTaskStateFromFullTask(task, graph));
-  }
-  return result;
+  return deriveTaskStatesSlim(
+    projectId,
+    taskSubset.map((t) => {
+      const criteria = t.acceptanceCriteria as
+        | { id: string; text: string; checked: boolean }[]
+        | null;
+      return {
+        id: t.id,
+        status: t.status,
+        hasDescription: t.description.trim().length > 0,
+        hasCriteria: Array.isArray(criteria) && criteria.length > 0,
+      };
+    }),
+  );
 }
 
 /**

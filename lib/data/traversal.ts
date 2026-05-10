@@ -206,14 +206,19 @@ export type ReadyTask = {
 /**
  * Find all tasks whose dependencies are fully satisfied.
  *
- * A task is ready when its status is "planned" and every active task in its
- * effective dependency set is `done`. Cancelled tasks are transparent — they
- * don't satisfy a dep on their own, but the walk continues through them to
- * find the next active prerequisite (which is the actual wall).
+ * A task is ready when its status is "planned" and every effective dep is
+ * `done`. Cancelled tasks are transparent — they don't satisfy a dep on their
+ * own, but the walk continues through them to find the next active
+ * prerequisite (which is the actual wall).
+ *
+ * Delegates the derivation to `deriveTaskStates` so this analyzer agrees
+ * with search-result `state`, `getPlannableTasks`, `mymir_analyze
+ * type='blocked'`, and the slim payload's `task.state`. Single source of
+ * truth — no parallel implementations to drift.
  *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
- * @returns Array of ready tasks.
+ * @returns Array of ready tasks (state === 'ready' from deriveTaskStates).
  */
 export async function getReadyTasks(
   ctx: AuthContext,
@@ -222,30 +227,32 @@ export async function getReadyTasks(
   const { project } = await assertProjectAccess(projectId, ctx);
   const identifier = asIdentifier(project.identifier);
 
-  const graph = await buildEffectiveDepGraph(projectId);
-  const ready: ReadyTask[] = [];
+  const allTasks = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      tags: tasks.tags,
+      description: tasks.description,
+      acceptanceCriteria: tasks.acceptanceCriteria,
+      sequenceNumber: tasks.sequenceNumber,
+    })
+    .from(tasks)
+    .where(eq(tasks.projectId, projectId));
 
-  for (const info of graph.activeTasks.values()) {
-    if (info.status !== "planned") continue;
-    const deps = graph.effectiveDeps.get(info.id) ?? new Set<string>();
-    let allDepsDone = true;
-    for (const depId of deps) {
-      if (graph.activeTasks.get(depId)?.status !== "done") {
-        allDepsDone = false;
-        break;
-      }
-    }
-    if (!allDepsDone) continue;
-    ready.push({
-      id: info.id,
-      taskRef: composeTaskRef(identifier, info.sequenceNumber),
-      title: info.title,
-      status: info.status,
-      tags: info.tags,
-    });
-  }
+  if (allTasks.length === 0) return [];
 
-  return ready;
+  const stateMap = await deriveTaskStates(projectId, allTasks);
+
+  return allTasks
+    .filter((task) => stateMap.get(task.id) === "ready")
+    .map((task) => ({
+      id: task.id,
+      taskRef: composeTaskRef(identifier, task.sequenceNumber),
+      title: task.title,
+      status: task.status,
+      tags: task.tags,
+    }));
 }
 
 // ---------------------------------------------------------------------------

@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { StatusGlyph } from '@/components/shared/StatusGlyph';
 import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
 import { IconPanelLeft } from '@/components/shared/icons';
+import { useGraphRailCollapse } from '@/components/workspace/graph/GraphRailCollapseProvider';
 import type { TaskGraphSlim } from '@/lib/data/views';
-
-/** localStorage key for the collapsed-state preference. */
-const RAIL_STORAGE_KEY = 'mymir:graph-rail-collapsed';
 
 /** Width of the rail when expanded. */
 const RAIL_WIDTH_EXPANDED = 240;
@@ -48,21 +46,6 @@ function refOrder(taskRef: string): number {
 }
 
 /**
- * Read the collapsed-state preference from localStorage with a safe SSR
- * fallback. Defaults to expanded for first-time operators.
- *
- * @returns `true` when the rail should start collapsed.
- */
-function readInitialCollapsed(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(RAIL_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Left rail for the workspace graph view. Defaults to a 240px Linear-density
  * list; collapses to a 40px icon strip via the chevron toggle so the canvas
  * gets the lion's share of the viewport when the operator wants it.
@@ -82,16 +65,7 @@ export function MiniTaskRail({
   stageMap,
   className = '',
 }: MiniTaskRailProps) {
-  const [collapsed, setCollapsed] = useState<boolean>(() => readInitialCollapsed());
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(RAIL_STORAGE_KEY, collapsed ? '1' : '0');
-    } catch {
-      /* swallow storage errors — preference is non-critical */
-    }
-  }, [collapsed]);
+  const { collapsed, toggle: toggleCollapsed } = useGraphRailCollapse();
 
   const sorted = useMemo(
     () => [...tasks].sort((a, b) => refOrder(a.taskRef) - refOrder(b.taskRef)),
@@ -124,7 +98,7 @@ export function MiniTaskRail({
         )}
         <button
           type="button"
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={toggleCollapsed}
           aria-label={collapsed ? 'Expand node rail' : 'Collapse node rail'}
           title={collapsed ? 'Expand rail' : 'Collapse rail'}
           className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"

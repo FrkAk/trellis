@@ -562,13 +562,7 @@ export function useForceSimulation(
   // to redraw via a ref callback.
   // -----------------------------------------------------------------------
   const attachLiveHandlers = useCallback(
-    (
-      sim: Simulation<GraphNode, GraphLink>,
-      newNodes: GraphNode[],
-      // Kept for symmetry with the old signature so call sites stay readable.
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      _newLinks: GraphLink[],
-    ) => {
+    (sim: Simulation<GraphNode, GraphLink>, newNodes: GraphNode[]) => {
       // Per-restart counter — each topology rebuild / reheat starts a new
       // closure with `tickCount = 0`, so the stride is independent across
       // simulation restarts.
@@ -631,19 +625,26 @@ export function useForceSimulation(
     );
 
     const isFirstBuild = simRef.current === null;
-    const hasSelection = selectedRef.current !== null;
     const allCached = newNodes.every((n) => cache.has(n.id));
+    // Focus path requires a real, locatable node. If `selectedRef` points at a
+    // task that was deleted in this rebuild, fall through to the cached/live
+    // path so the camera unsticks; the parent will clear `selectedNodeId`
+    // shortly after via its own delete-handler and the selection effect will
+    // re-converge.
+    const sel =
+      selectedRef.current != null
+        ? newNodes.find((n) => n.id === selectedRef.current) ?? null
+        : null;
 
     simRef.current?.stop();
     const { sim, cfg } = makeSim(newNodes, newLinks, w, h, tier);
     cfgRef.current = cfg;
     setTopologyVersion((v) => v + 1);
 
-    if (hasSelection) {
+    if (sel) {
       // Focus path — sync pre-tick + pin selection. No live ticks; the
       // camera locks onto the focused node immediately on first paint.
-      const sel = newNodes.find((n) => n.id === selectedRef.current);
-      if (sel && sel.x != null && sel.y != null) {
+      if (sel.x != null && sel.y != null) {
         sel.fx = sel.x;
         sel.fy = sel.y;
       }
@@ -672,7 +673,7 @@ export function useForceSimulation(
     // a sync mini-tick. The user expects motion every time the graph opens
     // even on return visits; instant placement feels broken.
     if (allCached) {
-      attachLiveHandlers(sim, newNodes, newLinks);
+      attachLiveHandlers(sim, newNodes);
       sim.alpha(0.35).restart();
       simRef.current = sim;
       nodesRef.current = newNodes;
@@ -689,7 +690,7 @@ export function useForceSimulation(
     // uncached nodes mixed in. Existing cached nodes keep their place; only
     // newcomers spread out. `alpha=0.3` for incremental reheats so the
     // existing graph barely shifts when one node is added.
-    attachLiveHandlers(sim, newNodes, newLinks);
+    attachLiveHandlers(sim, newNodes);
     sim.alpha(isFirstBuild ? 1 : 0.3).restart();
     simRef.current = sim;
     nodesRef.current = newNodes;
@@ -811,7 +812,7 @@ export function useForceSimulation(
       return;
     }
 
-    attachLiveHandlers(sim, ns, linksRef.current);
+    attachLiveHandlers(sim, ns);
     sim.alpha(0.3).restart();
     setState("settling");
   }, [attachLiveHandlers]);
@@ -840,7 +841,7 @@ export function useForceSimulation(
       ns[i]._enterT = 0;
     }
     getProjectCache(projectIdRef.current).clear();
-    attachLiveHandlers(sim, ns, linksRef.current);
+    attachLiveHandlers(sim, ns);
     sim.alpha(1).restart();
     setState("settling");
   }, [attachLiveHandlers]);

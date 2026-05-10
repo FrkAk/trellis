@@ -133,7 +133,7 @@ export function DetailHeader({
             <button
               type="button"
               onClick={onTogglePropRail}
-              aria-pressed={propRailOpen ? false : true}
+              aria-pressed={!propRailOpen}
               aria-label={propRailOpen ? 'Hide properties' : 'Show properties'}
               title={propRailOpen ? 'Hide properties — give the canvas more room' : 'Show properties'}
               className={`hidden h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors xl:inline-flex ${

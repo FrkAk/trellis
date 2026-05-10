@@ -1,9 +1,11 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { ForbiddenError } from "@/lib/auth/authorization";
 import { getProjectGraphSlim } from "@/lib/graph/queries";
 import { getServerQueryClient } from "@/lib/query/client";
 import { projectKeys } from "@/lib/query/keys";
+import { GraphRailCollapseProvider } from "@/components/workspace/graph/GraphRailCollapseProvider";
 import { WorkspaceClient } from "./_components/WorkspaceClient";
 
 interface WorkspacePageProps {
@@ -32,9 +34,15 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
     throw err;
   }
 
+  const cookieStore = await cookies();
+  const railCollapsed =
+    cookieStore.get("mymir-graph-rail-collapsed")?.value === "1";
+
   return (
     <HydrationBoundary state={dehydrate(qc)}>
-      <WorkspaceClient projectId={projectId} />
+      <GraphRailCollapseProvider initialCollapsed={railCollapsed}>
+        <WorkspaceClient projectId={projectId} />
+      </GraphRailCollapseProvider>
     </HydrationBoundary>
   );
 }
