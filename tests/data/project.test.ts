@@ -74,6 +74,7 @@ test("getProjectGraphSlim drops heavy fields and shapes correctly", async () => 
       "hasDescription",
       "id",
       "order",
+      "state",
       "status",
       "tags",
       "taskRef",
@@ -87,6 +88,11 @@ test("getProjectGraphSlim drops heavy fields and shapes correctly", async () => 
   expect(t1?.hasCriteria).toBe(false);
   expect(t2?.hasDescription).toBe(false);
   expect(t2?.hasCriteria).toBe(false);
+  // Both tasks are draft + missing criteria, so the slim payload should
+  // surface the schema status as the derived state. Locks the contract
+  // that `getProjectGraphSlim` actually invokes the server-side derivation.
+  expect(t1?.state).toBe("draft");
+  expect(t2?.state).toBe("draft");
 });
 
 test("getProjectChrome returns header fields plus task count", async () => {
