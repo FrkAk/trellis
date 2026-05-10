@@ -1,13 +1,13 @@
 import "server-only";
 
-import type { EdgeType } from "@/lib/types";
+import type { EdgeType, Priority, Estimate } from "@/lib/types";
 import {
   asIdentifier,
   composeTaskRef,
   enrichWithTaskRef,
 } from "@/lib/graph/identifier";
 import { getProjectTags } from "@/lib/data/project";
-import { listProjectTasks } from "@/lib/data/task";
+import { listProjectTasks, fetchAssigneesByTask } from "@/lib/data/task";
 import { fetchEdgesForTaskIds } from "@/lib/data/edge";
 import { compress } from "@/lib/context/format";
 import type { AuthContext } from "@/lib/auth/context";
@@ -23,6 +23,9 @@ type TaskSummary = {
   order: number;
   tags: string[];
   category: string | null;
+  priority: Priority | null;
+  estimate: Estimate | null;
+  assigneeCount: number;
 };
 
 /** Edge summary for project overview. */
@@ -70,6 +73,9 @@ export async function buildProjectOverview(
   const projectTags = await getProjectTags(ctx, projectId);
 
   const identifier = asIdentifier(project.identifier);
+  const assigneesByTask = await fetchAssigneesByTask(
+    allTasks.map((t) => t.id),
+  );
   const taskSummaries: TaskSummary[] = enrichWithTaskRef(
     allTasks,
     identifier,
@@ -82,6 +88,9 @@ export async function buildProjectOverview(
     order: t.order,
     tags: t.tags,
     category: t.category,
+    priority: t.priority,
+    estimate: t.estimate,
+    assigneeCount: assigneesByTask.get(t.id)?.length ?? 0,
   }));
 
   const totalTasks = allTasks.length;

@@ -259,6 +259,12 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
           .describe("Kebab-case. Every task carries: exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces touched), exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Run mymir_query type='meta' before coining new tags."),
         category: z.string().optional()
           .describe("Architectural layer / subsystem this task belongs to (exactly one). Reuse a project category; do not silently coin mid-task. The project's 4-8 categories are set on creation or via decompose/onboarding gates. Run mymir_query type='meta' to see them. Artifacts §4."),
+        priority: z.enum(["release-blocker", "core", "normal", "backlog"]).optional()
+          .describe("Priority of the task. First-class field as of MYMR-190 (replaces the old priority tag dimension). release-blocker: cannot ship without; core: central to the release; normal: routine; backlog: deprioritized."),
+        estimate: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(5), z.literal(8), z.literal(13)]).optional()
+          .describe("Fibonacci story-point estimate. 1 = trivial, 2/3 = routine, 5 = nontrivial, 8/13 = risky or multi-day. If a task feels >13, split it (artifacts §5)."),
+        assigneeIds: z.array(z.uuid()).optional()
+          .describe("User UUIDs to assign to this task. Each must be a member of the project's owning team; non-members are rejected. The single-worker `in_progress` invariant still applies; assignees declare ownership / intent, not concurrent claim. APPENDS by default on update; `overwriteArrays=true` REPLACES the full set."),
         files: z.array(z.string()).optional()
           .describe("Repo-relative paths created or modified (no leading slash, no absolute). Pass `files=[]` when nothing was touched (unscaffolded repo, research/spec-review/decision-only); never invent paths."),
         implementationPlan: z.string().optional()

@@ -11,7 +11,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, tasks, taskEdges } from "@/lib/db/schema";
+import { projects, tasks, taskEdges, taskAssignees } from "@/lib/db/schema";
 import { member, organization } from "@/lib/db/auth-schema";
 import { acquireOrgIdentifierLock } from "@/lib/db/raw/acquire-org-identifier-lock";
 import { aggregateProjectTags } from "@/lib/db/raw/aggregate-project-tags";
@@ -103,11 +103,14 @@ export async function getProjectGraphSlim(
       status: tasks.status,
       category: tasks.category,
       tags: tasks.tags,
+      priority: tasks.priority,
+      estimate: tasks.estimate,
       order: tasks.order,
       updatedAt: tasks.updatedAt,
       sequenceNumber: tasks.sequenceNumber,
       hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
       hasCriteria: sql<boolean>`jsonb_array_length(${tasks.acceptanceCriteria}) > 0`,
+      assigneeCount: sql<number>`(SELECT COUNT(*)::int FROM ${taskAssignees} WHERE ${taskAssignees.taskId} = ${tasks.id})`,
     })
     .from(tasks)
     .where(eq(tasks.projectId, projectId))
@@ -132,10 +135,13 @@ export async function getProjectGraphSlim(
     status: t.status,
     category: t.category,
     tags: t.tags,
+    priority: t.priority,
+    estimate: t.estimate,
     order: t.order,
     updatedAt: t.updatedAt,
     hasDescription: t.hasDescription,
     hasCriteria: t.hasCriteria,
+    assigneeCount: t.assigneeCount,
   }));
 
   return {

@@ -232,7 +232,7 @@ Use this when **multiple independent ready tasks** exist AND **multiple coding a
 ### Create a task
 
 0. Check `mymir_query type='meta'` for the project's existing categories and tag vocabulary (with usage counts). Reuse before coining.
-1. `mymir_task action='create'` with: verb+noun title, 2 to 4 sentence description, 2 to 4 binary acceptanceCriteria, one category from project categories, all four tag dimensions (work type, cross-cutting concern, tech, priority. Artifacts §2).
+1. `mymir_task action='create'` with: verb+noun title, 2 to 4 sentence description, 2 to 4 binary acceptanceCriteria, one category from project categories, three tag dimensions (work type, cross-cutting concern, tech) plus the first-class `priority` field (and optionally `estimate`, `assigneeIds`). Artifacts §2.
 2. `mymir_edge action='create'` for precedents and coordinators (search by verb, noun, surface). Substantive notes (artifacts §3); empty notes ("needed", "depends") forbidden. Bare tasks orphan from `critical_path`, `downstream`, depth='agent' propagation.
 3. Verify. `mymir_query type='edges'` on the new task.
 
