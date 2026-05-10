@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { StatusGlyph } from '@/components/shared/StatusGlyph';
-import { MonoId } from '@/components/shared/MonoId';
+import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
 import { IconPanelLeft } from '@/components/shared/icons';
 import type { TaskGraphSlim } from '@/lib/data/views';
 
@@ -25,6 +25,12 @@ interface MiniTaskRailProps {
   onHover: (id: string | null) => void;
   /** @param onSelect - Called when a row is clicked. */
   onSelect: (id: string) => void;
+  /**
+   * @param stageMap - Optional override that surfaces derived sub-stages
+   *   (`plannable` / `ready`) for the status glyph. When omitted or absent
+   *   for a task, the schema status drives the glyph.
+   */
+  stageMap?: ReadonlyMap<string, string>;
   /** @param className - Additional CSS classes. */
   className?: string;
 }
@@ -73,6 +79,7 @@ export function MiniTaskRail({
   hoveredId,
   onHover,
   onSelect,
+  stageMap,
   className = '',
 }: MiniTaskRailProps) {
   const [collapsed, setCollapsed] = useState<boolean>(() => readInitialCollapsed());
@@ -156,7 +163,7 @@ export function MiniTaskRail({
                     style={{ background: 'var(--color-accent-grad)' }}
                   />
                 )}
-                <StatusGlyph status={t.status} size={11} />
+                <StatusGlyph status={stageMap?.get(t.id) ?? t.status} size={11} />
               </button>
             );
           }
@@ -182,8 +189,12 @@ export function MiniTaskRail({
                   style={{ background: 'var(--color-accent-grad)' }}
                 />
               )}
-              <StatusGlyph status={t.status} size={11} />
-              <MonoId id={t.taskRef} copyable={false} />
+              <StatusGlyph status={stageMap?.get(t.id) ?? t.status} size={11} />
+              <MonoId
+                id={t.taskRef}
+                copyable={false}
+                tone={(stageMap?.get(t.id) ?? t.status) as MonoIdTone}
+              />
               <span
                 className="flex-1 truncate text-[11.5px]"
                 style={{

@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { MonoId } from '@/components/shared/MonoId';
+import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
 import { StatusGlyph } from '@/components/shared/StatusGlyph';
 import { useTheme } from '@/components/layout/ThemeProvider';
 import type { TaskStatus } from '@/lib/types';
@@ -100,19 +100,29 @@ export function TaskRow({
         <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[2px]" style={{ background: 'var(--color-accent-grad)' }} />
       )}
 
-      <StatusGlyph status={status} size={14} className={status === 'in_progress' ? 'status-pulse' : undefined} />
+      {(() => {
+        const stage =
+          isPlannable && status === 'draft'
+            ? 'plannable'
+            : isReady && status === 'planned'
+              ? 'ready'
+              : status;
+        return (
+          <>
+            <StatusGlyph
+              status={stage}
+              size={14}
+              className={status === 'in_progress' ? 'status-pulse' : undefined}
+            />
 
-      <MonoId
-        id={taskRef}
-        dim={status === 'done' || status === 'cancelled'}
-        tone={
-          isReady && status === 'planned'
-            ? 'ready'
-            : isPlannable && status === 'draft'
-              ? 'plannable'
-              : 'default'
-        }
-      />
+            <MonoId
+              id={taskRef}
+              dim={status === 'done' || status === 'cancelled'}
+              tone={stage as MonoIdTone}
+            />
+          </>
+        );
+      })()}
 
       <span className={`min-w-0 flex-1 truncate text-[13px] font-medium ${titleClass(status)}`}>
         {title}

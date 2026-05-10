@@ -200,24 +200,45 @@ export type TaskState =
   | "blocked"
   | "draft";
 
+/** Slim shape needed to derive a state — matches what the slim payload
+ *  carries, so the server can compute states without re-fetching `description`
+ *  and `acceptanceCriteria` columns just to recompute trim+length. */
+export type TaskStateInput = {
+  id: string;
+  status: string;
+  hasDescription: boolean;
+  hasCriteria: boolean;
+};
+
 /**
  * Derive the actionable state for a single task using effective deps.
  *
- * Cancelled tasks short-circuit. For active tasks, dep readiness is checked
- * against the *effective* dependency set — cancelled middles are walked
- * through, and the wall is the next active prerequisite.
+ * Cancelled tasks short-circuit. For active tasks the dep set is the
+ * *effective* one — cancelled middles are walked through, and the wall is
+ * the next non-cancelled prerequisite.
  *
- * @param task - Task with status, description, and acceptanceCriteria.
+ * Two thresholds drive the state machine:
+ *   - `allDepsAtLeastPlanned` — every effective dep has left the draft stage.
+ *     This is the bar for `plannable`: a draft can be planned as soon as its
+ *     prerequisites have at least a plan, because we know their interfaces.
+ *   - `allDepsDone`             — every effective dep is `done`.
+ *     This is the bar for `ready`: an agent can only execute the task once
+ *     its prerequisites have actually shipped.
+ *
+ * The previous logic used `allDepsDone` for both checks, which collapsed
+ * `plannable` into a no-op state — the moment a draft hit the bar it could
+ * also be planned, and the moment it was planned it was already `ready`.
+ * Splitting the thresholds restores the intermediate `plannable` and
+ * `planned-but-blocked` regions.
+ *
+ * @param task - Slim shape: id, status, plus pre-computed
+ *   `hasDescription` / `hasCriteria` booleans the slim payload already
+ *   carries (avoids re-fetching the heavy text columns).
  * @param graph - Effective dependency graph for the project.
  * @returns Derived TaskState.
  */
 function deriveTaskState(
-  task: {
-    id: string;
-    status: string;
-    description: string;
-    acceptanceCriteria: unknown;
-  },
+  task: TaskStateInput,
   graph: {
     activeTasks: Map<string, { status: string }>;
     effectiveDeps: Map<string, Set<string>>;
@@ -229,26 +250,52 @@ function deriveTaskState(
 
   const deps = graph.effectiveDeps.get(task.id) ?? new Set<string>();
   let allDepsDone = true;
+  let allDepsAtLeastPlanned = true;
   for (const depId of deps) {
-    if (graph.activeTasks.get(depId)?.status !== "done") {
-      allDepsDone = false;
-      break;
-    }
+    const depStatus = graph.activeTasks.get(depId)?.status;
+    if (depStatus !== "done") allDepsDone = false;
+    if (depStatus === "draft") allDepsAtLeastPlanned = false;
+    if (!allDepsDone && !allDepsAtLeastPlanned) break;
   }
 
   if (task.status === "planned") {
     return allDepsDone ? "ready" : "blocked";
   }
 
-  if (!allDepsDone) return "blocked";
+  // Draft path — gate plannable behind `allDepsAtLeastPlanned`, not the
+  // (stricter) `allDepsDone`. A draft is `blocked` only when at least one
+  // dep is still itself a draft.
+  if (!allDepsAtLeastPlanned) return "blocked";
 
+  return task.hasDescription && task.hasCriteria ? "plannable" : "draft";
+}
+
+/**
+ * Adapter for callers that have the full task row (`description` +
+ * `acceptanceCriteria`) instead of the pre-computed slim booleans.
+ *
+ * @param task - Task with status, description, and acceptanceCriteria.
+ * @param graph - Effective dependency graph for the project.
+ * @returns Derived TaskState.
+ */
+function deriveTaskStateFromFullTask(
+  task: {
+    id: string;
+    status: string;
+    description: string;
+    acceptanceCriteria: unknown;
+  },
+  graph: Parameters<typeof deriveTaskState>[1],
+): TaskState {
   const hasDescription = task.description.trim().length > 0;
   const criteria = task.acceptanceCriteria as
     | { id: string; text: string; checked: boolean }[]
     | null;
   const hasCriteria = Array.isArray(criteria) && criteria.length > 0;
-
-  return hasDescription && hasCriteria ? "plannable" : "draft";
+  return deriveTaskState(
+    { id: task.id, status: task.status, hasDescription, hasCriteria },
+    graph,
+  );
 }
 
 /**
@@ -271,6 +318,28 @@ export async function deriveTaskStates(
     description: string;
     acceptanceCriteria: unknown;
   }[],
+): Promise<Map<string, TaskState>> {
+  const graph = await buildEffectiveDepGraph(projectId);
+  const result = new Map<string, TaskState>();
+  for (const task of taskSubset) {
+    result.set(task.id, deriveTaskStateFromFullTask(task, graph));
+  }
+  return result;
+}
+
+/**
+ * Batch state derivation against the slim payload shape — the path the UI
+ * fetches via `getProjectGraphSlim`. Avoids selecting `description` and
+ * `acceptanceCriteria` from the database just to compute boolean flags;
+ * the slim query already projects them.
+ *
+ * @param projectId - UUID of the project.
+ * @param taskSubset - Tasks in `TaskStateInput` shape.
+ * @returns Map of taskId → TaskState.
+ */
+export async function deriveTaskStatesSlim(
+  projectId: string,
+  taskSubset: TaskStateInput[],
 ): Promise<Map<string, TaskState>> {
   const graph = await buildEffectiveDepGraph(projectId);
   const result = new Map<string, TaskState>();

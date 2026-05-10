@@ -1,4 +1,5 @@
 import type { Project, Task, TaskEdge } from "@/lib/db/schema";
+import type { TaskState } from "@/lib/data/task";
 
 /**
  * Slim view of the project's owning team — only the fields the home grid
@@ -53,6 +54,15 @@ export type TaskGraphSlim = Pick<
   hasDescription: boolean;
   /** True when `acceptanceCriteria` has at least one entry. */
   hasCriteria: boolean;
+  /**
+   * Derived state computed server-side using the project's effective
+   * dependency graph. The schema only stores `status`; this is the
+   * UI-facing projection (see {@link TaskState} in `lib/data/task.ts`)
+   * that surfaces sub-stages like `plannable` / `ready` / `blocked`. The
+   * client must NOT recompute this — drift between client and server
+   * derivations is exactly what this projection eliminates.
+   */
+  state: TaskState;
 };
 
 /** Slim project graph for the workspace canvas + list. Edges are returned

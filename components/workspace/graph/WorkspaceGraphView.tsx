@@ -18,10 +18,17 @@ const ForceGraph = dynamic(
   { ssr: false },
 );
 
-/** Width of the detail+proprail slide-over panel. */
-const DETAIL_OVERLAY_WIDTH = 760;
+/** Slide-over width with the property rail visible (default state). */
+const OVERLAY_W_FULL = 760;
+/** Slide-over width when the property rail is collapsed — detail panel only. */
+const OVERLAY_W_DETAIL = 480;
+/** Animation timing — matches the detail-panel slide-in from `motion.div`. */
+const OVERLAY_TRANSITION = { duration: 0.24, ease: [0.16, 1, 0.3, 1] } as const;
 
 interface WorkspaceGraphViewProps {
+  /** @param projectId - Stable identifier — keys the position cache so the
+   *   simulation reuses its layout across remounts of this view. */
+  projectId: string;
   /** @param tasks - Project tasks (slim, already enriched with `taskRef`). */
   tasks: TaskGraphSlim[];
   /** @param edges - Project edges. */
@@ -42,6 +49,13 @@ interface WorkspaceGraphViewProps {
   detailSlot?: ReactNode;
   /** @param propRailSlot - The `<PropRail />` rendered next to `detailSlot`. */
   propRailSlot?: ReactNode;
+  /**
+   * @param propRailOpen - Controls the property rail's visibility inside the
+   *   slide-over. When `false`, the overlay shrinks to detail-only width and
+   *   the canvas reclaims the freed pixels (the chrome chips get room to
+   *   breathe). Defaults to `true`.
+   */
+  propRailOpen?: boolean;
 }
 
 /**
@@ -62,6 +76,7 @@ interface WorkspaceGraphViewProps {
  * @returns Rail + canvas layout filling its parent.
  */
 export function WorkspaceGraphView({
+  projectId,
   tasks,
   edges,
   selectedNodeId,
@@ -70,6 +85,7 @@ export function WorkspaceGraphView({
   onSwitchToStructure,
   detailSlot,
   propRailSlot,
+  propRailOpen = true,
 }: WorkspaceGraphViewProps) {
   const [hoveredFromRail, setHoveredFromRail] = useState<string | null>(null);
   const [hoveredOnCanvas, setHoveredOnCanvas] = useState<string | null>(null);
@@ -93,6 +109,18 @@ export function WorkspaceGraphView({
     [tasks, hiddenStatuses],
   );
 
+  // Derived stage map — only the sub-stages (`plannable` / `ready`) that
+  // override the schema status visually. Server-side `getProjectGraphSlim`
+  // already computed `task.state` against the project's effective dep
+  // graph; we just project it.
+  const stageMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of tasks) {
+      if (t.state === 'plannable' || t.state === 'ready') m.set(t.id, t.state);
+    }
+    return m;
+  }, [tasks]);
+
   // Rail wins; canvas is the fallback. Hover card is suppressed once a task
   // is selected — the detail panel is the canonical view at that point.
   const hoveredId = hoveredFromRail ?? hoveredOnCanvas;
@@ -113,7 +141,8 @@ export function WorkspaceGraphView({
   }, [hoveredTask, edges]);
 
   const overlayOpen = Boolean(detailSlot && selectedNodeId);
-  const rightInset = overlayOpen ? DETAIL_OVERLAY_WIDTH : 0;
+  const overlayWidth = propRailOpen ? OVERLAY_W_FULL : OVERLAY_W_DETAIL;
+  const rightInset = overlayOpen ? overlayWidth : 0;
 
   return (
     <div className="flex h-full min-h-0 flex-1">
@@ -123,10 +152,12 @@ export function WorkspaceGraphView({
         hoveredId={hoveredFromRail}
         onHover={setHoveredFromRail}
         onSelect={onSelectNode}
+        stageMap={stageMap}
       />
 
       <div className="relative min-w-0 flex-1 overflow-hidden bg-base">
         <ForceGraph
+          projectId={projectId}
           tasks={tasks}
           edges={edges}
           selectedNodeId={selectedNodeId}
@@ -136,6 +167,7 @@ export function WorkspaceGraphView({
           hiddenStatuses={hiddenStatuses}
           hiddenEdgeTypes={hiddenEdgeTypes}
           rightInset={rightInset}
+          stageMap={stageMap}
           onHoverNode={setHoveredOnCanvas}
         />
 
@@ -170,6 +202,7 @@ export function WorkspaceGraphView({
           {showHoverCard && hoveredTask ? (
             <GraphHoverCard
               task={hoveredTask}
+              stage={stageMap.get(hoveredTask.id)}
               upstreamCount={hoverCounts.upstream}
               downstreamCount={hoverCounts.downstream}
               onOpen={() => onSelectNode(hoveredTask.id)}
@@ -183,23 +216,38 @@ export function WorkspaceGraphView({
         <StatusLegend hiddenStatuses={hiddenStatuses} onToggleStatus={toggleStatus} />
 
         {/* Detail slide-over — pinned right; canvas underneath stays at full
-            width so the graph remains the primary surface. */}
+            width so the graph remains the primary surface. The slide-over's
+            width animates between `OVERLAY_W_FULL` (rail open) and
+            `OVERLAY_W_DETAIL` (rail closed) so the canvas reclaims pixels
+            when the user collapses the property rail. */}
         <AnimatePresence>
           {overlayOpen && (
             <motion.div
               key="graph-detail-overlay"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
+              initial={{ x: '100%', width: overlayWidth }}
+              animate={{ x: 0, width: overlayWidth }}
               exit={{ x: '100%' }}
-              transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+              transition={OVERLAY_TRANSITION}
               className="absolute right-0 top-0 bottom-0 z-20 flex bg-base shadow-[var(--shadow-float)]"
-              style={{ width: DETAIL_OVERLAY_WIDTH }}
               role="region"
               aria-label="Task detail"
             >
               <div className="w-px bg-gradient-to-b from-border-strong via-border to-transparent" />
               <div className="flex min-w-0 flex-1 flex-col">{detailSlot}</div>
-              {propRailSlot}
+              <AnimatePresence initial={false}>
+                {propRailOpen && propRailSlot && (
+                  <motion.div
+                    key="graph-prop-rail"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="flex h-full overflow-hidden"
+                  >
+                    {propRailSlot}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

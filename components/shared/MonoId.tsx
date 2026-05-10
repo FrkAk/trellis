@@ -4,8 +4,22 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 
-/** Visual tone driving the resting color of the identifier. */
-export type MonoIdTone = 'default' | 'ready' | 'plannable';
+/**
+ * Visual tone for the identifier — uses the same vocabulary as
+ * {@link StatusGlyph}'s status names plus a `default` neutral. Each tone
+ * maps to a `--color-glyph-*` CSS var so the task-ref reads in the same
+ * colour as the matching glyph (and, in lists, the matching group header).
+ */
+export type MonoIdTone =
+  | 'default'
+  | 'draft'
+  | 'plannable'
+  | 'planned'
+  | 'ready'
+  | 'in_progress'
+  | 'blocked'
+  | 'done'
+  | 'cancelled';
 
 interface MonoIdProps {
   /** @param id - Identifier to render and copy (e.g. `MYMR-104`). */
@@ -31,18 +45,39 @@ interface MonoIdProps {
 }
 
 /**
- * Resolve the resting color for the identifier text, honoring `dim` first
- * (kept for done/cancelled rows) and otherwise the derived tone.
+ * Resolve the resting color for the identifier text. `dim` overrides
+ * everything (kept for done / cancelled list rows); otherwise the tone
+ * lands on the matching `--color-glyph-*` token so the ref shares the
+ * colour of its status glyph and group header.
+ *
+ * `draft` falls through to `--color-text-secondary` because the actual
+ * `--color-glyph-draft` is alpha-faded (≈45%) — readable as a 12-pixel
+ * dashed ring, but too washed-out for body text.
  *
  * @param dim - Force the muted color regardless of tone.
- * @param tone - Derived task state.
+ * @param tone - Lifecycle stage tone.
  * @returns CSS color value referencing a token.
  */
 function toneColor(dim: boolean, tone: MonoIdTone): string {
   if (dim) return 'var(--color-text-muted)';
-  if (tone === 'plannable') return 'var(--color-glyph-planned)';
-  if (tone === 'ready') return 'var(--color-glyph-progress)';
-  return 'var(--color-text-secondary)';
+  switch (tone) {
+    case 'plannable':
+    case 'planned':
+      return 'var(--color-glyph-planned)';
+    case 'ready':
+    case 'in_progress':
+      return 'var(--color-glyph-progress)';
+    case 'blocked':
+      return 'var(--color-glyph-blocked)';
+    case 'done':
+      return 'var(--color-glyph-done)';
+    case 'cancelled':
+      return 'var(--color-glyph-cancelled)';
+    case 'draft':
+    case 'default':
+    default:
+      return 'var(--color-text-secondary)';
+  }
 }
 
 /** How long the auto-mount hint stays visible. */

@@ -6,7 +6,6 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createTask, deleteTask } from '@/lib/graph/mutations';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
-import { isPlannable, isReady, buildStatusMap } from '@/lib/ui/taskState';
 import { IconSearch, IconTrash, IconX } from '@/components/shared/icons';
 import type { TaskEdge } from '@/lib/db/schema';
 import type { TaskGraphSlim, TaskFull } from '@/lib/data/views';
@@ -65,18 +64,21 @@ interface StructureViewProps {
 }
 
 /**
- * Decide which group a task belongs to. Maps `planned` tasks whose effective
- * deps are all done into the synthetic `ready` lane, and `draft` tasks that
- * have description + criteria + done deps into the `plannable` lane.
+ * Decide which group a task belongs to. Reads the server-derived
+ * `task.state` so the bucketing matches what `mymir_analyze` and the bundle
+ * preview see — no client-side recomputation, no drift.
+ *
+ * `ready` and `plannable` collapse onto their own lanes; `blocked` for a
+ * planned task with unsatisfied deps falls back to the `planned` bucket so
+ * the operator still sees it grouped with its peers (the agent-state
+ * distinction surfaces in the `mymir_analyze` view, not the structure list).
  *
  * @param task - Task to bucket.
- * @param ready - Whether the task is derived-ready.
- * @param plannable - Whether the task is derived-plannable.
  * @returns Group key.
  */
-function groupKeyFor(task: TaskWithRef, ready: boolean, plannable: boolean): TaskGroupKey {
-  if (task.status === 'planned' && ready) return 'ready';
-  if (task.status === 'draft' && plannable) return 'plannable';
+function groupKeyFor(task: TaskWithRef): TaskGroupKey {
+  if (task.state === 'ready') return 'ready';
+  if (task.state === 'plannable') return 'plannable';
   return task.status;
 }
 
@@ -221,21 +223,18 @@ export function StructureView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTags, activeCategories, activeStatuses, search]);
 
-  const statusMap = useMemo(() => buildStatusMap(tasks), [tasks]);
   const depsMap = useMemo(() => buildDepsMap(edges), [edges]);
 
   const tasksByGroup = useMemo(() => {
     const groups = new Map<TaskGroupKey, TaskWithRef[]>();
     for (const task of tasks) {
-      const ready = isReady(task, statusMap, edges);
-      const plannable = isPlannable(task, statusMap, edges);
-      const key = groupKeyFor(task, ready, plannable);
+      const key = groupKeyFor(task);
       const list = groups.get(key) ?? [];
       list.push(task);
       groups.set(key, list);
     }
     return groups;
-  }, [tasks, statusMap, edges]);
+  }, [tasks]);
 
   const allTags = useMemo(() => {
     const counts = new Map<string, number>();
@@ -267,9 +266,7 @@ export function StructureView({
   const visibleTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
     return tasks.filter((t) => {
-      const ready = isReady(t, statusMap, edges);
-      const plannable = isPlannable(t, statusMap, edges);
-      const groupKey = groupKeyFor(t, ready, plannable);
+      const groupKey = groupKeyFor(t);
 
       if (activeStatuses.size > 0 && !activeStatuses.has(groupKey)) return false;
 
@@ -290,7 +287,7 @@ export function StructureView({
 
       return true;
     });
-  }, [tasks, statusMap, edges, activeStatuses, activeCategories, activeTags, search]);
+  }, [tasks, activeStatuses, activeCategories, activeTags, search]);
 
   const groupedVisible = useMemo<ReadonlyArray<readonly [GroupSection, TaskWithRef[]]>>(() => {
     if (group === 'none') {
@@ -316,9 +313,7 @@ export function StructureView({
     }
     const map = new Map<TaskGroupKey, TaskWithRef[]>();
     for (const task of visibleTasks) {
-      const ready = isReady(task, statusMap, edges);
-      const plannable = isPlannable(task, statusMap, edges);
-      const key = groupKeyFor(task, ready, plannable);
+      const key = groupKeyFor(task);
       const list = map.get(key) ?? [];
       list.push(task);
       map.set(key, list);
@@ -329,7 +324,7 @@ export function StructureView({
         { kind: 'status' as const, key },
         sortTasks(map.get(key) ?? [], sort),
       ] as const);
-  }, [visibleTasks, statusMap, edges, sort, group]);
+  }, [visibleTasks, sort, group]);
 
   const toggleStatus = useCallback((id: string) => {
     setActiveStatuses((prev) => {
@@ -515,8 +510,6 @@ export function StructureView({
                 />
               )}
               {groupTasks.map((task) => {
-                const ready = isReady(task, statusMap, edges);
-                const plannable = isPlannable(task, statusMap, edges);
                 return (
                   <TaskRow
                     key={task.id}
@@ -529,8 +522,8 @@ export function StructureView({
                     downstreamCount={depsMap.downstream.get(task.id) ?? 0}
                     lastActive={formatRelative(task.updatedAt)}
                     selected={selectedNodeId === task.id}
-                    isReady={ready}
-                    isPlannable={plannable}
+                    isReady={task.state === 'ready'}
+                    isPlannable={task.state === 'plannable'}
                     onClick={() => onSelectNode(task.id)}
                     trailingPersistent={confirmDelete === task.id}
                     trailing={
