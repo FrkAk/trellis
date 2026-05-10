@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 /**
  * Root layout for the Mymir application.
- * Reads theme from cookie for SSR, falls back to blocking script for first visit.
+ * Reads theme from cookie for SSR so the correct mode paints on first frame.
  * @param props - Layout props with children.
  * @returns The root HTML structure with fonts and theme applied.
  */
@@ -34,14 +34,6 @@ export default async function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning className={theme === "light" ? "light" : ""}>
-      <head>
-        {/* Blocking script: handles first visit (no cookie yet) before React hydrates */}
-        <script dangerouslySetInnerHTML={{ __html: `
-          (function(){
-            try { if(localStorage.getItem('mymir-theme')==='light') document.documentElement.classList.add('light'); } catch(e){}
-          })();
-        ` }} />
-      </head>
       <body>
         <ThemeProvider initialTheme={theme}>
           <QueryProvider>

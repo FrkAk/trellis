@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { StatusGlyph } from '@/components/shared/StatusGlyph';
-import { MonoId } from '@/components/shared/MonoId';
+import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
 import { IconPanelLeft } from '@/components/shared/icons';
+import { useGraphRailCollapse } from '@/components/workspace/graph/GraphRailCollapseProvider';
 import type { TaskGraphSlim } from '@/lib/data/views';
-
-/** localStorage key for the collapsed-state preference. */
-const RAIL_STORAGE_KEY = 'mymir:graph-rail-collapsed';
 
 /** Width of the rail when expanded. */
 const RAIL_WIDTH_EXPANDED = 240;
@@ -25,6 +23,12 @@ interface MiniTaskRailProps {
   onHover: (id: string | null) => void;
   /** @param onSelect - Called when a row is clicked. */
   onSelect: (id: string) => void;
+  /**
+   * @param stageMap - Optional override that surfaces derived sub-stages
+   *   (`plannable` / `ready`) for the status glyph. When omitted or absent
+   *   for a task, the schema status drives the glyph.
+   */
+  stageMap?: ReadonlyMap<string, string>;
   /** @param className - Additional CSS classes. */
   className?: string;
 }
@@ -39,21 +43,6 @@ function refOrder(taskRef: string): number {
   const tail = taskRef.split('-').pop();
   const n = tail ? parseInt(tail, 10) : NaN;
   return Number.isFinite(n) ? n : 0;
-}
-
-/**
- * Read the collapsed-state preference from localStorage with a safe SSR
- * fallback. Defaults to expanded for first-time operators.
- *
- * @returns `true` when the rail should start collapsed.
- */
-function readInitialCollapsed(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(RAIL_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -73,18 +62,10 @@ export function MiniTaskRail({
   hoveredId,
   onHover,
   onSelect,
+  stageMap,
   className = '',
 }: MiniTaskRailProps) {
-  const [collapsed, setCollapsed] = useState<boolean>(() => readInitialCollapsed());
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(RAIL_STORAGE_KEY, collapsed ? '1' : '0');
-    } catch {
-      /* swallow storage errors — preference is non-critical */
-    }
-  }, [collapsed]);
+  const { collapsed, toggle: toggleCollapsed } = useGraphRailCollapse();
 
   const sorted = useMemo(
     () => [...tasks].sort((a, b) => refOrder(a.taskRef) - refOrder(b.taskRef)),
@@ -117,7 +98,7 @@ export function MiniTaskRail({
         )}
         <button
           type="button"
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={toggleCollapsed}
           aria-label={collapsed ? 'Expand node rail' : 'Collapse node rail'}
           title={collapsed ? 'Expand rail' : 'Collapse rail'}
           className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
@@ -156,7 +137,7 @@ export function MiniTaskRail({
                     style={{ background: 'var(--color-accent-grad)' }}
                   />
                 )}
-                <StatusGlyph status={t.status} size={11} />
+                <StatusGlyph status={stageMap?.get(t.id) ?? t.status} size={11} />
               </button>
             );
           }
@@ -182,8 +163,12 @@ export function MiniTaskRail({
                   style={{ background: 'var(--color-accent-grad)' }}
                 />
               )}
-              <StatusGlyph status={t.status} size={11} />
-              <MonoId id={t.taskRef} copyable={false} />
+              <StatusGlyph status={stageMap?.get(t.id) ?? t.status} size={11} />
+              <MonoId
+                id={t.taskRef}
+                copyable={false}
+                tone={(stageMap?.get(t.id) ?? t.status) as MonoIdTone}
+              />
               <span
                 className="flex-1 truncate text-[11.5px]"
                 style={{

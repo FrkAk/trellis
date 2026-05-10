@@ -36,8 +36,9 @@ export type EffectiveDepGraph = {
  *
  * Treats cancelled tasks as transparent: walks through them to find the
  * nearest active prerequisite, but excludes them from the result graph.
- * Used by getReadyTasks, getBlockedTasks, getCriticalPath, and deriveTaskStates
- * so they all share consistent transitive-aware semantics.
+ * Used by getBlockedTasks, getCriticalPath, and deriveTaskStates (which in
+ * turn backs getReadyTasks and getPlannableTasks) so they all share
+ * consistent transitive-aware semantics.
  *
  * @param projectId - UUID of the project.
  * @returns The effective dependency graph (active-only nodes, transitive edges).

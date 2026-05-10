@@ -3,7 +3,7 @@
 import { motion } from 'motion/react';
 import { useState, useRef, useEffect } from 'react';
 import { MonoId } from '@/components/shared/MonoId';
-import { IconPanelLeft, IconSettings, IconX } from '@/components/shared/icons';
+import { IconPanelLeft, IconPanelRight, IconSettings, IconX } from '@/components/shared/icons';
 import { updateTask } from '@/lib/graph/mutations';
 import type { TaskStatus } from '@/lib/types';
 
@@ -35,6 +35,14 @@ interface DetailHeaderProps {
   navigatorClosed?: boolean;
   /** @param onToggleNavigator - Flip the navigator open/closed. Renders the panel-toggle when provided. */
   onToggleNavigator?: () => void;
+  /**
+   * @param propRailOpen - Whether the right-side properties rail is currently
+   *   visible. Drives the toggle's pressed state. Used in the graph workspace
+   *   where the rail can be collapsed to give the canvas more room.
+   */
+  propRailOpen?: boolean;
+  /** @param onTogglePropRail - Flip the properties rail open/closed. Renders the panel-right toggle when provided. */
+  onTogglePropRail?: () => void;
 }
 
 /**
@@ -56,6 +64,8 @@ export function DetailHeader({
   onGraphChange,
   navigatorClosed,
   onToggleNavigator,
+  propRailOpen,
+  onTogglePropRail,
 }: DetailHeaderProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
@@ -116,6 +126,23 @@ export function DetailHeader({
               }`}
             >
               <IconPanelLeft size={13} />
+            </button>
+          )}
+
+          {onTogglePropRail !== undefined && (
+            <button
+              type="button"
+              onClick={onTogglePropRail}
+              aria-pressed={!propRailOpen}
+              aria-label={propRailOpen ? 'Hide properties' : 'Show properties'}
+              title={propRailOpen ? 'Hide properties — give the canvas more room' : 'Show properties'}
+              className={`hidden h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors xl:inline-flex ${
+                !propRailOpen
+                  ? 'border-accent/30 bg-accent/10 text-accent-light'
+                  : 'border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+              }`}
+            >
+              <IconPanelRight size={13} />
             </button>
           )}
 

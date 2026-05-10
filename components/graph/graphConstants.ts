@@ -129,7 +129,11 @@ export const DARK_THEME: ThemeColors = {
   tooltipBorder: "rgba(255,255,255,0.10)",
   tooltipText: "#f9f9f9",
   taskBorder: "#07080a",
-  statusDraft: "#9ca3af",
+  // Brighter on dark — the previous #9ca3af leaned too neutral and the
+  // dashed draft ring + reduced fill made the nodes vanish into the
+  // canvas surface. This still reads as "muted / unspecced" against the
+  // filled status colours.
+  statusDraft: "#b9c1cb",
   statusPlanned: "#55b3ff",
   statusInProgress: "#ffbc33",
   statusDone: "#5fc992",
@@ -192,16 +196,29 @@ export function getCanvasTheme(): ThemeColors {
 }
 
 /**
- * Map task status to theme color.
- * @param status - Task status string.
+ * Map a lifecycle stage (schema status, or one of the derived sub-stages
+ * `plannable` / `ready`) to a theme color.
+ *
+ * Palette is split along execution intent:
+ *   - `plannable` → planned blue (still in the planning arc).
+ *   - `ready`     → in-progress orange (staged for execution; the next
+ *                   transition flips this task to `in_progress`).
+ * The canvas distinguishes shape from colour: `plannable` and `ready` both
+ * draw hollow, but their ring colour signals which arc the task is in.
+ *
+ * @param stage - Lifecycle stage string (status or `plannable` / `ready`).
  * @param t - Theme colors.
- * @returns Hex color string for the status.
+ * @returns Hex color string for the stage.
  */
-export function statusColor(status: string, t: ThemeColors): string {
-  switch (status) {
+export function statusColor(stage: string, t: ThemeColors): string {
+  switch (stage) {
     case "done": return t.statusDone;
-    case "planned": return t.statusPlanned;
-    case "in_progress": return t.statusInProgress;
+    case "planned":
+    case "plannable":
+      return t.statusPlanned;
+    case "ready":
+    case "in_progress":
+      return t.statusInProgress;
     case "cancelled": return t.statusCancelled;
     default: return t.statusDraft;
   }
@@ -224,4 +241,56 @@ export function hexToRgb(hex: string): [number, number, number] {
  */
 export function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
+}
+
+// ---------------------------------------------------------------------------
+// Adaptive performance tier
+// ---------------------------------------------------------------------------
+
+/** Performance tier — tunes simulation cost and visual richness. */
+export type GraphTier = "high" | "mid" | "low";
+
+/** Per-tier knobs read by the simulation hook and the canvas renderer. */
+export interface GraphTierConfig {
+  /** Pre-tick iteration count for synchronous layout (no-explosion mounts). */
+  preTickN: number;
+  /** d3-force alphaDecay — higher = faster cooldown. */
+  alphaDecay: number;
+  /** d3-force link iterations per tick. */
+  linkIterations: number;
+  /** Cap for `window.devicePixelRatio` when sizing the canvas backing store. */
+  maxDpr: number;
+  /** Whether to draw the animated flow dots along `depends_on` edges. */
+  flowDots: boolean;
+  /** Whether to draw the radial ambient halo behind each node. */
+  halo: boolean;
+}
+
+const TIER_CONFIG: Record<GraphTier, GraphTierConfig> = {
+  high: { preTickN: 320, alphaDecay: 0.022, linkIterations: 3, maxDpr: 2, flowDots: true,  halo: true  },
+  mid:  { preTickN: 220, alphaDecay: 0.040, linkIterations: 2, maxDpr: 2, flowDots: true,  halo: true  },
+  low:  { preTickN: 120, alphaDecay: 0.060, linkIterations: 1, maxDpr: 1, flowDots: false, halo: false },
+};
+
+/**
+ * Detect the device performance tier from `navigator` heuristics.
+ * Falls back to `mid` on the server or when the heuristics are missing.
+ * @returns Tier string suitable for indexing `TIER_CONFIG`.
+ */
+export function getDeviceTier(): GraphTier {
+  if (typeof navigator === "undefined") return "mid";
+  const cores = navigator.hardwareConcurrency ?? 4;
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
+  if (cores >= 8 && memory >= 8) return "high";
+  if (cores >= 4 && memory >= 2) return "mid";
+  return "low";
+}
+
+/**
+ * Resolve the config for a tier.
+ * @param tier - Performance tier.
+ * @returns Tunables for the simulation and renderer.
+ */
+export function getTierConfig(tier: GraphTier): GraphTierConfig {
+  return TIER_CONFIG[tier];
 }

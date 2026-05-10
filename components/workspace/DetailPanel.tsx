@@ -35,6 +35,10 @@ interface DetailPanelProps {
   navigatorClosed?: boolean;
   /** Toggle the navigator open/closed; when omitted the panel-toggle is hidden. */
   onToggleNavigator?: () => void;
+  /** Whether the right-side properties rail is currently visible (graph overlay only). */
+  propRailOpen?: boolean;
+  /** Toggle the properties rail open/closed; when omitted the toggle is hidden. */
+  onTogglePropRail?: () => void;
   /** Additional CSS classes. */
   className?: string;
 }
@@ -63,6 +67,8 @@ export function DetailPanel({
   onGraphChange,
   navigatorClosed,
   onToggleNavigator,
+  propRailOpen,
+  onTogglePropRail,
   className = '',
 }: DetailPanelProps) {
   return (
@@ -83,6 +89,8 @@ export function DetailPanel({
         onGraphChange={onGraphChange}
         navigatorClosed={navigatorClosed}
         onToggleNavigator={onToggleNavigator}
+        propRailOpen={propRailOpen}
+        onTogglePropRail={onTogglePropRail}
       />
     </div>
   );
