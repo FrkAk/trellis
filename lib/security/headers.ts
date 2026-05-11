@@ -1,11 +1,7 @@
 const COMMON_DIRECTIVES = [
   "default-src 'self'",
-  // Intentional divergence from Next.js's canonical CSP example
-  // (docs/01-app/02-guides/content-security-policy.mdx, May 2026): the docs
-  // use `style-src 'self' 'nonce-${nonce}'`, but CSP nonces only cover
-  // `<style>` elements, not the `style="..."` attributes this app uses on
-  // Avatar, Sidebar, sign-in form, etc. `'unsafe-inline'` is required until
-  // those inline style attributes are refactored to class-based styles.
+  // `'unsafe-inline'` required for `style="…"` attributes; CSP nonces cover
+  // `<style>` elements only. Tracked for refactor to class-based styles.
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
@@ -22,15 +18,7 @@ const PERMISSIONS_POLICY =
 
 const HSTS_VALUE = "max-age=31536000; includeSubDomains";
 
-/**
- * Regex matching loopback Host headers that must NOT receive HSTS.
- *
- * Chrome treats `localhost` as a secure context and honours HSTS received
- * even on `http://localhost`, breaking subsequent local prod-build smoke
- * tests (`bun run build && bun run start`) by auto-upgrading every
- * navigation to `https://localhost`, which has no TLS listener. Extend this
- * regex if you run prod builds against other loopback aliases.
- */
+/** Anchored regex matching loopback Host headers excluded from HSTS. */
 const LOOPBACK_HOST_REGEX = "^(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?$";
 
 /** Single header entry, matching the `{ key, value }` shape `next.config.ts` `headers()` expects. */
@@ -44,18 +32,12 @@ export type HeaderRule = {
 };
 
 /**
- * Build the Content-Security-Policy value for a given environment / nonce.
- *
- * Production includes a per-request nonce and `'strict-dynamic'` so the
- * App Router's inline RSC streaming scripts (the `self.__next_f.push(...)`
- * tags Next.js emits during hydration) are trusted while ad-hoc inline
- * injections remain blocked. Dev allows `'unsafe-eval'` + `'unsafe-inline'`
- * and `ws:`/`wss:` to keep HMR working.
+ * Build the Content-Security-Policy header value.
  *
  * @param opts.isProd - True when running in production.
  * @param opts.nonce - Per-request nonce. Required when `isProd` is true.
- * @returns Header value string suitable for the `Content-Security-Policy` header.
- * @throws If `isProd` is true and no `nonce` is supplied.
+ * @returns Serialized CSP directive string.
+ * @throws Error if `isProd` is true and no `nonce` is supplied.
  */
 export function buildCsp(opts: { isProd: boolean; nonce?: string }): string {
   const { isProd, nonce } = opts;
@@ -83,12 +65,12 @@ export function buildCsp(opts: { isProd: boolean; nonce?: string }): string {
 }
 
 /**
- * Always-on security response headers Next.js emits on every route.
+ * Static security response headers applied to every route.
  *
- * Excludes CSP (emitted per-request by `middleware.ts` with a nonce) and
- * HSTS (host-scoped via `headerRules`).
+ * Excludes CSP (set per-request by `proxy.ts`) and HSTS (host-scoped, see
+ * `headerRules`).
  *
- * @returns Array of `{ key, value }` entries suitable for a Next.js header rule.
+ * @returns Header entries for a Next.js header rule.
  */
 export function securityHeaders(): HeaderEntry[] {
   return [
@@ -102,16 +84,11 @@ export function securityHeaders(): HeaderEntry[] {
 }
 
 /**
- * Build the full set of Next.js header rules: always-on security headers
- * plus a host-scoped HSTS rule that skips loopback hosts.
- *
- * HSTS is emitted only in production AND only for non-loopback hosts, so
- * deployed environments (Cloudflare, self-hosted on a real domain) receive
- * HSTS while local `bun run start` smoke tests do not poison the browser
- * cache.
+ * Build Next.js header rules: always-on security headers plus production
+ * HSTS scoped to non-loopback hosts.
  *
  * @param isProd - True when `NODE_ENV === 'production'`.
- * @returns Array of header rules suitable for `next.config.ts` `headers()`.
+ * @returns Header rules for `next.config.ts` `headers()`.
  */
 export function headerRules(isProd: boolean): HeaderRule[] {
   const rules: HeaderRule[] = [

@@ -13,28 +13,20 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Generate a cryptographically random per-request CSP nonce.
+ * Generate a per-request CSP nonce.
  *
- * Matches the Next.js 16 docs pattern verbatim
- * (docs/01-app/02-guides/content-security-policy.mdx, May 2026) so future
- * readers can cross-reference. UUID v4 supplies 122 bits of randomness,
- * comfortably above the ~64 bits CSP nonces are expected to carry.
- *
- * @returns Base64-encoded UUID v4.
+ * @returns Base64-encoded UUID v4 (122 bits of entropy).
  */
 function generateNonce(): string {
   return Buffer.from(crypto.randomUUID()).toString("base64");
 }
 
 /**
- * Next.js proxy — session protection + rate limiting + validation + CSP.
- * MCP/API auth is handled by JWT verification in route handlers.
- *
- * CSP is emitted here (not via `next.config.ts` `headers()`) because the
- * App Router's inline RSC hydration scripts require a per-request nonce.
+ * Next.js proxy: session enforcement, rate limiting, request validation,
+ * and per-request CSP. API/MCP auth is delegated to route handlers.
  *
  * @param request - Incoming request.
- * @returns Redirect, error response, or pass-through, all carrying CSP.
+ * @returns Redirect, error response, or pass-through; all carry CSP headers.
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -100,9 +92,7 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  // Forward both `x-nonce` and the CSP on the request headers so Next.js's
-  // renderer reads the full policy and auto-tags every emitted <script>.
-  // Matches docs/01-app/02-guides/content-security-policy.mdx (May 2026).
+  // Forward `x-nonce` so the renderer auto-tags inline <script> elements.
   const requestHeaders = new Headers(request.headers);
   if (nonce) {
     requestHeaders.set("x-nonce", nonce);
