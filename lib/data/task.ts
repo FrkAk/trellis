@@ -192,6 +192,28 @@ export function assigneeCountSubquery() {
 }
 
 /**
+ * Build the `(task_id, user_ids[])` subquery for assignee user IDs.
+ * Sibling of {@link assigneeCountSubquery}; the slim graph view joins
+ * both so row renderers can paint avatar stacks without a per-row fetch.
+ * `array_agg` is index-only-scannable off the `(task_id, user_id)` PK.
+ *
+ * Each call returns a fresh subquery with the same alias; do not use
+ * twice in one query.
+ */
+export function assigneeUserIdsSubquery() {
+  return db
+    .select({
+      taskId: taskAssignees.taskId,
+      userIds: sql<string[]>`array_agg(${taskAssignees.userId} ORDER BY ${taskAssignees.userId})`.as(
+        "user_ids",
+      ),
+    })
+    .from(taskAssignees)
+    .groupBy(taskAssignees.taskId)
+    .as("assignee_user_ids");
+}
+
+/**
  * Fetch the slim task view for listing surfaces.
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.

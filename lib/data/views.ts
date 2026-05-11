@@ -85,6 +85,12 @@ export type TaskGraphSlim = Pick<
   state: TaskState;
   /** Number of users assigned to this task. */
   assigneeCount: number;
+  /**
+   * User IDs assigned to this task, ordered deterministically by the
+   * database. Drives row-level avatar stacks; full names load on hover
+   * via the team-member cache so the slim payload stays small.
+   */
+  assigneeUserIds: string[];
 };
 
 /** Slim project graph for the workspace canvas + list. Edges are returned
@@ -92,7 +98,13 @@ export type TaskGraphSlim = Pick<
 export type ProjectGraphSlim = {
   project: Pick<
     Project,
-    "id" | "identifier" | "title" | "status" | "updatedAt" | "categories"
+    | "id"
+    | "organizationId"
+    | "identifier"
+    | "title"
+    | "status"
+    | "updatedAt"
+    | "categories"
   >;
   tasks: TaskGraphSlim[];
   edges: TaskEdge[];

@@ -1,7 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
+import { useQuery } from '@tanstack/react-query';
+import { Avatar } from '@/components/shared/Avatar';
 import { Markdown } from '@/components/shared/Markdown';
 import { MonoId } from '@/components/shared/MonoId';
 import { PriorityIcon } from '@/components/shared/PriorityIcon';
@@ -10,6 +13,8 @@ import { Dropdown } from '@/components/shared/Dropdown';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
 import { updateTask } from '@/lib/graph/mutations';
 import { projectColor } from '@/lib/ui/project-color';
+import { listTeamMembersAction } from '@/lib/actions/team-members';
+import type { MemberView } from '@/lib/actions/team-members-map';
 import {
   IconBranch,
   IconChevronDown,
@@ -17,21 +22,53 @@ import {
   IconDoc,
   IconFlag,
   IconPlus,
+  IconSearch,
   IconTag,
   IconUser,
   IconX,
 } from '@/components/shared/icons';
 import type { TaskEdge } from '@/lib/db/schema';
-import type { TaskStatus } from '@/lib/types';
+import type { Priority, Estimate, TaskStatus } from '@/lib/types';
+import type { AssigneeRef } from '@/lib/data/views';
+import { isLegacyPriorityTag } from '@/lib/ui/legacy-priority-tags';
 
 /** Display order for the Status dropdown — matches the lifecycle ribbon. */
 const STATUS_OPTIONS: readonly TaskStatus[] = ['draft', 'planned', 'in_progress', 'done', 'cancelled'];
+/** Display order for the Priority dropdown — highest impact first. */
+const PRIORITY_OPTIONS: readonly Priority[] = ['release-blocker', 'core', 'normal', 'backlog'];
+/** Display order for the Estimate dropdown — Fibonacci story points. */
+const ESTIMATE_OPTIONS: readonly Estimate[] = [1, 2, 3, 5, 8, 13];
+/** Sentinel used by dropdowns to model the "clear" action under `string` schemas. */
+const SENTINEL_CLEAR = '__clear__';
+
+/**
+ * TanStack Query key for the per-team member list. Shared with
+ * StructureView so the popover and row avatars draw from the same cache.
+ */
+export const teamMembersQueryKey = (organizationId: string) =>
+  ['team-members', organizationId] as const;
+
+/** Color tokens by priority — drives the dropdown trigger pill tint. */
+const PRIORITY_COLOR: Record<Priority, string> = {
+  'release-blocker': 'var(--color-danger)',
+  core: 'var(--color-glyph-blocked)',
+  normal: 'var(--color-glyph-progress)',
+  backlog: 'var(--color-text-muted)',
+};
 
 interface PropRailProps {
   /** Task UUID. */
   taskId: string;
   /** Task status. */
   status: TaskStatus;
+  /** Task priority, or null when unset. */
+  priority: Priority | null;
+  /** Task Fibonacci-point estimate, or null when unset. */
+  estimate: Estimate | null;
+  /** Assignees on the task — drives the avatar stack trigger. */
+  assignees: AssigneeRef[];
+  /** Organization UUID the project belongs to — feeds the team-member fetch. */
+  organizationId: string;
   /** Task category, or null. */
   category: string | null;
   /** Available categories for the inline picker. */
@@ -67,6 +104,10 @@ interface PropRailProps {
 export function PropRail({
   taskId,
   status,
+  priority,
+  estimate,
+  assignees,
+  organizationId,
   category,
   categories,
   tags,
@@ -110,6 +151,40 @@ export function PropRail({
     onGraphChange?.();
   }, [taskId, onGraphChange]);
 
+  // Hide legacy priority strings from the tag editor; MYMR-195 strips them
+  // server-side, but until then the UI gates them so the workspace stops
+  // emitting both the new priority column and the legacy tag.
+  const visibleTags = useMemo(
+    () => tags.filter((t) => !isLegacyPriorityTag(t)),
+    [tags],
+  );
+  const visibleVocab = useMemo(
+    () => projectTags.filter((t) => !isLegacyPriorityTag(t)),
+    [projectTags],
+  );
+  const handleVisibleTagsChange = useCallback(async (nextVisible: string[]) => {
+    // Re-attach the persisted legacy strings so the write does not strip
+    // them out — that work belongs to MYMR-195.
+    const persistedLegacy = tags.filter(isLegacyPriorityTag);
+    await handleTagsChange([...persistedLegacy, ...nextVisible]);
+  }, [tags, handleTagsChange]);
+
+  const handlePriorityChange = useCallback(async (next: Priority | null) => {
+    await updateTask(taskId, { priority: next });
+    onGraphChange?.();
+  }, [taskId, onGraphChange]);
+
+  const handleEstimateChange = useCallback(async (next: Estimate | null) => {
+    await updateTask(taskId, { estimate: next });
+    onGraphChange?.();
+  }, [taskId, onGraphChange]);
+
+  const handleAssigneesChange = useCallback(async (nextUserIds: string[]) => {
+    // Multi-select replaces the full set; overwriteArrays=true is intentional.
+    await updateTask(taskId, { assigneeIds: nextUserIds }, true);
+    onGraphChange?.();
+  }, [taskId, onGraphChange]);
+
   return (
     <aside
       className="flex h-full min-h-0 flex-col overflow-y-auto border-l border-border bg-base"
@@ -122,17 +197,15 @@ export function PropRail({
           </RailRow>
 
           <RailRow icon={<IconFlag size={11} />} label="Priority">
-            <PlaceholderValue title="Priority is not yet wired — backend ticket pending">
-              <PriorityIcon priority={null} />
-              <span>—</span>
-            </PlaceholderValue>
+            <PriorityDropdown priority={priority} onChange={handlePriorityChange} align="end" />
           </RailRow>
 
-          <RailRow icon={<IconUser size={11} />} label="Assignee">
-            <PlaceholderValue title="Assignee is not yet wired — backend ticket pending">
-              <span aria-hidden="true" className="inline-flex h-4 w-4 rounded-full border border-dashed border-border-strong" />
-              <span>—</span>
-            </PlaceholderValue>
+          <RailRow icon={<IconUser size={11} />} label="Assignees">
+            <AssigneePicker
+              organizationId={organizationId}
+              assignees={assignees}
+              onChange={handleAssigneesChange}
+            />
           </RailRow>
 
           <RailRow icon={<IconTag size={11} />} label="Category">
@@ -145,9 +218,7 @@ export function PropRail({
           </RailRow>
 
           <RailRow icon={<IconClock size={11} />} label="Estimate">
-            <PlaceholderValue title="Estimate is not yet wired — backend ticket pending">
-              <span>—</span>
-            </PlaceholderValue>
+            <EstimateDropdown estimate={estimate} onChange={handleEstimateChange} align="end" />
           </RailRow>
 
           <RailRow icon={<IconBranch size={11} />} label="Project">
@@ -158,8 +229,8 @@ export function PropRail({
           </RailRow>
         </RailGroup>
 
-        <RailGroup label="Tags" count={tags.length > 0 ? tags.length : undefined}>
-          <TagsEditor tags={tags} vocabulary={projectTags} onChange={handleTagsChange} />
+        <RailGroup label="Tags" count={visibleTags.length > 0 ? visibleTags.length : undefined}>
+          <TagsEditor tags={visibleTags} vocabulary={visibleVocab} onChange={handleVisibleTagsChange} />
         </RailGroup>
 
         <RailGroup label="Dependencies" count={totalDeps > 0 ? totalDeps : undefined}>
@@ -594,7 +665,9 @@ interface PlaceholderValueProps {
 
 /**
  * Placeholder slot for un-wired property fields. Pairs an em-dash with a
- * tooltip explaining that backend wiring is pending.
+ * tooltip explaining that backend wiring is pending. Retained because
+ * `CategoryDropdown` still falls back to it when a project has zero
+ * categories.
  *
  * @param props - Placeholder configuration.
  * @returns Inline-flex span with the slot content.
@@ -607,6 +680,382 @@ function PlaceholderValue({ title, children, className = '' }: PlaceholderValueP
     >
       {children}
     </span>
+  );
+}
+
+interface PriorityDropdownProps {
+  /** Active priority, or null when unset. */
+  priority: Priority | null;
+  /** Update the priority (null clears). */
+  onChange: (next: Priority | null) => void;
+  /** Panel anchor side — defaults to `start`. */
+  align?: 'start' | 'end';
+}
+
+/**
+ * Pill-styled priority dropdown matching the `StatusDropdown` aesthetic.
+ * Trigger tint keys to the active priority (danger / blocked / progress /
+ * muted); unset renders a dashed border so the slot reads as empty without
+ * collapsing.
+ *
+ * @param props - Dropdown props.
+ * @returns Anchored dropdown element.
+ */
+function PriorityDropdown({ priority, onChange, align = 'start' }: PriorityDropdownProps) {
+  const options = useMemo(
+    () => {
+      const items: DropdownItem[] = PRIORITY_OPTIONS.map((p) => ({
+        value: p,
+        label: p,
+        leading: <PriorityIcon priority={p} />,
+      }));
+      items.push({ value: SENTINEL_CLEAR, label: 'Clear' });
+      return items;
+    },
+    [],
+  );
+
+  const selected = priority ?? SENTINEL_CLEAR;
+
+  return (
+    <Dropdown
+      value={selected}
+      options={options}
+      onChange={(v) => onChange(v === SENTINEL_CLEAR ? null : (v as Priority))}
+      align={align}
+      ariaLabel="Change priority"
+      title="Change priority"
+      minWidth={180}
+      renderTrigger={(_active, open) => {
+        const tint = priority ? PRIORITY_COLOR[priority] : null;
+        if (!tint) {
+          return (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border-strong px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted/70 transition-colors hover:border-border-stronger hover:text-text-secondary">
+              <PriorityIcon priority={null} />
+              <span>None</span>
+              <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+                <IconChevronDown size={9} />
+              </span>
+            </span>
+          );
+        }
+        return (
+          <span
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition-all hover:brightness-110"
+            style={{
+              background: `color-mix(in srgb, ${tint} 22%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${tint} 38%, transparent)`,
+              color: tint,
+            }}
+          >
+            <PriorityIcon priority={priority} />
+            {priority}
+            <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+              <IconChevronDown size={9} />
+            </span>
+          </span>
+        );
+      }}
+    />
+  );
+}
+
+interface EstimateDropdownProps {
+  /** Active estimate, or null when unset. */
+  estimate: Estimate | null;
+  /** Update the estimate (null clears). */
+  onChange: (next: Estimate | null) => void;
+  /** Panel anchor side — defaults to `start`. */
+  align?: 'start' | 'end';
+}
+
+/**
+ * Pill-styled estimate dropdown — renders the active Fibonacci point in
+ * mono uppercase, mirroring the StatusDropdown's pill geometry.
+ *
+ * @param props - Dropdown props.
+ * @returns Anchored dropdown element.
+ */
+function EstimateDropdown({ estimate, onChange, align = 'start' }: EstimateDropdownProps) {
+  const options = useMemo(
+    () => {
+      const items: DropdownItem[] = ESTIMATE_OPTIONS.map((e) => ({
+        value: String(e),
+        label: `${e} pt`,
+      }));
+      items.push({ value: SENTINEL_CLEAR, label: 'Clear' });
+      return items;
+    },
+    [],
+  );
+
+  const selected = estimate == null ? SENTINEL_CLEAR : String(estimate);
+
+  return (
+    <Dropdown
+      value={selected}
+      options={options}
+      onChange={(v) => onChange(v === SENTINEL_CLEAR ? null : (Number(v) as Estimate))}
+      align={align}
+      ariaLabel="Change estimate"
+      title="Change estimate"
+      minWidth={140}
+      renderTrigger={(_active, open) => {
+        if (estimate == null) {
+          return (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border-strong px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted/70 transition-colors hover:border-border-stronger hover:text-text-secondary">
+              <span>None</span>
+              <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+                <IconChevronDown size={9} />
+              </span>
+            </span>
+          );
+        }
+        return (
+          <span
+            className="inline-flex items-center gap-1.5 rounded-md bg-surface-raised px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-text-primary transition-all hover:brightness-110"
+            style={{ border: '1px solid var(--color-border-strong)' }}
+          >
+            {estimate} pt
+            <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+              <IconChevronDown size={9} />
+            </span>
+          </span>
+        );
+      }}
+    />
+  );
+}
+
+/** Internal dropdown option shape used by the priority/estimate items. */
+type DropdownItem = {
+  value: string;
+  label: string;
+  leading?: React.ReactNode;
+};
+
+interface AssigneePickerProps {
+  /** Organization UUID — used to fetch the team-member list. */
+  organizationId: string;
+  /** Active assignees (full projection, includes name/email for the trigger). */
+  assignees: AssigneeRef[];
+  /** Update the full set of assigned user IDs (replacement, not append). */
+  onChange: (nextUserIds: string[]) => void;
+}
+
+/**
+ * Avatar-stack trigger anchoring a search + checklist popover of every
+ * team member. Mirrors `TagAdd`'s popover shape (click-out / Esc / focus
+ * trap) but reads from `listTeamMembersAction` cached under
+ * `['team-members', organizationId]` so subsequent opens are instant.
+ *
+ * @param props - Picker props.
+ * @returns Inline-flex trigger + animated popover.
+ */
+function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const { data: members, isPending, isError } = useQuery({
+    queryKey: teamMembersQueryKey(organizationId),
+    queryFn: async () => {
+      const result = await listTeamMembersAction({ organizationId });
+      if (!result.ok) throw new Error(`list-team-members:${result.code}`);
+      return result.data;
+    },
+    staleTime: 5 * 60_000,
+    enabled: open,
+  });
+
+  // Recompute the popover anchor on open and whenever layout shifts
+  // (scroll, resize). Fixed positioning means the popover escapes the
+  // rail's `overflow-y-auto` clipping context — without this, the panel
+  // gets cut off by the detail column when it extends past the rail's
+  // left edge.
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setAnchor({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+      });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const inTrigger = triggerRef.current?.contains(e.target as Node);
+      const inPopover = popoverRef.current?.contains(e.target as Node);
+      if (!inTrigger && !inPopover) setOpen(false);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('keydown', escape);
+    setTimeout(() => inputRef.current?.focus(), 30);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+
+  const activeIds = useMemo(() => new Set(assignees.map((a) => a.userId)), [assignees]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!members) return [] as MemberView[];
+    if (!q) return members;
+    return members.filter((m) =>
+      m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q),
+    );
+  }, [members, q]);
+
+  const toggleMember = (userId: string) => {
+    const next = new Set(activeIds);
+    if (next.has(userId)) next.delete(userId);
+    else next.add(userId);
+    onChange([...next]);
+  };
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={assignees.length === 0 ? 'Add assignees' : 'Edit assignees'}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-surface-hover"
+      >
+        {assignees.length === 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border-strong px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted/70 transition-colors hover:border-border-stronger hover:text-text-secondary">
+            <span aria-hidden="true" className="inline-flex h-4 w-4 rounded-full border border-dashed border-border-strong" />
+            <span>Add</span>
+          </span>
+        ) : (
+          <span className="inline-flex items-center">
+            {assignees.slice(0, 2).map((a, i) => (
+              <span key={a.userId} className={i === 0 ? '' : '-ml-1.5'}>
+                <Avatar name={a.name} size={18} ring />
+              </span>
+            ))}
+            {assignees.length > 2 && (
+              <span className="-ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-border-strong bg-surface-raised px-1 font-mono text-[9px] font-medium text-text-secondary">
+                +{assignees.length - 2}
+              </span>
+            )}
+          </span>
+        )}
+      </button>
+
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {open && anchor && (
+            <motion.div
+              ref={popoverRef}
+              role="listbox"
+              initial={{ opacity: 0, y: -4, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.97 }}
+              transition={{ duration: 0.11, ease: 'easeOut' }}
+              style={{ position: 'fixed', top: anchor.top, right: anchor.right }}
+              className="z-50 w-[240px] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-float"
+            >
+              <div className="border-b border-border bg-base p-2">
+                <div className="flex items-center gap-1.5 rounded-md px-2 py-1.5 transition-shadow focus-within:ring-2 focus-within:ring-accent/30">
+                  <span aria-hidden="true" className="text-text-muted">
+                    <IconSearch size={11} />
+                  </span>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search teammates…"
+                    className="w-full bg-transparent px-1.5 py-1 font-mono text-[11px] text-text-primary placeholder:text-text-muted/60 outline-none"
+                  />
+                </div>
+              </div>
+              <div className="max-h-[260px] overflow-y-auto py-1">
+                {isPending && (
+                  <div className="space-y-1 px-1.5 py-1">
+                    {[0, 1, 2].map((i) => (
+                      <span key={i} className="block h-7 animate-pulse rounded bg-surface-hover" />
+                    ))}
+                  </div>
+                )}
+                {isError && (
+                  <p className="px-2.5 py-1.5 font-mono text-[11px] italic text-text-muted">
+                    Failed to load team members.
+                  </p>
+                )}
+                {!isPending && !isError && filtered.length === 0 && (
+                  <p className="px-2.5 py-1.5 font-mono text-[11px] italic text-text-muted">
+                    No matches.
+                  </p>
+                )}
+                {!isPending && !isError && filtered.map((m) => {
+                  const on = activeIds.has(m.userId);
+                  return (
+                    <button
+                      key={m.userId}
+                      type="button"
+                      role="option"
+                      aria-selected={on}
+                      onClick={() => toggleMember(m.userId)}
+                      className={`flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left transition-colors ${
+                        on ? 'bg-accent/10' : 'hover:bg-surface-hover'
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border"
+                        style={{
+                          background: on ? 'var(--color-accent-grad)' : 'transparent',
+                          borderColor: on ? 'transparent' : 'var(--color-border-strong)',
+                        }}
+                      >
+                        {on && (
+                          <svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M3 8.5L6.5 12 13 5" stroke="var(--color-base)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                      <Avatar name={m.name} size={22} />
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className={`truncate text-[12px] ${on ? 'text-accent-light' : 'text-text-primary'}`}>
+                          {m.name}
+                        </span>
+                        <span className="truncate font-mono text-[10px] text-text-muted">
+                          {m.email}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+    </>
   );
 }
 

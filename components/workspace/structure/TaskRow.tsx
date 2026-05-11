@@ -1,10 +1,13 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { Avatar } from '@/components/shared/Avatar';
 import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
+import { PriorityIcon } from '@/components/shared/PriorityIcon';
 import { StatusGlyph } from '@/components/shared/StatusGlyph';
 import { useTheme } from '@/components/layout/ThemeProvider';
-import type { TaskStatus } from '@/lib/types';
+import type { Priority, TaskStatus } from '@/lib/types';
+import type { MemberView } from '@/lib/actions/team-members-map';
 
 interface TaskRowProps {
   /** Task UUID — used as React key by the parent. */
@@ -17,6 +20,16 @@ interface TaskRowProps {
   status: TaskStatus;
   /** First category — rendered as a tiny lowercase chip. */
   category?: string | null;
+  /** Task priority, or null when unset. Drives the icon-only priority chip. */
+  priority: Priority | null;
+  /** User IDs assigned to this task. Drives the avatar stack. */
+  assigneeUserIds: string[];
+  /**
+   * Map of `userId → MemberView` populated by the StructureView's team-member
+   * query. Avatars resolve names through this lookup; missing entries fall
+   * back to the userId fragment so the row never blocks on load.
+   */
+  memberLookup: ReadonlyMap<string, MemberView>;
   /** Count of upstream `depends_on` edges. */
   upstreamCount: number;
   /** Count of downstream `depends_on` edges (incoming). */
@@ -67,6 +80,9 @@ export function TaskRow({
   title,
   status,
   category,
+  priority,
+  assigneeUserIds,
+  memberLookup,
   upstreamCount,
   downstreamCount,
   lastActive,
@@ -132,19 +148,15 @@ export function TaskRow({
 
       {downstreamCount > 0 && <DepsHint icon="down" count={downstreamCount} />}
 
+      {priority && <PriorityChip priority={priority} />}
+
       {category && <CategoryChip name={category} />}
 
       <span className="font-mono text-[10px] tabular-nums text-text-faint" title={`Last updated ${lastActive}`}>
         {lastActive}
       </span>
 
-      <span
-        aria-hidden="true"
-        className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-dashed border-border-strong"
-        title="Unassigned · backend wiring pending"
-      >
-        <span className="sr-only">Unassigned</span>
-      </span>
+      <AssigneeStack userIds={assigneeUserIds} memberLookup={memberLookup} />
 
       {trailing && (
         <span
@@ -233,6 +245,84 @@ function DepsHint({ icon, count }: DepsHintProps) {
         {icon === 'up' ? '↑' : '↓'}
       </span>
       <span className="tabular-nums">{count}</span>
+    </span>
+  );
+}
+
+interface PriorityChipProps {
+  /** Active priority — null is filtered out at the call site. */
+  priority: Priority;
+}
+
+/**
+ * Icon-only priority badge per DESIGN.md §3.2 — `PriorityIcon` inside a
+ * 14×14 inline-flex slot with a tooltip carrying the schema value. The
+ * row passes a non-null priority; the null check happens before render so
+ * unset rows lose the slot entirely.
+ *
+ * @param props - Priority value.
+ * @returns Inline-flex chip element.
+ */
+function PriorityChip({ priority }: PriorityChipProps) {
+  return (
+    <span
+      className="inline-flex h-[14px] w-[14px] shrink-0 items-center justify-center"
+      title={`Priority: ${priority}`}
+    >
+      <PriorityIcon priority={priority} />
+    </span>
+  );
+}
+
+interface AssigneeStackProps {
+  /** User IDs assigned to the task, ordered as the slim payload returns. */
+  userIds: readonly string[];
+  /** Lookup keyed by userId — undefined entries fall back to the id fragment. */
+  memberLookup: ReadonlyMap<string, MemberView>;
+}
+
+/**
+ * Up to two overlapping 18px avatars plus a `+N` overflow chip when more
+ * than two users are assigned. Renders a dashed-circle placeholder when
+ * nobody is assigned — the slot stays in the row so the right cluster
+ * doesn't shift between assigned and unassigned tasks.
+ *
+ * @param props - Assignee user IDs and lookup map.
+ * @returns Inline-flex stack element.
+ */
+function AssigneeStack({ userIds, memberLookup }: AssigneeStackProps) {
+  if (userIds.length === 0) {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-dashed border-border-strong"
+        title="Unassigned"
+      >
+        <span className="sr-only">Unassigned</span>
+      </span>
+    );
+  }
+  const visible = userIds.slice(0, 2);
+  const overflow = userIds.length - visible.length;
+  return (
+    <span className="inline-flex items-center">
+      {visible.map((userId, i) => {
+        const member = memberLookup.get(userId);
+        const label = member?.name ?? userId.slice(0, 4);
+        return (
+          <span key={userId} className={i === 0 ? '' : '-ml-1.5'} title={member?.name ?? `User ${userId.slice(0, 8)}`}>
+            <Avatar name={label} size={18} ring />
+          </span>
+        );
+      })}
+      {overflow > 0 && (
+        <span
+          className="-ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-border-strong bg-surface-raised px-1 font-mono text-[9px] font-medium text-text-secondary"
+          title={`${overflow} more assignee${overflow === 1 ? '' : 's'}`}
+        >
+          +{overflow}
+        </span>
+      )}
     </span>
   );
 }

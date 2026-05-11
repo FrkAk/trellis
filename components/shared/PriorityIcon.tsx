@@ -1,5 +1,7 @@
-/** Schema priority enum — `null` indicates unset. */
-export type Priority = 'low' | 'medium' | 'high' | 'urgent' | null;
+import type { Priority as SchemaPriority } from '@/lib/types';
+
+/** Re-export the schema priority type, including the unset case. */
+export type Priority = SchemaPriority | null;
 
 interface PriorityIconProps {
   /** @param priority - Task priority. `null` renders three muted bars. */
@@ -9,34 +11,38 @@ interface PriorityIconProps {
 }
 
 /**
- * Three ascending bars indicating priority level.
+ * Three ascending bars indicating priority level. Maps the four-value
+ * schema vocabulary (`release-blocker` / `core` / `normal` / `backlog`)
+ * to bar count + color, with `release-blocker` getting an extra-saturated
+ * danger color so it scans at-a-glance as the top of the scale.
  *
- * - `low` fills 1 bar (muted).
- * - `medium` fills 2 bars (amber).
- * - `high` fills 3 bars (red).
- * - `urgent` fills 3 bars (red, with the tallest bar receiving the danger glow).
+ * - `release-blocker` fills 3 bars (danger red).
+ * - `core` fills 3 bars (blocked red).
+ * - `normal` fills 2 bars (amber).
+ * - `backlog` fills 1 bar (muted).
  * - `null` renders three border-only bars to reserve space without committing to a value.
  *
  * @param props - Priority and optional className.
  * @returns A small inline-flex SVG-like span with three bars.
  */
 export function PriorityIcon({ priority, className }: PriorityIconProps) {
-  const filled = priority === 'urgent' || priority === 'high'
-    ? 3
-    : priority === 'medium'
-      ? 2
-      : priority === 'low'
-        ? 1
-        : 0;
+  const filled =
+    priority === 'release-blocker' || priority === 'core'
+      ? 3
+      : priority === 'normal'
+        ? 2
+        : priority === 'backlog'
+          ? 1
+          : 0;
 
   const color =
-    priority === 'urgent'
+    priority === 'release-blocker'
       ? 'var(--color-danger)'
-      : priority === 'high'
+      : priority === 'core'
         ? 'var(--color-glyph-blocked)'
-        : priority === 'medium'
+        : priority === 'normal'
           ? 'var(--color-glyph-progress)'
-          : priority === 'low'
+          : priority === 'backlog'
             ? 'var(--color-text-muted)'
             : 'var(--color-border-strong)';
 

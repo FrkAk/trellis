@@ -2,6 +2,7 @@ import { getAuthContext } from '@/lib/auth/context';
 import { ForbiddenError, assertTaskAccess } from '@/lib/auth/authorization';
 import { conditionalRespond, etagMatches } from '@/lib/api/conditional';
 import { getProjectIdentifier } from '@/lib/data/project';
+import { fetchAssigneesUnchecked } from '@/lib/data/task';
 import { asIdentifier, composeTaskRef } from '@/lib/graph/identifier';
 import { broker } from '@/lib/realtime/broker';
 import { internalError } from '@/lib/api/error';
@@ -46,7 +47,13 @@ async function handle(req: Request, taskId: string): Promise<Response> {
       return conditionalRespond(req, null, task.updatedAt);
     }
 
-    const identifier = await getProjectIdentifier(task.projectId);
+    const [identifier, assignees] = await Promise.all([
+      getProjectIdentifier(task.projectId),
+      // `assertTaskAccess` already authorized this taskId for the caller,
+      // so the unchecked fetch is safe here. Single round-trip parallel to
+      // the identifier read keeps the 200-path cost down.
+      fetchAssigneesUnchecked(taskId),
+    ]);
     if (!identifier) {
       throw new Error(
         `Task ${task.id} references missing project ${task.projectId}`,
@@ -60,7 +67,7 @@ async function handle(req: Request, taskId: string): Promise<Response> {
     if (broker.hasConnections(ctx.userId)) {
       broker.register(ctx.userId, `task:${taskId}`, TASK_SUBSCRIPTION_TTL_MS);
     }
-    return conditionalRespond(req, { ...task, taskRef }, task.updatedAt);
+    return conditionalRespond(req, { ...task, taskRef, assignees }, task.updatedAt);
   } catch (err) {
     if (err instanceof ForbiddenError) {
       return error('Task not found', 404);

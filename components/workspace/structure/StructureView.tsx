@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createTask, deleteTask } from '@/lib/graph/mutations';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
 import { IconSearch, IconTrash, IconX } from '@/components/shared/icons';
@@ -12,6 +12,10 @@ import type { TaskGraphSlim, TaskFull } from '@/lib/data/views';
 import type { TaskStatus } from '@/lib/types';
 import { taskKeys } from '@/lib/query/keys';
 import { fetchTaskBody } from '@/lib/query/queries';
+import { listTeamMembersAction } from '@/lib/actions/team-members';
+import type { MemberView } from '@/lib/actions/team-members-map';
+import { teamMembersQueryKey } from '@/components/workspace/detail/PropRail';
+import { isLegacyPriorityTag } from '@/lib/ui/legacy-priority-tags';
 import { TaskRow } from './TaskRow';
 import { TaskGroup, type TaskGroupKey } from './TaskGroup';
 import type { GroupKey, SortKey } from './FilterBar';
@@ -47,6 +51,8 @@ interface StructureViewProps {
   edges: TaskEdge[];
   /** Project UUID. */
   projectId: string;
+  /** Organization UUID — feeds the team-member fetch used for row avatars. */
+  organizationId: string;
   /** Currently selected task ID. */
   selectedNodeId: string | null;
   /** Click a task to open its detail. */
@@ -186,6 +192,7 @@ export function StructureView({
   tasks,
   edges,
   projectId,
+  organizationId,
   selectedNodeId,
   onSelectNode,
   onGraphChange,
@@ -200,7 +207,13 @@ export function StructureView({
 
   const [activeStatuses, setActiveStatuses] = useState<Set<string>>(() => parseSet(searchParams.get(FILTER_PARAM_KEYS.statuses)));
   const [activeCategories, setActiveCategories] = useState<Set<string>>(() => parseSet(searchParams.get(FILTER_PARAM_KEYS.categories)));
-  const [activeTags, setActiveTags] = useState<Set<string>>(() => parseSet(searchParams.get(FILTER_PARAM_KEYS.tags)));
+  const [activeTags, setActiveTags] = useState<Set<string>>(() => {
+    // Strip legacy priority strings on parse so an old bookmark cannot
+    // silently filter everything out once those tags stop rendering.
+    const parsed = parseSet(searchParams.get(FILTER_PARAM_KEYS.tags));
+    for (const t of [...parsed]) if (isLegacyPriorityTag(t)) parsed.delete(t);
+    return parsed;
+  });
   const [search, setSearch] = useState<string>(() => searchParams.get(FILTER_PARAM_KEYS.search) ?? '');
   const [addingToGroup, setAddingToGroup] = useState<TaskGroupKey | null>(null);
   const [addTitle, setAddTitle] = useState('');
@@ -223,6 +236,28 @@ export function StructureView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTags, activeCategories, activeStatuses, search]);
 
+  // Shared team-member cache: PropRail's AssigneePicker uses the same key,
+  // so the first surface that fires the query warms the cache for the
+  // other. Fires eagerly here because rows render names without a popover
+  // open; 5-minute staleTime keeps it cheap across navigation.
+  const { data: teamMembers } = useQuery({
+    queryKey: teamMembersQueryKey(organizationId),
+    queryFn: async () => {
+      const result = await listTeamMembersAction({ organizationId });
+      if (!result.ok) throw new Error(`list-team-members:${result.code}`);
+      return result.data;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const memberLookup = useMemo<ReadonlyMap<string, MemberView>>(
+    () => {
+      const map = new Map<string, MemberView>();
+      for (const m of teamMembers ?? []) map.set(m.userId, m);
+      return map;
+    },
+    [teamMembers],
+  );
+
   const depsMap = useMemo(() => buildDepsMap(edges), [edges]);
 
   const tasksByGroup = useMemo(() => {
@@ -240,7 +275,11 @@ export function StructureView({
     const counts = new Map<string, number>();
     for (const task of tasks) {
       const list = (task.tags as string[] | null) ?? [];
-      for (const tag of list) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      for (const tag of list) {
+        // Hide legacy priority strings until MYMR-195 strips them server-side.
+        if (isLegacyPriorityTag(tag)) continue;
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
     }
     return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])) as ReadonlyArray<readonly [string, number]>;
   }, [tasks]);
@@ -518,6 +557,9 @@ export function StructureView({
                     title={task.title}
                     status={task.status}
                     category={task.category}
+                    priority={task.priority}
+                    assigneeUserIds={task.assigneeUserIds}
+                    memberLookup={memberLookup}
                     upstreamCount={depsMap.upstream.get(task.id) ?? 0}
                     downstreamCount={depsMap.downstream.get(task.id) ?? 0}
                     lastActive={formatRelative(task.updatedAt)}

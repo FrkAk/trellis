@@ -12,7 +12,10 @@ import {
 } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
-import { assigneeCountSubquery } from "@/lib/data/task";
+import {
+  assigneeCountSubquery,
+  assigneeUserIdsSubquery,
+} from "@/lib/data/task";
 import { member, organization } from "@/lib/db/auth-schema";
 import { acquireOrgIdentifierLock } from "@/lib/db/raw/acquire-org-identifier-lock";
 import { aggregateProjectTags } from "@/lib/db/raw/aggregate-project-tags";
@@ -99,6 +102,7 @@ export async function getProjectGraphSlim(
   const { project } = await assertProjectAccess(projectId, ctx);
 
   const ac = assigneeCountSubquery();
+  const au = assigneeUserIdsSubquery();
   const tasksQ = db
     .select({
       id: tasks.id,
@@ -114,9 +118,11 @@ export async function getProjectGraphSlim(
       hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
       hasCriteria: sql<boolean>`jsonb_array_length(${tasks.acceptanceCriteria}) > 0`,
       assigneeCount: sql<number>`COALESCE(${ac.count}, 0)`,
+      assigneeUserIds: sql<string[]>`COALESCE(${au.userIds}, '{}'::uuid[])`,
     })
     .from(tasks)
     .leftJoin(ac, eq(ac.taskId, tasks.id))
+    .leftJoin(au, eq(au.taskId, tasks.id))
     .where(eq(tasks.projectId, projectId))
     .orderBy(asc(tasks.order));
 
@@ -161,11 +167,13 @@ export async function getProjectGraphSlim(
     hasCriteria: t.hasCriteria,
     state: stateMap.get(t.id) ?? "draft",
     assigneeCount: t.assigneeCount,
+    assigneeUserIds: t.assigneeUserIds,
   }));
 
   return {
     project: {
       id: project.id,
+      organizationId: project.organizationId,
       identifier: project.identifier,
       title: project.title,
       status: project.status,

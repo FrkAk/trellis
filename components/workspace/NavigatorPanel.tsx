@@ -16,6 +16,8 @@ interface NavigatorPanelProps {
   categories: string[];
   /** Project UUID. */
   projectId: string;
+  /** Organization UUID — passed through to StructureView for team-member avatars. */
+  organizationId: string;
   /** Currently selected task ID. */
   selectedNodeId: string | null;
   /** Click a task to open the detail. */
@@ -92,6 +94,7 @@ export function NavigatorPanel({
   edges,
   categories,
   projectId,
+  organizationId,
   selectedNodeId,
   onSelectNode,
   onGraphChange,
@@ -152,6 +155,7 @@ export function NavigatorPanel({
           tasks={tasks}
           edges={edges}
           projectId={projectId}
+          organizationId={organizationId}
           selectedNodeId={selectedNodeId}
           onSelectNode={onSelectNode}
           onGraphChange={onGraphChange}
