@@ -105,16 +105,18 @@ const KEBAB_CASE_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
  * Build hints for tag-taxonomy violations. Kebab-case is structural and
- * universal. The work-type and priority dimension checks are heuristic:
- * the server matches against the canonical English closed vocabulary
- * documented in `references/artifacts.md` §2, but Mymir runs across
- * projects authored in any language. When the canonical match misses,
- * the hint refers the agent to the reference rather than enumerating
- * English values inline, so localized tag sets are not penalized.
+ * universal. The work-type dimension check is heuristic: the server
+ * matches against the canonical English closed vocabulary documented in
+ * `references/artifacts.md` §2, but Mymir runs across projects authored
+ * in any language. When the canonical match misses, the hint refers the
+ * agent to the reference rather than enumerating English values inline,
+ * so localized tag sets are not penalized.
  *
- * Open-vocabulary dimensions (cross-cutting concern, tech) cannot be
- * checked server-side without false positives and are left to agent
- * discipline.
+ * Priority used to share this enforcement layer; as of MYMR-190 it is a
+ * first-class column on `tasks`, not a tag, so this function checks
+ * work-type only. Open-vocabulary dimensions (cross-cutting concern,
+ * tech) cannot be checked server-side without false positives and are
+ * left to agent discipline.
  *
  * @param tags - Proposed tag list (already normalized for whitespace).
  * @returns Hint strings; empty array when the tag set passes all checks.

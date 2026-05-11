@@ -120,7 +120,7 @@ export async function getTaskFull(
  * @param taskId - UUID of the task.
  * @returns Ordered array of assignee refs (empty when nobody is assigned).
  */
-async function fetchAssigneesUnchecked(taskId: string): Promise<AssigneeRef[]> {
+export async function fetchAssigneesUnchecked(taskId: string): Promise<AssigneeRef[]> {
   return db
     .select({
       userId: taskAssignees.userId,
@@ -147,7 +147,7 @@ async function fetchAssigneesUnchecked(taskId: string): Promise<AssigneeRef[]> {
  * @param taskIds - UUIDs to fetch assignees for.
  * @returns Map of taskId -> AssigneeRef[]; missing tasks omitted.
  */
-async function fetchAssigneesByTaskUnchecked(
+export async function fetchAssigneesByTaskUnchecked(
   taskIds: string[],
 ): Promise<Map<string, AssigneeRef[]>> {
   const result = new Map<string, AssigneeRef[]>();
@@ -170,8 +170,6 @@ async function fetchAssigneesByTaskUnchecked(
   }
   return result;
 }
-
-export { fetchAssigneesUnchecked, fetchAssigneesByTaskUnchecked };
 
 /**
  * Build the `(task_id, count)` subquery for assignee counts. Callers
@@ -1176,10 +1174,19 @@ export async function updateTask(
   }
   // assigneeIds writes the junction table, not the tasks row. Pull it
   // out so the typed `tx.update(tasks).set(...)` does not see an
-  // unknown column.
-  const assigneeIds =
+  // unknown column. Empty array in append mode is a definitional no-op
+  // (matches decisions/files merge semantics: empty incoming ↦
+  // unchanged), so normalize to `undefined` and skip both the junction
+  // write and the history-description entry below.
+  const rawAssigneeIds =
     "assigneeIds" in changes ? (changes.assigneeIds as string[]) : undefined;
   delete changes.assigneeIds;
+  const assigneeIds =
+    rawAssigneeIds !== undefined &&
+    rawAssigneeIds.length === 0 &&
+    !overwriteArrays
+      ? undefined
+      : rawAssigneeIds;
 
   if (Array.isArray(changes.acceptanceCriteria)) {
     changes.acceptanceCriteria = (

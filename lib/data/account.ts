@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   oauthAccessToken,
@@ -7,6 +7,7 @@ import {
   oauthRefreshToken,
   session,
 } from "@/lib/db/auth-schema";
+import { projects, tasks, taskAssignees } from "@/lib/db/schema";
 
 /**
  * Wipe every artifact that referenced (userId, orgId) so a removed member
@@ -64,6 +65,23 @@ export async function clearOrgMembershipArtifacts(
         and(
           eq(oauthConsent.userId, userId),
           eq(oauthConsent.referenceId, orgId),
+        ),
+      );
+    // `task_assignees` FK to `neon_auth.user` only cascades on full user
+    // deletion, not on team-membership removal. A removed member would
+    // otherwise keep appearing in `getTaskFull(...).assignees` for tasks
+    // in the org they left. Scrub their junction rows scoped to tasks
+    // whose parent project lives in this org.
+    await tx
+      .delete(taskAssignees)
+      .where(
+        and(
+          eq(taskAssignees.userId, userId),
+          sql`${taskAssignees.taskId} IN (
+            SELECT ${tasks.id} FROM ${tasks}
+            INNER JOIN ${projects} ON ${projects.id} = ${tasks.projectId}
+            WHERE ${projects.organizationId} = ${orgId}
+          )`,
         ),
       );
   });

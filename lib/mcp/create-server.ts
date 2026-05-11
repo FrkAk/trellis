@@ -256,7 +256,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
         decisions: z.array(z.string()).optional()
           .describe("Technical choices and constraints. One-liner per decision (CHOICE + WHY)."),
         tags: z.array(z.string()).optional()
-          .describe("Kebab-case. Every task carries: exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces touched), exactly 1 priority (release-blocker/core/normal/backlog). Do NOT tag codebase area (use category) or status. Run mymir_query type='meta' before coining new tags."),
+          .describe("Kebab-case. Every task carries three tag dimensions: exactly 1 work-type (bug/feature/refactor/docs/test/chore/perf), ≥1 cross-cutting concern (open: quality attribute or feature cluster), at most 2 tech tags (most important stack pieces touched). Priority is the `priority` field, not a tag. Do NOT tag codebase area (use category) or status. Run mymir_query type='meta' before coining new tags."),
         category: z.string().optional()
           .describe("Architectural layer / subsystem this task belongs to (exactly one). Reuse a project category; do not silently coin mid-task. The project's 4-8 categories are set on creation or via decompose/onboarding gates. Run mymir_query type='meta' to see them. Artifacts §4."),
         priority: z.enum(["release-blocker", "core", "normal", "backlog"]).optional()
