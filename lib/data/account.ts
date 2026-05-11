@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   oauthAccessToken,
@@ -72,16 +72,17 @@ export async function clearOrgMembershipArtifacts(
     // otherwise keep appearing in `getTaskFull(...).assignees` for tasks
     // in the org they left. Scrub their junction rows scoped to tasks
     // whose parent project lives in this org.
+    const orgTaskIds = tx
+      .select({ id: tasks.id })
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .where(eq(projects.organizationId, orgId));
     await tx
       .delete(taskAssignees)
       .where(
         and(
           eq(taskAssignees.userId, userId),
-          sql`${taskAssignees.taskId} IN (
-            SELECT ${tasks.id} FROM ${tasks}
-            INNER JOIN ${projects} ON ${projects.id} = ${tasks.projectId}
-            WHERE ${projects.organizationId} = ${orgId}
-          )`,
+          inArray(taskAssignees.taskId, orgTaskIds),
         ),
       );
   });

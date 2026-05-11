@@ -112,9 +112,7 @@ const KEBAB_CASE_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
  * agent to the reference rather than enumerating English values inline,
  * so localized tag sets are not penalized.
  *
- * Priority used to share this enforcement layer; as of MYMR-190 it is a
- * first-class column on `tasks`, not a tag, so this function checks
- * work-type only. Open-vocabulary dimensions (cross-cutting concern,
+ * Open-vocabulary dimensions (cross-cutting concern,
  * tech) cannot be checked server-side without false positives and are
  * left to agent discipline.
  *
