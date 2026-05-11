@@ -1,9 +1,12 @@
 import { test, expect } from "bun:test";
-import { securityHeaders } from "@/lib/security/headers";
+import {
+  buildCsp,
+  headerRules,
+  securityHeaders,
+} from "@/lib/security/headers";
 import nextConfig from "@/next.config";
 
 const REQUIRED_KEYS = [
-  "Content-Security-Policy",
   "X-Content-Type-Options",
   "X-Frame-Options",
   "Referrer-Policy",
@@ -12,61 +15,139 @@ const REQUIRED_KEYS = [
   "Cross-Origin-Resource-Policy",
 ];
 
-test("securityHeaders(true) emits every required key in production", () => {
-  const headers = securityHeaders(true);
-  const keys = headers.map((h) => h.key);
+test("securityHeaders emits every required always-on key", () => {
+  const keys = securityHeaders().map((h) => h.key);
   for (const key of REQUIRED_KEYS) expect(keys).toContain(key);
-  expect(keys).toContain("Strict-Transport-Security");
 });
 
-test("HSTS is omitted outside production", () => {
-  const keys = securityHeaders(false).map((h) => h.key);
+test("securityHeaders never includes CSP or HSTS (those are per-request / host-scoped)", () => {
+  const keys = securityHeaders().map((h) => h.key);
+  expect(keys).not.toContain("Content-Security-Policy");
   expect(keys).not.toContain("Strict-Transport-Security");
 });
 
-test("HSTS uses max-age >= 31536000 with includeSubDomains", () => {
-  const hsts = securityHeaders(true).find(
-    (h) => h.key === "Strict-Transport-Security",
-  );
-  expect(hsts).toBeTruthy();
-  const m = hsts!.value.match(/max-age=(\d+)/);
-  expect(m).toBeTruthy();
-  expect(Number(m![1])).toBeGreaterThanOrEqual(31536000);
-  expect(hsts!.value).toContain("includeSubDomains");
+test("buildCsp throws when isProd is true without a nonce", () => {
+  expect(() => buildCsp({ isProd: true })).toThrow();
 });
 
-test("production CSP forbids 'unsafe-inline' and 'unsafe-eval' in script-src", () => {
-  const csp = securityHeaders(true).find(
-    (h) => h.key === "Content-Security-Policy",
-  )!.value;
+test("production CSP includes the nonce and 'strict-dynamic' in script-src", () => {
+  const csp = buildCsp({ isProd: true, nonce: "abc123" });
   const scriptSrc = csp
     .split(";")
     .map((d) => d.trim())
     .find((d) => d.startsWith("script-src"))!;
-  expect(scriptSrc).toBe("script-src 'self'");
+  expect(scriptSrc).toContain("'nonce-abc123'");
+  expect(scriptSrc).toContain("'strict-dynamic'");
+  expect(scriptSrc).not.toContain("'unsafe-inline'");
+  expect(scriptSrc).not.toContain("'unsafe-eval'");
+});
+
+test("dev CSP allows 'unsafe-eval' and 'unsafe-inline' for HMR", () => {
+  const csp = buildCsp({ isProd: false });
+  const scriptSrc = csp
+    .split(";")
+    .map((d) => d.trim())
+    .find((d) => d.startsWith("script-src"))!;
+  expect(scriptSrc).toContain("'unsafe-eval'");
+  expect(scriptSrc).toContain("'unsafe-inline'");
 });
 
 test("CSP includes connect-src 'self' for same-origin SSE (/api/events)", () => {
-  const csp = securityHeaders(true).find(
-    (h) => h.key === "Content-Security-Policy",
-  )!.value;
+  const csp = buildCsp({ isProd: true, nonce: "x" });
   expect(csp).toMatch(/connect-src[^;]*\bself\b/);
 });
 
+test("dev CSP additionally allows ws:/wss: in connect-src for HMR", () => {
+  const csp = buildCsp({ isProd: false });
+  const connectSrc = csp
+    .split(";")
+    .map((d) => d.trim())
+    .find((d) => d.startsWith("connect-src"))!;
+  expect(connectSrc).toContain("ws:");
+  expect(connectSrc).toContain("wss:");
+});
+
 test("CSP includes frame-ancestors 'none' (clickjacking)", () => {
-  const csp = securityHeaders(true).find(
-    (h) => h.key === "Content-Security-Policy",
-  )!.value;
+  const csp = buildCsp({ isProd: true, nonce: "x" });
   expect(csp).toMatch(/frame-ancestors[^;]*'none'/);
+});
+
+test("production CSP includes upgrade-insecure-requests", () => {
+  const csp = buildCsp({ isProd: true, nonce: "x" });
+  expect(csp).toMatch(/(^|;\s*)upgrade-insecure-requests(\s*;|$)/);
+});
+
+test("dev CSP omits upgrade-insecure-requests (HMR on http://localhost)", () => {
+  const csp = buildCsp({ isProd: false });
+  expect(csp).not.toContain("upgrade-insecure-requests");
+});
+
+test("headerRules(false) returns only the always-on rule with no HSTS", () => {
+  const rules = headerRules(false);
+  expect(rules).toHaveLength(1);
+  expect(rules[0]!.source).toBe("/:path*");
+  expect(rules[0]!.missing).toBeUndefined();
+  const keys = rules[0]!.headers.map((h) => h.key);
+  expect(keys).not.toContain("Strict-Transport-Security");
+});
+
+test("headerRules(true) adds a host-scoped HSTS rule", () => {
+  const rules = headerRules(true);
+  expect(rules).toHaveLength(2);
+  const hstsRule = rules.find((r) =>
+    r.headers.some((h) => h.key === "Strict-Transport-Security"),
+  )!;
+  expect(hstsRule).toBeTruthy();
+  expect(hstsRule.source).toBe("/:path*");
+  expect(hstsRule.missing).toBeDefined();
+  expect(hstsRule.missing!).toHaveLength(1);
+  expect(hstsRule.missing![0]!.type).toBe("host");
+});
+
+test("HSTS uses max-age >= 31536000 with includeSubDomains", () => {
+  const hstsRule = headerRules(true).find((r) =>
+    r.headers.some((h) => h.key === "Strict-Transport-Security"),
+  )!;
+  const hsts = hstsRule.headers.find(
+    (h) => h.key === "Strict-Transport-Security",
+  )!;
+  const m = hsts.value.match(/max-age=(\d+)/);
+  expect(m).toBeTruthy();
+  expect(Number(m![1])).toBeGreaterThanOrEqual(31536000);
+  expect(hsts.value).toContain("includeSubDomains");
+});
+
+test("HSTS host exclusion matches loopback names but not real domains", () => {
+  const hstsRule = headerRules(true).find((r) =>
+    r.headers.some((h) => h.key === "Strict-Transport-Security"),
+  )!;
+  const regex = new RegExp(hstsRule.missing![0]!.value);
+  expect(regex.test("localhost")).toBe(true);
+  expect(regex.test("localhost:3000")).toBe(true);
+  expect(regex.test("127.0.0.1")).toBe(true);
+  expect(regex.test("127.0.0.1:3000")).toBe(true);
+  expect(regex.test("[::1]")).toBe(true);
+  expect(regex.test("[::1]:3000")).toBe(true);
+  expect(regex.test("mymir.dev")).toBe(false);
+  expect(regex.test("evil-localhost.com")).toBe(false);
+  expect(regex.test("127.0.0.1.evil.com")).toBe(false);
 });
 
 test("nextConfig disables X-Powered-By", () => {
   expect(nextConfig.poweredByHeader).toBe(false);
 });
 
-test("nextConfig.headers() applies securityHeaders to /:path*", async () => {
+test("nextConfig.headers() emits no CSP (CSP is set by middleware)", async () => {
   const rules = await nextConfig.headers!();
-  expect(rules).toHaveLength(1);
+  for (const rule of rules) {
+    const keys = rule.headers.map((h) => h.key);
+    expect(keys).not.toContain("Content-Security-Policy");
+  }
+});
+
+test("nextConfig.headers() applies the always-on rule to /:path*", async () => {
+  const rules = await nextConfig.headers!();
+  expect(rules.length).toBeGreaterThanOrEqual(1);
   expect(rules[0]!.source).toBe("/:path*");
   const keys = rules[0]!.headers.map((h) => h.key);
   for (const key of REQUIRED_KEYS) expect(keys).toContain(key);

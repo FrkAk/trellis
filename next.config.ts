@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { securityHeaders } from "./lib/security/headers";
+import { headerRules } from "./lib/security/headers";
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -10,12 +10,7 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
-    return [
-      {
-        source: "/:path*",
-        headers: securityHeaders(process.env.NODE_ENV === "production"),
-      },
-    ];
+    return headerRules(process.env.NODE_ENV === "production");
   },
 };
 
