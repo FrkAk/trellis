@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { motion } from "motion/react";
+import { useCallback, useMemo, useState, useTransition } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TwoPanelLayout } from "@/components/layout/TwoPanelLayout";
@@ -68,6 +68,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [navigatorClosed, setNavigatorClosed] = useState(false);
+  /**
+   * Controls the right-hand property rail inside the graph-mode detail
+   * overlay. Persists across task changes so the user stays in their chosen
+   * "compact" layout once they close it; resets to `true` when the
+   * selection clears (matches drawerOpen / navigatorClosed reset semantics).
+   */
+  const [propRailOpen, setPropRailOpen] = useState(true);
+  /**
+   * Marks the auto-fallback view-switch as a low-priority transition. React
+   * keeps the current (graph) view interactive while the new (structure)
+   * tree renders in the background — without this, the synchronous
+   * reconciliation freezes input for the duration of the swap.
+   */
+  const [, startViewTransition] = useTransition();
 
   /**
    * Slim row for the selected task. `null` while there is no selection AND
@@ -120,7 +134,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleSelectNode = useCallback(
     (taskId: string) => {
       setSelectedTaskId(taskId);
-      if (view === "graph" && !isXl) updateParam("view", null);
+      if (view === "graph" && !isXl) {
+        // Wrap the URL change in a transition so React doesn't block the
+        // input thread while the structure tree mounts. The cross-fade in
+        // `WorkspaceLayout` masks any residual reconciliation cost.
+        startViewTransition(() => updateParam("view", null));
+      }
     },
     [view, isXl, updateParam],
   );
@@ -141,6 +160,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     if (selectedTaskId === null) {
       setDrawerOpen(false);
       setNavigatorClosed(false);
+      setPropRailOpen(true);
     }
   }
 
@@ -182,6 +202,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     navigatorClosed,
     setNavigatorClosed,
     showNavigatorToggle,
+    propRailOpen,
+    setPropRailOpen,
     handleSelectNode,
     handleClose,
     handleSwitchToStructure,
@@ -221,6 +243,10 @@ interface SharedLayoutProps {
   navigatorClosed: boolean;
   setNavigatorClosed: (updater: (v: boolean) => boolean) => void;
   showNavigatorToggle: boolean;
+  /** Whether the property rail is visible inside the graph-mode overlay. */
+  propRailOpen: boolean;
+  /** Functional setter — flips the propRailOpen state. */
+  setPropRailOpen: (updater: (v: boolean) => boolean) => void;
   handleSelectNode: (taskId: string) => void;
   handleClose: () => void;
   handleSwitchToStructure: () => void;
@@ -247,7 +273,11 @@ interface WorkspaceBodyWithSelectionProps extends SharedLayoutProps {
 function WorkspaceBodyWithSelection(
   props: WorkspaceBodyWithSelectionProps,
 ) {
-  const { projectId, graph, taskSlim, taskMap, projectTags, refreshAll, handleSelectNode, handleClose, drawerOpen, setDrawerOpen, navigatorClosed, setNavigatorClosed, showNavigatorToggle } = props;
+  const { projectId, graph, view, isXl, taskSlim, taskMap, projectTags, refreshAll, handleSelectNode, handleClose, drawerOpen, setDrawerOpen, navigatorClosed, setNavigatorClosed, showNavigatorToggle, propRailOpen, setPropRailOpen } = props;
+  // The property-rail toggle is only meaningful inside the graph overlay
+  // (xl + graph view + selection). In structure mode the rail sits beside
+  // the detail column with no overlay to shrink, so the toggle is hidden.
+  const showPropRailToggle = view === 'graph' && isXl;
   const qc = useQueryClient();
   const taskId = taskSlim.id;
 
@@ -285,6 +315,10 @@ function WorkspaceBodyWithSelection(
       navigatorClosed={showNavigatorToggle ? navigatorClosed : undefined}
       onToggleNavigator={
         showNavigatorToggle ? () => setNavigatorClosed((v) => !v) : undefined
+      }
+      propRailOpen={showPropRailToggle ? propRailOpen : undefined}
+      onTogglePropRail={
+        showPropRailToggle ? () => setPropRailOpen((v) => !v) : undefined
       }
     />
   ) : (
@@ -354,6 +388,7 @@ function WorkspaceLayout(props: WorkspaceLayoutProps) {
     taskSlim,
     detail,
     propRail,
+    propRailOpen,
   } = props;
 
   const navigator = (
@@ -368,12 +403,23 @@ function WorkspaceLayout(props: WorkspaceLayoutProps) {
     />
   );
 
-  if (view === "graph") {
+  // Layout-shape key. Every transition between these shapes (graph ↔ xl-
+  // structure ↔ narrow-structure) unmounts a heavy subtree and mounts another
+  // — synchronous reconciliation that, without animation, reads as a "jump"
+  // and a brief input freeze. Keying an `AnimatePresence` on this value with
+  // `mode="wait"` defers the new tree until the old one has faded out, so the
+  // mount cost is hidden inside the opacity-0 phase of the transition.
+  const layoutShape: 'graph' | 'xl' | 'narrow' =
+    view === 'graph' ? 'graph' : isXl ? 'xl' : 'narrow';
+
+  let layoutBody: React.ReactNode;
+  if (layoutShape === 'graph') {
     const showOverlay = isXl && Boolean(taskSlim);
-    return (
+    layoutBody = (
       <div className="flex h-[calc(var(--viewport-height)-var(--topbar-h))]">
         <div className="flex min-w-0 flex-1 flex-col">
           <WorkspaceGraphView
+            projectId={projectId}
             tasks={graph.tasks}
             edges={graph.edges}
             selectedNodeId={selectedTaskId}
@@ -382,14 +428,13 @@ function WorkspaceLayout(props: WorkspaceLayoutProps) {
             onSwitchToStructure={handleSwitchToStructure}
             detailSlot={showOverlay ? detail : undefined}
             propRailSlot={showOverlay ? propRail : undefined}
+            propRailOpen={propRailOpen}
           />
         </div>
       </div>
     );
-  }
-
-  if (isXl) {
-    return (
+  } else if (layoutShape === 'xl') {
+    layoutBody = (
       <div className="flex h-[calc(var(--viewport-height)-var(--topbar-h))]">
         <motion.div
           className="flex flex-col overflow-hidden"
@@ -414,22 +459,37 @@ function WorkspaceLayout(props: WorkspaceLayoutProps) {
         {propRail}
       </div>
     );
+  } else {
+    layoutBody = (
+      <>
+        <TwoPanelLayout
+          activePanelHint={selectedTaskId ? "right" : "left"}
+          left={navigator}
+          right={detail}
+        />
+        <PropRailDrawer
+          open={drawerOpen && !!taskSlim}
+          onClose={() => setDrawerOpen(() => false)}
+        >
+          {propRail}
+        </PropRailDrawer>
+      </>
+    );
   }
 
   return (
-    <>
-      <TwoPanelLayout
-        activePanelHint={selectedTaskId ? "right" : "left"}
-        left={navigator}
-        right={detail}
-      />
-      <PropRailDrawer
-        open={drawerOpen && !!taskSlim}
-        onClose={() => setDrawerOpen(() => false)}
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={layoutShape}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+        className="h-full"
       >
-        {propRail}
-      </PropRailDrawer>
-    </>
+        {layoutBody}
+      </motion.div>
+    </AnimatePresence>
   );
 }
 

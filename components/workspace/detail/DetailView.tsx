@@ -4,7 +4,6 @@ import { useMemo } from 'react';
 import type { Task, TaskEdge } from '@/lib/db/schema';
 import type { TaskGraphSlim } from '@/lib/data/views';
 import type { TaskStatus } from '@/lib/types';
-import { isPlannable, isReady, buildStatusMap } from '@/lib/ui/taskState';
 import { BundlePreview } from '@/components/workspace/BundlePreview';
 import { DetailHeader } from './DetailHeader';
 import { DescriptionSection } from './DescriptionSection';
@@ -46,6 +45,10 @@ interface DetailViewProps {
   navigatorClosed?: boolean;
   /** Toggle the navigator open/closed; when omitted the panel-toggle is hidden. */
   onToggleNavigator?: () => void;
+  /** Whether the right-side properties rail is currently visible (graph overlay only). */
+  propRailOpen?: boolean;
+  /** Toggle the properties rail open/closed; when omitted the toggle is hidden. */
+  onTogglePropRail?: () => void;
 }
 
 /**
@@ -72,23 +75,19 @@ export function DetailView({
   onGraphChange,
   navigatorClosed,
   onToggleNavigator,
+  propRailOpen,
+  onTogglePropRail,
 }: DetailViewProps) {
-  const statusMap = useMemo(() => buildStatusMap(allTasks), [allTasks]);
-  const ready = useMemo(() => isReady(task, statusMap, allEdges), [task, statusMap, allEdges]);
-  const plannable = useMemo(
-    () =>
-      isPlannable(
-        {
-          id: task.id,
-          status: task.status,
-          hasDescription: !!task.description?.trim(),
-          hasCriteria: (task.acceptanceCriteria ?? []).length > 0,
-        },
-        statusMap,
-        allEdges,
-      ),
-    [task, statusMap, allEdges],
+  // Read the server-derived `state` for this task off the slim payload —
+  // the same projection the canvas, rail, and structure list see. Falls
+  // back to schema status only if the task doesn't appear in `allTasks`,
+  // which shouldn't happen for any selected task in practice.
+  const currentState = useMemo(
+    () => allTasks.find((t) => t.id === taskId)?.state,
+    [allTasks, taskId],
   );
+  const ready = currentState === 'ready';
+  const plannable = currentState === 'plannable';
 
   const prerequisites = useMemo(() => buildPrerequisites(taskId, allEdges, taskMap), [taskId, allEdges, taskMap]);
   const neighbors = useMemo(() => buildNeighbors(taskId, allEdges, taskMap), [taskId, allEdges, taskMap]);
@@ -108,6 +107,8 @@ export function DetailView({
         onGraphChange={onGraphChange}
         navigatorClosed={navigatorClosed}
         onToggleNavigator={onToggleNavigator}
+        propRailOpen={propRailOpen}
+        onTogglePropRail={onTogglePropRail}
       />
 
       <div className="flex-1 overflow-y-auto">

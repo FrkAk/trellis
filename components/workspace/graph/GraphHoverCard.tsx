@@ -1,7 +1,7 @@
 'use client';
 
 import { StatusGlyph } from '@/components/shared/StatusGlyph';
-import { MonoId } from '@/components/shared/MonoId';
+import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
 import { IconArrowRight } from '@/components/shared/icons';
 import type { TaskGraphSlim } from '@/lib/data/views';
 
@@ -14,6 +14,12 @@ interface GraphHoverCardProps {
   downstreamCount: number;
   /** @param onOpen - Click handler that selects/opens the hovered task. */
   onOpen: () => void;
+  /**
+   * @param stage - Optional derived sub-stage (`plannable` / `ready`) that
+   *   overrides the schema status for the glyph. Falls back to the schema
+   *   status when omitted.
+   */
+  stage?: string;
 }
 
 /**
@@ -25,7 +31,7 @@ interface GraphHoverCardProps {
  * @param props - Hovered task + edge counts + open handler.
  * @returns Clickable preview card.
  */
-export function GraphHoverCard({ task, upstreamCount, downstreamCount, onOpen }: GraphHoverCardProps) {
+export function GraphHoverCard({ task, upstreamCount, downstreamCount, onOpen, stage }: GraphHoverCardProps) {
   return (
     <button
       type="button"
@@ -34,8 +40,12 @@ export function GraphHoverCard({ task, upstreamCount, downstreamCount, onOpen }:
       title={`Open ${task.taskRef}`}
     >
       <div className="mb-2 flex items-center gap-2">
-        <StatusGlyph status={task.status} size={12} />
-        <MonoId id={task.taskRef} copyable={false} />
+        <StatusGlyph status={stage ?? task.status} size={12} />
+        <MonoId
+          id={task.taskRef}
+          copyable={false}
+          tone={(stage ?? task.status) as MonoIdTone}
+        />
         <span className="flex-1" />
         <span className="font-mono text-[10px] tabular-nums text-text-faint">
           ↑{upstreamCount} ↓{downstreamCount}
@@ -45,7 +55,7 @@ export function GraphHoverCard({ task, upstreamCount, downstreamCount, onOpen }:
         {task.title}
       </div>
       <div className="flex items-center gap-1.5 border-t border-border pt-2 text-[11px] text-text-muted">
-        <span>Open task</span>
+        <span>Click node to see more details</span>
         <span aria-hidden="true" className="text-accent-light">
           <IconArrowRight size={10} />
         </span>

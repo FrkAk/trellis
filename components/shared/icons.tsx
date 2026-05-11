@@ -70,6 +70,16 @@ export function IconPanelLeft(props: IconProps) {
   );
 }
 
+/** Right-side panel / drawer toggle — mirror of {@link IconPanelLeft}. */
+export function IconPanelRight(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M10 3v10" />
+    </IconBase>
+  );
+}
+
 /** Magnifying glass — search and ⌘K trigger. */
 export function IconSearch(props: IconProps) {
   return <IconBase {...props}><path d="M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM10.5 10.5l3 3" /></IconBase>;

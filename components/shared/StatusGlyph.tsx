@@ -1,6 +1,16 @@
-/** All task lifecycle statuses tracked by the schema. */
+/**
+ * Lifecycle stages the workspace renders.
+ *
+ * Schema statuses: `draft` | `planned` | `in_progress` | `done` | `cancelled`.
+ * Derived sub-stages: `plannable` (a draft with criteria + done deps), `ready`
+ * (a planned task with done deps), `blocked` (a planned task whose deps are
+ * not done — surfaced where the structure list groups it). Sub-stages only
+ * appear when the caller derives them — schema status alone never produces
+ * `plannable` / `ready` / `blocked`.
+ */
 export type TaskStatus =
   | 'draft'
+  | 'plannable'
   | 'planned'
   | 'ready'
   | 'in_progress'
@@ -16,11 +26,29 @@ interface StatusMeta {
   cssVar: string;
 }
 
-/** Static metadata table for every status — labels, glyph kind, and the CSS color variable. */
+/**
+ * Static metadata for every lifecycle stage — labels, glyph kind, and CSS
+ * colour variable.
+ *
+ * Visual convention (matched on the graph canvas):
+ *   dashed ring         → spec stage, criteria still being met (draft, plannable)
+ *   solid ring          → committed plan, may still be waiting on deps (planned)
+ *   solid ring + dot    → committed plan AND deps done — agent can fire (ready)
+ *   half / pulse / etc  → executing or terminal (in_progress, done, cancelled, blocked)
+ *
+ * `plannable` and `ready` share the planned blue colour but get DIFFERENT
+ * shapes: plannable is dashed (still in drafting territory), ready is the
+ * filled-dot variant (queued, all-clear). The operator can scan for the
+ * solid-ring-with-dot to see what an agent could pick up next.
+ */
 export const STATUS_META: Record<TaskStatus, StatusMeta> = {
   draft:       { label: 'Draft',       glyph: 'dashed',    cssVar: 'var(--color-glyph-draft)' },
+  plannable:   { label: 'Plannable',   glyph: 'dashed',    cssVar: 'var(--color-glyph-planned)' },
   planned:     { label: 'Planned',     glyph: 'ring',      cssVar: 'var(--color-glyph-planned)' },
-  ready:       { label: 'Ready',       glyph: 'ring-bold', cssVar: 'var(--color-glyph-ready)' },
+  // Ready borrows the in-progress palette: it's the staging lane that
+  // flips to in_progress next, so the warm colour tells the operator
+  // "this is the one an agent is about to pick up" without reading text.
+  ready:       { label: 'Ready',       glyph: 'ring-bold', cssVar: 'var(--color-glyph-progress)' },
   in_progress: { label: 'In Progress', glyph: 'half',      cssVar: 'var(--color-glyph-progress)' },
   blocked:     { label: 'Blocked',     glyph: 'blocked',   cssVar: 'var(--color-glyph-blocked)' },
   done:        { label: 'Done',        glyph: 'filled',    cssVar: 'var(--color-glyph-done)' },

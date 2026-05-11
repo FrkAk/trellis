@@ -1,12 +1,11 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { StatusGlyph } from '@/components/shared/StatusGlyph';
+import { StatusGlyph, STATUS_META, type TaskStatus as GlyphStatus } from '@/components/shared/StatusGlyph';
 import { IconPlus } from '@/components/shared/icons';
-import { STATUS_META } from '@/components/shared/StatusGlyph';
 import type { TaskStatus } from '@/lib/types';
 
-/** Optional virtual groups — derived states, not schema statuses. */
+/** Optional virtual groups — derived sub-stages, not schema statuses. */
 export type TaskGroupKey = TaskStatus | 'ready' | 'plannable';
 
 interface TaskGroupProps {
@@ -21,38 +20,40 @@ interface TaskGroupProps {
 }
 
 /**
- * Resolve the human label and glyph status for a group key — `ready` is a
- * derived state and shares the planned color in the table but reads
- * `Ready` in copy.
- *
- * @param key - Group identifier.
- * @returns Pair of label + status used by the StatusGlyph.
- */
-function resolve(key: TaskGroupKey): { label: string; glyph: TaskStatus } {
-  if (key === 'ready') return { label: 'Ready', glyph: 'planned' };
-  if (key === 'plannable') return { label: 'Plannable', glyph: 'draft' };
-  return { label: STATUS_META[key]?.label ?? key, glyph: key };
-}
-
-/**
  * Sticky group header — 30px row with status glyph, mono uppercase label,
  * count, and an inline add button. Wraps its children directly so the
- * caller controls the row spacing.
+ * caller controls the row spacing. The glyph + label come straight from
+ * `STATUS_META` so the convention used here matches the rail, hover card,
+ * and graph canvas (`plannable` / `ready` → dashed planned-blue).
  *
  * @param props - Group configuration.
  * @returns Header element followed by the rendered children.
  */
 export function TaskGroup({ status, count, onAdd, children }: TaskGroupProps) {
-  const { label, glyph } = resolve(status);
+  const meta = STATUS_META[status as GlyphStatus] ?? STATUS_META.draft;
+  const label = meta.label;
 
+  // Tint the label + count with the same CSS var the glyph uses so the
+  // header reads as a single coloured band — matches the toned task-ref
+  // (MonoId) below for `plannable` / `ready`, and gives every group its
+  // own visual lane regardless of state. The count gets a slight opacity
+  // dip so it still recedes against the label.
   return (
     <>
       <div className="sticky top-0 z-10 flex h-[30px] items-center gap-2 border-y border-border bg-base-2 px-4">
-        <StatusGlyph status={glyph} size={12} />
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.10em] text-text-secondary">
+        <StatusGlyph status={status} size={12} />
+        <span
+          className="font-mono text-[10px] font-semibold uppercase tracking-[0.10em]"
+          style={{ color: meta.cssVar }}
+        >
           {label}
         </span>
-        <span className="font-mono text-[10px] tabular-nums text-text-faint">{count}</span>
+        <span
+          className="font-mono text-[10px] tabular-nums"
+          style={{ color: meta.cssVar, opacity: 0.6 }}
+        >
+          {count}
+        </span>
         <span className="flex-1" />
         {onAdd && (
           <button

@@ -43,6 +43,7 @@ import {
   type TeamOption,
 } from "@/lib/graph/errors";
 import { formatMarkdown } from "@/lib/markdown/format";
+import { deriveTaskStatesSlim } from "@/lib/data/task";
 import type { AuthContext } from "@/lib/auth/context";
 import {
   ForbiddenError,
@@ -131,6 +132,20 @@ export async function getProjectGraphSlim(
 
   const [taskRows, edges] = await Promise.all([tasksQ, edgesQ]);
   const enriched = enrichWithTaskRef(taskRows, asIdentifier(project.identifier));
+
+  // Derived state lives on the slim payload — single source of truth for
+  // every UI surface. Computing it here avoids the client mirroring the
+  // server-side rules and the drift that pattern caused historically.
+  const stateMap = await deriveTaskStatesSlim(
+    projectId,
+    enriched.map((t) => ({
+      id: t.id,
+      status: t.status,
+      hasDescription: t.hasDescription,
+      hasCriteria: t.hasCriteria,
+    })),
+  );
+
   const slimTasks: TaskGraphSlim[] = enriched.map((t) => ({
     id: t.id,
     taskRef: t.taskRef,
@@ -144,6 +159,7 @@ export async function getProjectGraphSlim(
     updatedAt: t.updatedAt,
     hasDescription: t.hasDescription,
     hasCriteria: t.hasCriteria,
+    state: stateMap.get(t.id) ?? "draft",
     assigneeCount: t.assigneeCount,
   }));
 

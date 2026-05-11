@@ -311,24 +311,36 @@ export type TaskState =
   | "blocked"
   | "draft";
 
+/** Slim shape needed to derive a state — matches what the slim payload
+ *  carries, so the server can compute states without re-fetching `description`
+ *  and `acceptanceCriteria` columns just to recompute trim+length. */
+export type TaskStateInput = {
+  id: string;
+  status: string;
+  hasDescription: boolean;
+  hasCriteria: boolean;
+};
+
 /**
  * Derive the actionable state for a single task using effective deps.
  *
- * Cancelled tasks short-circuit. For active tasks, dep readiness is checked
- * against the *effective* dependency set — cancelled middles are walked
- * through, and the wall is the next active prerequisite.
+ * Cancelled tasks short-circuit. For active tasks the dep set is the
+ * *effective* one — cancelled middles are walked through, and the wall is
+ * the next non-cancelled prerequisite.
  *
- * @param task - Task with status, description, and acceptanceCriteria.
+ * Iron-law gate: both `plannable` and `ready` require every effective dep
+ * to be `done`. A draft becomes `plannable` only when its prerequisites
+ * have actually shipped — we don't plan against unshipped interfaces because
+ * the propagation rules in `lifecycle.md` only hold for shipped work.
+ *
+ * @param task - Slim shape: id, status, plus pre-computed
+ *   `hasDescription` / `hasCriteria` booleans the slim payload already
+ *   carries (avoids re-fetching the heavy text columns).
  * @param graph - Effective dependency graph for the project.
  * @returns Derived TaskState.
  */
 function deriveTaskState(
-  task: {
-    id: string;
-    status: string;
-    description: string;
-    acceptanceCriteria: unknown;
-  },
+  task: TaskStateInput,
   graph: {
     activeTasks: Map<string, { status: string }>;
     effectiveDeps: Map<string, Set<string>>;
@@ -353,13 +365,7 @@ function deriveTaskState(
 
   if (!allDepsDone) return "blocked";
 
-  const hasDescription = task.description.trim().length > 0;
-  const criteria = task.acceptanceCriteria as
-    | { id: string; text: string; checked: boolean }[]
-    | null;
-  const hasCriteria = Array.isArray(criteria) && criteria.length > 0;
-
-  return hasDescription && hasCriteria ? "plannable" : "draft";
+  return task.hasDescription && task.hasCriteria ? "plannable" : "draft";
 }
 
 /**
@@ -369,6 +375,10 @@ function deriveTaskState(
  * Builds the effective dependency graph once and reuses it for every task in
  * the subset, so dep readiness reflects transitive blocking through cancelled
  * middles rather than just direct edges.
+ *
+ * Routes through {@link deriveTaskStatesSlim} after computing the slim
+ * `hasDescription` / `hasCriteria` booleans from the heavy text columns —
+ * single derivation pipeline, no drift.
  *
  * @param projectId - UUID of the project.
  * @param taskSubset - Tasks to derive states for.
@@ -382,6 +392,36 @@ export async function deriveTaskStates(
     description: string;
     acceptanceCriteria: unknown;
   }[],
+): Promise<Map<string, TaskState>> {
+  return deriveTaskStatesSlim(
+    projectId,
+    taskSubset.map((t) => {
+      const criteria = t.acceptanceCriteria as
+        | { id: string; text: string; checked: boolean }[]
+        | null;
+      return {
+        id: t.id,
+        status: t.status,
+        hasDescription: t.description.trim().length > 0,
+        hasCriteria: Array.isArray(criteria) && criteria.length > 0,
+      };
+    }),
+  );
+}
+
+/**
+ * Batch state derivation against the slim payload shape — the path the UI
+ * fetches via `getProjectGraphSlim`. Avoids selecting `description` and
+ * `acceptanceCriteria` from the database just to compute boolean flags;
+ * the slim query already projects them.
+ *
+ * @param projectId - UUID of the project.
+ * @param taskSubset - Tasks in `TaskStateInput` shape.
+ * @returns Map of taskId → TaskState.
+ */
+export async function deriveTaskStatesSlim(
+  projectId: string,
+  taskSubset: TaskStateInput[],
 ): Promise<Map<string, TaskState>> {
   const graph = await buildEffectiveDepGraph(projectId);
   const result = new Map<string, TaskState>();
