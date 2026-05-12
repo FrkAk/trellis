@@ -329,7 +329,12 @@ function WorkspaceBodyWithSelection(
     taskFullMatches && selectedTaskFull ? (
       <PropRail
         taskId={taskId}
+        projectId={projectId}
         status={selectedTaskFull.status}
+        priority={selectedTaskFull.priority}
+        estimate={selectedTaskFull.estimate}
+        assignees={selectedTaskFull.assignees ?? []}
+        organizationId={graph.project.organizationId}
         category={selectedTaskFull.category}
         categories={graph.project.categories}
         tags={selectedTaskFull.tags ?? []}
@@ -397,6 +402,7 @@ function WorkspaceLayout(props: WorkspaceLayoutProps) {
       edges={graph.edges}
       categories={graph.project.categories}
       projectId={projectId}
+      organizationId={graph.project.organizationId}
       selectedNodeId={selectedTaskId}
       onSelectNode={handleSelectNode}
       onGraphChange={refreshAll}

@@ -189,13 +189,13 @@ Every task, in every status, must carry tags across the three tag dimensions bel
 
 These are top-level columns on every task, set via `mymir_task` parameters of the same name. They are NOT tags.
 
-- **`priority`** (one of `release-blocker`, `core`, `normal`, `backlog`). Required-on-create-by-convention: pick deliberately. Defaults: onboarding (shipped features) lands at `core`; decompose picks per task and avoids `core` everywhere or `release-blocker` everywhere (the dimension carries no signal then). A 30-task project usually has 3 to 6 release-blockers and the rest split between `core`, `normal`, and `backlog`.
+- **`priority`** (one of `urgent`, `core`, `normal`, `backlog`). Required-on-create-by-convention: pick deliberately. Defaults: onboarding (shipped features) lands at `core`; decompose picks per task and avoids `core` everywhere or `urgent` everywhere (the dimension carries no signal then). A 30-task project usually has 3 to 6 `urgent` tasks and the rest split between `core`, `normal`, and `backlog`.
 - **`estimate`** (Fibonacci story points: `1`, `2`, `3`, `5`, `8`, `13`). Optional. `1` is trivial, `2` and `3` are routine, `5` is nontrivial, `8` and `13` are risky or multi-day. If a task feels larger than `13`, split it (§5).
 - **`assigneeIds`** (array of team-member user UUIDs). Optional. Declares ownership / intent, not concurrent execution; the single-worker `in_progress` invariant still holds. Each id must be a member of the project's owning team (the server rejects non-members at write time).
 
 **Do NOT tag:**
 
-- Priority: that is the `priority` field's job; the four old priority strings (`release-blocker`, `core`, `normal`, `backlog`) are no longer accepted as tags.
+- Priority: that is the `priority` field's job. Setting `urgent`, `core`, `normal`, or `backlog` as tags duplicates the field and adds no signal.
 - Codebase area: that's `category`'s job. **Test: would this name plausibly be a category in some other project shape?** `render-loop`, `effect-system`, `auth`, `payments`, `inference`, `marts`, `flight-control`, `hal-drivers` all answer YES. They're subsystems / product areas, even if your project's category list happens to omit them. Tags are axes the project does not shape itself around: quality attributes (`security`, `a11y`, `perf`, `reliability`, `observability`, `dx`, `compliance`, `safety`, `i18n`) and multi-category feature clusters (`onboarding-flow`, `agent-loop`, `mission-planning`, `live-replay`). If a candidate tag names a subsystem, surface it as a category proposal at the gate or use the existing category. Coining an area-shaped tag because the categories lack a good slot is a category-list bug, not a tag.
 - Task status: that is `status`'s job.
 - Generic adjectives like "important", "main", "primary".

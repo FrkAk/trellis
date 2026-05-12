@@ -12,7 +12,7 @@ export type ProjectStatus =
 export type TaskStatus = "draft" | "planned" | "in_progress" | "done" | "cancelled";
 
 /** Task priority. */
-export type Priority = "release-blocker" | "core" | "normal" | "backlog";
+export type Priority = "urgent" | "core" | "normal" | "backlog";
 
 /** Fibonacci story-point estimate. */
 export type Estimate = 1 | 2 | 3 | 5 | 8 | 13;

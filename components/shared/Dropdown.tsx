@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { IconCheck, IconChevronDown } from '@/components/shared/icons';
+import { popoverFixedStyle, usePopoverAnchor } from '@/hooks/usePopoverAnchor';
 
 export interface DropdownOption<V extends string = string> {
   /** Option value — what gets passed to onChange. */
@@ -38,13 +40,19 @@ interface DropdownProps<V extends string> {
   ariaLabel?: string;
 }
 
+/** Worst-case panel height — `max-h-[280px]` list + `py-1` chrome (~8px). */
+const PANEL_MAX_HEIGHT_PX = 288;
+
 /**
  * Anchored dropdown — single-select. The trigger is fully owned by the
  * caller via `renderTrigger`, so the same primitive serves status pills,
- * filter chips, and rail rows without forcing a single appearance.
+ * filter chips, and rail rows without forcing a single appearance. The
+ * panel is portalled to `document.body` and positioned with `fixed`
+ * coordinates so a parent's `overflow-y-auto` (which CSS-spec-promotes
+ * to `overflow: auto` on both axes) cannot clip it sideways or below.
  *
  * @param props - Dropdown configuration.
- * @returns Trigger button plus animated panel.
+ * @returns Trigger button plus animated portalled panel.
  */
 export function Dropdown<V extends string>({
   value,
@@ -58,15 +66,27 @@ export function Dropdown<V extends string>({
   ariaLabel,
 }: DropdownProps<V>) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [width, setWidth] = useState<number | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
+  const { anchor, measureNow } = usePopoverAnchor({
+    open,
+    triggerRef,
+    align,
+    popoverHeight: PANEL_MAX_HEIGHT_PX,
+  });
+
+  // Click-outside + Escape close. Both the trigger and the portalled
+  // panel must be exempt; the panel lives outside the trigger's DOM tree,
+  // so we check both refs explicitly.
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      const inTrigger = triggerRef.current?.contains(target);
+      const inPopover = popoverRef.current?.contains(target);
+      if (!inTrigger && !inPopover) setOpen(false);
     };
     const escape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -79,82 +99,97 @@ export function Dropdown<V extends string>({
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open || !matchTriggerWidth || !triggerRef.current) return;
-    setWidth(triggerRef.current.getBoundingClientRect().width);
-  }, [open, matchTriggerWidth]);
+  // Toggle handler: measure synchronously during the click so the panel
+  // renders with the correct anchor on its first frame. React batches the
+  // two setStates inside the same event handler, so there's no extra
+  // render before paint.
+  const handleToggle = useCallback(() => {
+    setOpen((wasOpen) => {
+      if (!wasOpen) measureNow();
+      return !wasOpen;
+    });
+  }, [measureNow]);
 
   const active = options.find((o) => o.value === value);
+  const flipped = anchor?.vertical === 'above';
+
+  const panelStyle: React.CSSProperties | null = anchor
+    ? {
+        ...popoverFixedStyle(anchor),
+        width: matchTriggerWidth ? anchor.width : undefined,
+        minWidth,
+      }
+    : null;
 
   return (
-    <span ref={wrapRef} className="relative inline-flex">
+    <>
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         title={title}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
         aria-label={ariaLabel}
-        className="cursor-pointer outline-none"
+        className="inline-flex cursor-pointer outline-none"
       >
         {renderTrigger(active, open)}
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            id={listId}
-            role="listbox"
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.11, ease: 'easeOut' }}
-            className="absolute top-full z-30 mt-1 max-h-[280px] overflow-y-auto rounded-md border border-border-strong bg-surface-raised py-1 shadow-float"
-            style={{
-              width: matchTriggerWidth && width ? width : undefined,
-              minWidth,
-              [align === 'end' ? 'right' : 'left']: 0,
-            }}
-          >
-            {options.map((option) => {
-              const selected = option.value === value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  disabled={option.disabled}
-                  onClick={() => {
-                    if (option.disabled) return;
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
-                    selected
-                      ? 'bg-accent/10 text-accent-light'
-                      : option.disabled
-                        ? 'text-text-faint cursor-not-allowed'
-                        : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                  }`}
-                >
-                  {option.leading && <span aria-hidden="true" className="inline-flex shrink-0">{option.leading}</span>}
-                  <span className="flex-1 truncate">{option.label}</span>
-                  {option.trailing}
-                  {selected && (
-                    <span aria-hidden="true" className="text-accent-light">
-                      <IconCheck size={11} />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </span>
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {open && panelStyle && (
+            <motion.div
+              ref={popoverRef}
+              id={listId}
+              role="listbox"
+              initial={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
+              transition={{ duration: 0.11, ease: 'easeOut' }}
+              className="z-50 max-h-[280px] overflow-y-auto rounded-md border border-border-strong bg-surface-raised py-1 shadow-float"
+              style={panelStyle}
+            >
+              {options.map((option) => {
+                const selected = option.value === value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    disabled={option.disabled}
+                    onClick={() => {
+                      if (option.disabled) return;
+                      onChange(option.value);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                      selected
+                        ? 'bg-accent/10 text-accent-light'
+                        : option.disabled
+                          ? 'text-text-faint cursor-not-allowed'
+                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                    }`}
+                  >
+                    {option.leading && <span aria-hidden="true" className="inline-flex shrink-0">{option.leading}</span>}
+                    <span className="flex-1 truncate">{option.label}</span>
+                    {option.trailing}
+                    {selected && (
+                      <span aria-hidden="true" className="text-accent-light">
+                        <IconCheck size={11} />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+    </>
   );
 }
 

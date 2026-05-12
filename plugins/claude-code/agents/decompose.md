@@ -278,7 +278,7 @@ After every 5 to 10 task creates, update `.mymir/decompose-<projectIdentifier>.m
    - **acceptanceCriteria**: 2 to 4 binary criteria. A reviewer answers YES or NO without ambiguity.
    - **category**: one of the project categories.
    - **tags**: three dimensions: 1 work type, ≥1 cross-cutting concern, ≤2 tech. Artifacts §2.
-   - **priority**: one of `release-blocker`, `core`, `normal`, `backlog`. Pick deliberately; the dimension carries no signal when everything is `core`.
+   - **priority**: one of `urgent`, `core`, `normal`, `backlog`. Pick deliberately; the dimension carries no signal when everything is `core`.
    - **estimate** (optional): Fibonacci story points (`1`, `2`, `3`, `5`, `8`, `13`). Sets scope expectation for the planner. Tasks larger than `13` should be split (§5).
    - **assigneeIds** (optional): array of team-member user UUIDs. Server rejects non-members.
    - **files**: leave empty `[]`. Drafts predate implementation; the agent shipping the task fills `files` at `done`. Speculation here violates artifacts §1.

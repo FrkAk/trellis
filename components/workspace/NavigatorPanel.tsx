@@ -16,6 +16,8 @@ interface NavigatorPanelProps {
   categories: string[];
   /** Project UUID. */
   projectId: string;
+  /** Organization UUID — passed through to StructureView for team-member avatars. */
+  organizationId: string;
   /** Currently selected task ID. */
   selectedNodeId: string | null;
   /** Click a task to open the detail. */
@@ -35,7 +37,7 @@ interface NavigatorPanelProps {
  */
 function readFilterCount(searchParams: URLSearchParams): number {
   let count = 0;
-  for (const key of ['tags', 'cat', 'status'] as const) {
+  for (const key of ['tags', 'cat', 'status', 'pri'] as const) {
     const value = searchParams.get(key);
     if (value) count += value.split(',').filter(Boolean).length;
   }
@@ -62,7 +64,7 @@ function readView(raw: string | null): WorkspaceView {
  * @returns Sort key.
  */
 function readSort(raw: string | null): SortKey {
-  if (raw === 'updated' || raw === 'identifier') return raw;
+  if (raw === 'updated' || raw === 'identifier' || raw === 'priority') return raw;
   return 'status';
 }
 
@@ -92,6 +94,7 @@ export function NavigatorPanel({
   edges,
   categories,
   projectId,
+  organizationId,
   selectedNodeId,
   onSelectNode,
   onGraphChange,
@@ -152,6 +155,7 @@ export function NavigatorPanel({
           tasks={tasks}
           edges={edges}
           projectId={projectId}
+          organizationId={organizationId}
           selectedNodeId={selectedNodeId}
           onSelectNode={onSelectNode}
           onGraphChange={onGraphChange}

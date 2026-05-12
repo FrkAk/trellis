@@ -55,7 +55,7 @@ import {
 } from '@/components/shared/icons';
 
 const STATUSES: TaskStatus[] = ['draft', 'planned', 'ready', 'in_progress', 'blocked', 'done', 'cancelled'];
-const PRIORITIES: Priority[] = [null, 'low', 'medium', 'high', 'urgent'];
+const PRIORITIES: Priority[] = [null, 'backlog', 'normal', 'core', 'urgent'];
 
 interface SectionProps {
   title: string;
@@ -305,7 +305,7 @@ export function PrimitivesShowcase() {
           </div>
         </Section>
 
-        <Section title="Priority" caption="Three ascending bars. Maps schema low / medium / high / urgent / null.">
+        <Section title="Priority" caption="Four ascending bars. Maps schema backlog / normal / core / urgent / null.">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
             {PRIORITIES.map((p) => (
               <div key={String(p)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

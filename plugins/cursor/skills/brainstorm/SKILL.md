@@ -97,7 +97,7 @@ Solid answers to four are better than shallow answers to all six.
 | 2 | Key features | 3 to 5 capabilities, each concrete enough to test. Must-have vs nice-to-have, opinionated. |
 | 3 | User flow | Walk through the primary flow step by step (not edge cases). What the user sees first; what they get back. A designer could sketch wireframes from this. |
 | 4 | Technical direction | Stack, key data entities and relationships, external integrations. Push back on weak choices. |
-| 5 | Phasing and priorities | Full vision, not cut down. Priority tiers (`release-blocker`, `core`, `normal`, `backlog`) that decompose will set on each task's `priority` field. |
+| 5 | Phasing and priorities | Full vision, not cut down. Priority tiers (`urgent`, `core`, `normal`, `backlog`) that decompose will set on each task's `priority` field. |
 | 6 | Naming | 2 or 3 candidates after you understand the project, not before. |
 
 ### Adapt to the user
@@ -167,7 +167,7 @@ When all six topics are `✓` (or four are `✓` and two are explicitly deferred
 **Target user:** <specific user, not "everyone">
 
 **Features (priority-marked):**
-- `release-blocker` <feature>: <one-line scope>
+- `urgent` <feature>: <one-line scope>
 - `core` <feature>: <one-line scope>
 - `normal` <feature>: <one-line scope>
 - `backlog` <feature>: <one-line scope>

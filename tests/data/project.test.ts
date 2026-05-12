@@ -62,6 +62,7 @@ test("getProjectGraphSlim drops heavy fields and shapes correctly", async () => 
     "categories",
     "id",
     "identifier",
+    "organizationId",
     "status",
     "title",
     "updatedAt",
@@ -70,6 +71,7 @@ test("getProjectGraphSlim drops heavy fields and shapes correctly", async () => 
   for (const t of g.tasks) {
     expect(Object.keys(t).sort()).toEqual([
       "assigneeCount",
+      "assigneeUserIds",
       "category",
       "estimate",
       "hasCriteria",
