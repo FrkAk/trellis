@@ -159,6 +159,7 @@ html {
   font-feature-settings: "calt" 1, "kern" 1, "liga" 1, "ss03" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  interpolate-size: allow-keywords;
 }
 
 body {
@@ -232,6 +233,87 @@ html.light .glow-card::before {
 }
 .glow-card:hover::before {
   opacity: 1;
+}
+
+/* ===========================================
+   CATEGORY DOT — task-row category affordance
+   ===========================================
+   Renders as a 6×6 hue swatch at rest; on row hover or focus-within the
+   swatch morphs into the full lowercase mono chip — width / padding /
+   chrome animate together. `--category-hue` is set inline per row; theme
+   branching lives below under html.light. The reduced-motion media query
+   at the bottom of this file neutralises transitions. */
+.category-dot {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 1rem;
+  width: 6px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 1.5px;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: middle;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: transparent;
+  background-color: transparent;
+  transition:
+    width 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    padding 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 140ms ease 40ms;
+}
+.category-dot::before {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 1.5px;
+  background-color: hsl(var(--category-hue) 70% 60%);
+  box-shadow: 0 0 6px hsl(var(--category-hue) 70% 60% / 0.35);
+  transition:
+    width 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 120ms ease;
+}
+.category-dot > .category-name {
+  display: inline-block;
+  max-width: 0;
+  overflow: hidden;
+  transition: max-width 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:where(.group:hover, .group:focus-within) .category-dot {
+  width: max-content;
+  padding: 0 6px;
+  border-radius: 4px;
+  background-color: hsl(var(--category-hue) 70% 45% / 0.14);
+  border-color: hsl(var(--category-hue) 70% 60% / 0.25);
+  color: hsl(var(--category-hue) 75% 78%);
+}
+:where(.group:hover, .group:focus-within) .category-dot::before {
+  width: 0;
+  opacity: 0;
+}
+:where(.group:hover, .group:focus-within) .category-dot > .category-name {
+  max-width: 96px;
+}
+
+/* Light-mode chip — saturated dark text on pale tinted background, matches
+   the existing chip palette pattern (DESIGN_2.md §1.2). */
+html.light .category-dot::before {
+  background-color: hsl(var(--category-hue) 55% 50%);
+  box-shadow: 0 0 6px hsl(var(--category-hue) 55% 50% / 0.35);
+}
+html.light :where(.group:hover, .group:focus-within) .category-dot {
+  background-color: hsl(var(--category-hue) 65% 92%);
+  border-color: hsl(var(--category-hue) 45% 62% / 0.5);
+  color: hsl(var(--category-hue) 55% 28%);
 }
 
 /* ===========================================

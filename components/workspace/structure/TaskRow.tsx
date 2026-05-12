@@ -1,13 +1,15 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { memo, useMemo } from 'react';
 import { Avatar } from '@/components/shared/Avatar';
+import { CategoryDot } from '@/components/shared/CategoryDot';
+import { IconTrash } from '@/components/shared/icons';
 import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
 import { PriorityIcon } from '@/components/shared/PriorityIcon';
 import { StatusGlyph } from '@/components/shared/StatusGlyph';
-import { useTheme } from '@/components/layout/ThemeProvider';
 import type { Priority, TaskStatus } from '@/lib/types';
 import type { MemberView } from '@/lib/actions/team-members-map';
+import { DeleteConfirm } from './DeleteConfirm';
 
 interface TaskRowProps {
   /** Task UUID — used as React key by the parent. */
@@ -18,7 +20,7 @@ interface TaskRowProps {
   title: string;
   /** Schema task status. */
   status: TaskStatus;
-  /** First category — rendered as a tiny lowercase chip. */
+  /** First category — rendered as a CategoryDot affordance. */
   category?: string | null;
   /** Task priority, or null when unset. Drives the icon-only priority chip. */
   priority: Priority | null;
@@ -42,16 +44,28 @@ interface TaskRowProps {
   isReady: boolean;
   /** Whether the row is a derived `plannable` state (draft + criteria + done deps). */
   isPlannable: boolean;
-  /** Click handler — opens the detail column for this task. */
-  onClick: () => void;
-  /** Trailing slot for an inline overflow menu (delete, etc). */
-  trailing?: ReactNode;
   /**
-   * Keep the trailing slot visible without hover — used when the slot is
-   * rendering destructive confirmation UI that the operator must commit or
-   * cancel before the row de-emphasises again.
+   * Open the detail column for this task. Takes the task `id` so the parent
+   * can pass a single stable callback (`onSelectNode`) regardless of which
+   * row is being rendered — preserves memoisation.
    */
-  trailingPersistent?: boolean;
+  onSelect: (id: string) => void;
+  /**
+   * Begin the inline delete-confirm flow for this task. Receives `id` so the
+   * parent can resolve the relevant task; the parent owns the active
+   * confirmation state (the prefetch effect rides on it) and toggles
+   * `confirming` on the right row.
+   */
+  onRequestDelete?: (id: string) => void;
+  /** Commit the delete for this task. */
+  onConfirmDelete?: (id: string) => void;
+  /** Cancel the delete-confirm flow. */
+  onCancelDelete?: () => void;
+  /**
+   * `true` when this row is the active confirm target. Drives the trailing
+   * slot's persistent visibility while the operator commits or cancels.
+   */
+  confirming?: boolean;
 }
 
 /**
@@ -69,12 +83,14 @@ function titleClass(status: TaskStatus): string {
 
 /**
  * Linear-density task row — single 34px line with status glyph, mono id,
- * dependency hints, category, title, last-active and assignee slot.
+ * dependency hints, category dot, title, last-active and assignee slot.
+ * Wrapped in `React.memo` so unchanged rows skip re-render when the parent
+ * `StructureView` updates (e.g. on selection change of an adjacent row).
  *
  * @param props - Row data.
  * @returns Clickable row with hover and selected variants.
  */
-export function TaskRow({
+function TaskRowImpl({
   id,
   taskRef,
   title,
@@ -89,21 +105,26 @@ export function TaskRow({
   selected,
   isReady,
   isPlannable,
-  onClick,
-  trailing,
-  trailingPersistent = false,
+  onSelect,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
+  confirming = false,
 }: TaskRowProps) {
+  const handleClick = () => onSelect(id);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(id);
+    }
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick();
-        }
-      }}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
       data-task-id={id}
       data-task-ref={taskRef}
       className={`group relative flex h-[34px] cursor-pointer items-center gap-2.5 border-b border-border pl-4 pr-3 transition-colors duration-100 ${
@@ -148,7 +169,7 @@ export function TaskRow({
 
       {downstreamCount > 0 && <DepsHint icon="down" count={downstreamCount} />}
 
-      {category && <CategoryChip name={category} />}
+      {category && <CategoryDot name={category} />}
 
       {priority && <PriorityChip priority={priority} />}
 
@@ -163,10 +184,10 @@ export function TaskRow({
         <AssigneeStack userIds={assigneeUserIds} memberLookup={memberLookup} />
       </span>
 
-      {trailing && (
+      {onRequestDelete && (
         <span
           className={`absolute inset-y-0 right-1.5 flex items-center pl-6 transition-opacity duration-150 ${
-            trailingPersistent
+            confirming
               ? 'pointer-events-auto opacity-100'
               : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'
           }`}
@@ -176,7 +197,19 @@ export function TaskRow({
               : 'linear-gradient(to left, var(--color-base) 50%, transparent 100%)',
           }}
         >
-          {trailing}
+          {confirming && onConfirmDelete && onCancelDelete ? (
+            <DeleteConfirm onConfirm={() => onConfirmDelete(id)} onCancel={onCancelDelete} />
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRequestDelete(id); }}
+              className="cursor-pointer rounded p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-danger"
+              aria-label={`Delete ${taskRef}`}
+              title={`Delete ${taskRef}`}
+            >
+              <IconTrash size={11} />
+            </button>
+          )}
         </span>
       )}
     </div>
@@ -184,50 +217,13 @@ export function TaskRow({
 }
 
 /**
- * Hash a string to a stable index — drives the deterministic pastel palette
- * applied to category chips. Same string maps to the same color forever.
- *
- * @param input - String to hash.
- * @returns Non-negative integer suitable for modulus.
+ * Memoised export — `TaskRowImpl` only re-renders when its shallow-compared
+ * props change. With the tightened parent API (`onSelect` instead of inline
+ * `onClick`, `onRequestDelete` / `onConfirmDelete` / `onCancelDelete`
+ * instead of inline `trailing` JSX), all function references are stable
+ * across `StructureView` re-renders, so unchanged rows skip render cleanly.
  */
-function hashString(input: string): number {
-  let h = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    h = ((h * 31) + input.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-/** Stable hue palette per category — same string maps to the same hue across themes. */
-const CATEGORY_HUES: readonly number[] = [205, 162, 280, 32, 220, 138, 12, 254, 312, 88];
-
-/**
- * Mono lowercase category chip — hue is hashed deterministically from the
- * name so categories scan consistently across rows. Background, border, and
- * text values branch on theme so dark mode shows light pastel text on a
- * tinted dark surface, while light mode shows saturated dark text on a
- * near-white pastel tint.
- *
- * @param props - Category name.
- * @returns Inline chip element with theme-aware color.
- */
-function CategoryChip({ name }: { name: string }) {
-  const hue = CATEGORY_HUES[hashString(name) % CATEGORY_HUES.length];
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
-  return (
-    <span
-      className="inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 font-mono text-[10px] font-medium"
-      style={{
-        background: isLight ? `hsl(${hue} 65% 92%)` : `hsl(${hue} 70% 45% / 0.14)`,
-        border: `1px solid ${isLight ? `hsl(${hue} 45% 62% / 0.5)` : `hsl(${hue} 70% 60% / 0.25)`}`,
-        color: isLight ? `hsl(${hue} 55% 28%)` : `hsl(${hue} 75% 78%)`,
-      }}
-    >
-      {name.toLowerCase()}
-    </span>
-  );
-}
+export const TaskRow = memo(TaskRowImpl);
 
 interface DepsHintProps {
   /** `up` for upstream `depends_on`, `down` for downstream. */
@@ -269,9 +265,6 @@ interface PriorityChipProps {
  * @returns Inline-flex chip element.
  */
 function PriorityChip({ priority }: PriorityChipProps) {
-  // `PriorityIcon` carries the accessible name via its own `aria-label`. The
-  // chip span just provides the hit box, so it stays unlabeled to avoid a
-  // duplicate announcement.
   return (
     <span className="inline-flex h-[14px] w-[14px] shrink-0 items-center justify-center">
       <PriorityIcon priority={priority} />
@@ -296,15 +289,6 @@ interface AssigneeStackProps {
  * @returns Inline-flex stack element.
  */
 function AssigneeStack({ userIds, memberLookup }: AssigneeStackProps) {
-  // Re-sort by member name so the first two avatars match `PropRail`'s
-  // trigger and the server-returned ordering. The slim graph subquery
-  // returns user-id-sorted ids for determinism; the client picks the
-  // user-visible order. Ids that aren't in the cache yet fall to the end
-  // (sorted by id fragment) so they don't shuffle visible avatars while
-  // the team-member roster is loading. Memoised because the row re-renders
-  // on every StructureView pass — multiplying a tiny sort by row count.
-  // Computed before the empty-stack early return so the hook order stays
-  // consistent across renders.
   const sortedUserIds = useMemo(() => {
     return [...userIds].sort((a, b) => {
       const an = memberLookup.get(a)?.name;

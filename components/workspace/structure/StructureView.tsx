@@ -4,9 +4,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { createTask, deleteTask } from '@/lib/graph/mutations';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
-import { IconSearch, IconTrash, IconX } from '@/components/shared/icons';
+import { IconSearch, IconX, IconPlus } from '@/components/shared/icons';
+import { StatusGlyph, STATUS_META, type TaskStatus as GlyphStatus } from '@/components/shared/StatusGlyph';
 import type { TaskEdge } from '@/lib/db/schema';
 import type { TaskGraphSlim, TaskFull } from '@/lib/data/views';
 import type { TaskStatus } from '@/lib/types';
@@ -22,7 +24,7 @@ import {
   UNPRIORITIZED_KEY,
 } from '@/lib/ui/priority';
 import { TaskRow } from './TaskRow';
-import { TaskGroup, type TaskGroupKey } from './TaskGroup';
+import { type TaskGroupKey } from './TaskGroup';
 import type { GroupKey, SortKey } from './FilterBar';
 import { FilterPanel } from './FilterPanel';
 import { formatRelative } from './relativeTime';
@@ -532,7 +534,75 @@ export function StructureView({
     onGraphChange?.();
   }, [tasks, pushUndo, onGraphChange, queryClient, projectId]);
 
+  // Stable delete callbacks for `TaskRow` — keeping these tight is what
+  // makes `React.memo(TaskRow)` useful. Identity stays stable across
+  // `StructureView` renders so unchanged rows skip render.
+  const handleRequestDelete = useCallback((id: string) => {
+    setConfirmDelete(id);
+  }, []);
+  const handleConfirmDelete = useCallback((id: string) => {
+    void handleDelete(id);
+  }, [handleDelete]);
+  const handleCancelDelete = useCallback(() => {
+    setConfirmDelete(null);
+  }, []);
+
   const totalActiveFilters = activeStatuses.size + activeCategories.size + activeTags.size + activePriorities.size + (search.trim() ? 1 : 0);
+
+  // Flatten the grouped sections into a single sequence so the virtualizer
+  // can size and position each visible row independently. Group headers
+  // sit at 30px; the new-task input and task rows at 34px.
+  const flatItems = useMemo<RowItem[]>(() => {
+    const items: RowItem[] = [];
+    for (const [section, groupTasks] of groupedVisible) {
+      if (section.kind !== 'flat') {
+        items.push({
+          kind: 'group-header',
+          key: `h:${sectionKey(section)}`,
+          section,
+          count: groupTasks.length,
+        });
+      }
+      if (section.kind === 'status' && addingToGroup === section.key) {
+        items.push({
+          kind: 'new-task-input',
+          key: `n:${section.key}`,
+          groupKey: section.key,
+        });
+      }
+      for (const t of groupTasks) {
+        items.push({ kind: 'task', key: t.id, task: t });
+      }
+    }
+    return items;
+  }, [groupedVisible, addingToGroup]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Sizes include borders so positions stay pixel-accurate without needing
+  // `measureElement`. Group headers ship `border-y` (+2px) on a 30px row;
+  // task and new-task rows ship `border-b` (+1px) on a 34px row.
+  const virtualizer = useVirtualizer({
+    count: flatItems.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => (flatItems[index]?.kind === 'group-header' ? 32 : 35),
+    getItemKey: (index) => flatItems[index]?.key ?? index,
+    overscan: 8,
+  });
+
+  // One-shot deep-link scroll — when a `selectedNodeId` is present on
+  // mount (e.g. `?task=…`), scroll the row into view once the flat list
+  // is populated. The `didScrollToSelectionRef` gate keeps the effect
+  // from re-firing as the user navigates between tasks.
+  const didScrollToSelectionRef = useRef(false);
+  useEffect(() => {
+    if (didScrollToSelectionRef.current) return;
+    if (!selectedNodeId) return;
+    if (flatItems.length === 0) return;
+    const idx = flatItems.findIndex((it) => it.kind === 'task' && it.task.id === selectedNodeId);
+    if (idx < 0) return;
+    virtualizer.scrollToIndex(idx, { align: 'center' });
+    didScrollToSelectionRef.current = true;
+  }, [selectedNodeId, flatItems, virtualizer]);
 
   return (
     <div className="flex h-full flex-col">
@@ -572,72 +642,150 @@ export function StructureView({
         )}
       </AnimatePresence>
 
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {tasks.length === 0 ? (
           <EmptyTasks />
         ) : groupedVisible.length === 0 ? (
           <EmptyFilter onClear={clearFilters} />
         ) : (
-          groupedVisible.map(([section, groupTasks]) => (
-            <GroupSectionRenderer
-              key={sectionKey(section)}
-              section={section}
-              count={groupTasks.length}
-              onAdd={section.kind === 'status' ? () => handleStartNewTask(section.key) : undefined}
-            >
-              {section.kind === 'status' && addingToGroup === section.key && (
-                <NewTaskRow
-                  value={addTitle}
-                  onChange={setAddTitle}
-                  onCommit={() => handleAddTask(section.key)}
-                  onCancel={() => { setAddingToGroup(null); setAddTitle(''); }}
-                />
-              )}
-              {groupTasks.map((task) => {
-                return (
-                  <TaskRow
-                    key={task.id}
-                    id={task.id}
-                    taskRef={task.taskRef}
-                    title={task.title}
-                    status={task.status}
-                    category={task.category}
-                    priority={task.priority}
-                    assigneeUserIds={task.assigneeUserIds}
-                    memberLookup={memberLookup}
-                    upstreamCount={depsMap.upstream.get(task.id) ?? 0}
-                    downstreamCount={depsMap.downstream.get(task.id) ?? 0}
-                    lastActive={formatRelative(task.updatedAt)}
-                    selected={selectedNodeId === task.id}
-                    isReady={task.state === 'ready'}
-                    isPlannable={task.state === 'plannable'}
-                    onClick={() => onSelectNode(task.id)}
-                    trailingPersistent={confirmDelete === task.id}
-                    trailing={
-                      confirmDelete === task.id ? (
-                        <DeleteConfirm
-                          onConfirm={() => handleDelete(task.id)}
-                          onCancel={() => setConfirmDelete(null)}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setConfirmDelete(task.id); }}
-                          className="cursor-pointer rounded p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-danger"
-                          aria-label={`Delete ${task.taskRef}`}
-                          title={`Delete ${task.taskRef}`}
-                        >
-                          <IconTrash size={11} />
-                        </button>
-                      )
-                    }
-                  />
-                );
-              })}
-            </GroupSectionRenderer>
-          ))
+          <div
+            style={{
+              height: virtualizer.getTotalSize(),
+              position: 'relative',
+              width: '100%',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((vi) => {
+              const item = flatItems[vi.index];
+              if (!item) return null;
+              return (
+                <div
+                  key={vi.key}
+                  data-index={vi.index}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    transform: `translateY(${vi.start}px)`,
+                  }}
+                >
+                  {item.kind === 'group-header' && (
+                    <TaskGroupHeader
+                      section={item.section}
+                      count={item.count}
+                      onAdd={
+                        item.section.kind === 'status'
+                          ? () => handleStartNewTask((item.section as Extract<GroupSection, { kind: 'status' }>).key)
+                          : undefined
+                      }
+                    />
+                  )}
+                  {item.kind === 'new-task-input' && (
+                    <NewTaskRow
+                      value={addTitle}
+                      onChange={setAddTitle}
+                      onCommit={() => handleAddTask(item.groupKey)}
+                      onCancel={() => { setAddingToGroup(null); setAddTitle(''); }}
+                    />
+                  )}
+                  {item.kind === 'task' && (
+                    <TaskRow
+                      id={item.task.id}
+                      taskRef={item.task.taskRef}
+                      title={item.task.title}
+                      status={item.task.status}
+                      category={item.task.category}
+                      priority={item.task.priority}
+                      assigneeUserIds={item.task.assigneeUserIds}
+                      memberLookup={memberLookup}
+                      upstreamCount={depsMap.upstream.get(item.task.id) ?? 0}
+                      downstreamCount={depsMap.downstream.get(item.task.id) ?? 0}
+                      lastActive={formatRelative(item.task.updatedAt)}
+                      selected={selectedNodeId === item.task.id}
+                      isReady={item.task.state === 'ready'}
+                      isPlannable={item.task.state === 'plannable'}
+                      onSelect={onSelectNode}
+                      onRequestDelete={handleRequestDelete}
+                      onConfirmDelete={handleConfirmDelete}
+                      onCancelDelete={handleCancelDelete}
+                      confirming={confirmDelete === item.task.id}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Discriminated row item — drives the virtualised renderer's item heights and layout. */
+type RowItem =
+  | { kind: 'group-header'; key: string; section: GroupSection; count: number }
+  | { kind: 'new-task-input'; key: string; groupKey: TaskGroupKey }
+  | { kind: 'task'; key: string; task: TaskWithRef };
+
+interface TaskGroupHeaderProps {
+  /** Section discriminator (status or category). */
+  section: GroupSection;
+  /** Task count for this section. */
+  count: number;
+  /** Optional add handler — only present for status groups. */
+  onAdd?: () => void;
+}
+
+/**
+ * Standalone group header rendered as its own virtualised item. Mirrors the
+ * inline header from the (removed) `TaskGroup` component for status groups
+ * and the category-section header for category groups.
+ *
+ * @param props - Section + count + optional add handler.
+ * @returns 30px sticky-style header.
+ */
+function TaskGroupHeader({ section, count, onAdd }: TaskGroupHeaderProps) {
+  if (section.kind === 'flat') return null;
+  if (section.kind === 'status') {
+    const meta = STATUS_META[section.key as GlyphStatus] ?? STATUS_META.draft;
+    return (
+      <div className="flex h-[30px] items-center gap-2 border-y border-border bg-base-2 px-4">
+        <StatusGlyph status={section.key} size={12} />
+        <span
+          className="font-mono text-[10px] font-semibold uppercase tracking-[0.10em]"
+          style={{ color: meta.cssVar }}
+        >
+          {meta.label}
+        </span>
+        <span
+          className="font-mono text-[10px] tabular-nums"
+          style={{ color: meta.cssVar, opacity: 0.6 }}
+        >
+          {count}
+        </span>
+        <span className="flex-1" />
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            aria-label={`Add task to ${meta.label}`}
+            title={`Add task to ${meta.label}`}
+            className="inline-flex h-[18px] w-[18px] cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
+          >
+            <IconPlus size={10} />
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-[30px] items-center gap-2 border-y border-border bg-base-2 px-4">
+      <span aria-hidden="true" className="h-2 w-2 rounded-sm border border-border-strong bg-surface-raised" />
+      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.10em] text-text-secondary">
+        {section.label}
+      </span>
+      <span className="font-mono text-[10px] tabular-nums text-text-faint">{count}</span>
     </div>
   );
 }
@@ -653,45 +801,6 @@ function sectionKey(section: GroupSection): string {
   if (section.kind === 'flat') return '__flat__';
   if (section.kind === 'status') return `status:${section.key}`;
   return `category:${section.key}`;
-}
-
-interface GroupSectionRendererProps {
-  /** Discriminator that drives label + glyph choice. */
-  section: GroupSection;
-  /** Number of tasks in this section. */
-  count: number;
-  /** Optional add handler — only present for status groups. */
-  onAdd?: () => void;
-  /** Section body. */
-  children: React.ReactNode;
-}
-
-/**
- * Render a status, category, or flat section. Status delegates to
- * `TaskGroup` so the original status-glyph/uppercase aesthetic is shared.
- *
- * @param props - Section props.
- * @returns Section element with its children.
- */
-function GroupSectionRenderer({ section, count, onAdd, children }: GroupSectionRendererProps) {
-  if (section.kind === 'status') {
-    return <TaskGroup status={section.key} count={count} onAdd={onAdd}>{children}</TaskGroup>;
-  }
-  if (section.kind === 'flat') {
-    return <>{children}</>;
-  }
-  return (
-    <>
-      <div className="sticky top-0 z-10 flex h-[30px] items-center gap-2 border-y border-border bg-base-2 px-4">
-        <span aria-hidden="true" className="h-2 w-2 rounded-sm border border-border-strong bg-surface-raised" />
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.10em] text-text-secondary">
-          {section.label}
-        </span>
-        <span className="font-mono text-[10px] tabular-nums text-text-faint">{count}</span>
-      </div>
-      {children}
-    </>
-  );
 }
 
 interface NewTaskRowProps {
@@ -738,41 +847,6 @@ function NewTaskRow({ value, onChange, onCommit, onCancel }: NewTaskRowProps) {
       />
       <span className="font-mono text-[10px] text-text-faint">↵ to add · Esc to cancel</span>
     </div>
-  );
-}
-
-interface DeleteConfirmProps {
-  /** Permanently delete the task. */
-  onConfirm: () => void;
-  /** Dismiss the confirmation. */
-  onCancel: () => void;
-}
-
-/**
- * Two-step delete confirm rendered inline in the trailing slot of a row.
- *
- * @param props - Delete handlers.
- * @returns Pair of mono buttons.
- */
-function DeleteConfirm({ onConfirm, onCancel }: DeleteConfirmProps) {
-  return (
-    <span className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onConfirm(); }}
-        className="cursor-pointer rounded px-1.5 py-px font-mono text-[10px] font-semibold text-danger hover:bg-danger/15"
-      >
-        Delete
-      </button>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onCancel(); }}
-        className="cursor-pointer rounded p-1 text-text-muted hover:text-text-secondary"
-        aria-label="Cancel delete"
-      >
-        <IconX size={10} />
-      </button>
-    </span>
   );
 }
 

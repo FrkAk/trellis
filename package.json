@@ -29,6 +29,7 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@tanstack/react-query": "^5.90",
     "@tanstack/react-query-devtools": "^5.90",
+    "@tanstack/react-virtual": "^3.13.24",
     "@types/d3-quadtree": "^3.0.6",
     "better-auth": "^1.6.1",
     "d3-force": "^3.0.0",
