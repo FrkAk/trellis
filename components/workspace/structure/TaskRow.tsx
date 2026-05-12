@@ -152,11 +152,16 @@ export function TaskRow({
 
       {priority && <PriorityChip priority={priority} />}
 
-      <span className="font-mono text-[10px] tabular-nums text-text-faint" title={`Last updated ${lastActive}`}>
+      <span
+        className="-ml-1 inline-block w-5 shrink-0 text-right font-mono text-[10px] tabular-nums text-text-faint"
+        title={`Last updated ${lastActive}`}
+      >
         {lastActive}
       </span>
 
-      <AssigneeStack userIds={assigneeUserIds} memberLookup={memberLookup} />
+      <span className="-ml-1 flex w-6 shrink-0 items-center justify-end">
+        <AssigneeStack userIds={assigneeUserIds} memberLookup={memberLookup} />
+      </span>
 
       {trailing && (
         <span
