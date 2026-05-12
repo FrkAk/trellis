@@ -439,7 +439,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
  */
 export function createMcpServer(ctx: AuthContext): McpServer {
   const server = new McpServer(
-    { name: "mymir", version: "1.6.0" },
+    { name: "mymir", version: "1.6.1" },
     { instructions: INSTRUCTIONS },
   );
   registerAllTools(server, ctx);
