@@ -148,9 +148,9 @@ export function TaskRow({
 
       {downstreamCount > 0 && <DepsHint icon="down" count={downstreamCount} />}
 
-      {priority && <PriorityChip priority={priority} />}
-
       {category && <CategoryChip name={category} />}
+
+      {priority && <PriorityChip priority={priority} />}
 
       <span className="font-mono text-[10px] tabular-nums text-text-faint" title={`Last updated ${lastActive}`}>
         {lastActive}
@@ -311,7 +311,7 @@ function AssigneeStack({ userIds, memberLookup }: AssigneeStackProps) {
         const label = member?.name ?? userId.slice(0, 4);
         return (
           <span key={userId} className={i === 0 ? '' : '-ml-1.5'} title={member?.name ?? `User ${userId.slice(0, 8)}`}>
-            <Avatar name={label} size={18} ring />
+            <Avatar name={label} size={18} />
           </span>
         );
       })}

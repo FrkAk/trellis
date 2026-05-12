@@ -238,10 +238,10 @@ test("createTask with priority and estimate persists both fields", async () => {
   const task = await createTask(ctx, {
     projectId: f.projectId,
     title: "T",
-    priority: "release-blocker",
+    priority: "urgent",
     estimate: 8,
   });
   const full = await getTaskFull(ctx, task.id);
-  expect(full.priority).toBe("release-blocker");
+  expect(full.priority).toBe("urgent");
   expect(full.estimate).toBe(8);
 });

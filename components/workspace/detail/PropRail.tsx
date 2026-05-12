@@ -35,7 +35,7 @@ import { isLegacyPriorityTag } from '@/lib/ui/legacy-priority-tags';
 /** Display order for the Status dropdown — matches the lifecycle ribbon. */
 const STATUS_OPTIONS: readonly TaskStatus[] = ['draft', 'planned', 'in_progress', 'done', 'cancelled'];
 /** Display order for the Priority dropdown — highest impact first. */
-const PRIORITY_OPTIONS: readonly Priority[] = ['release-blocker', 'core', 'normal', 'backlog'];
+const PRIORITY_OPTIONS: readonly Priority[] = ['urgent', 'core', 'normal', 'backlog'];
 /** Display order for the Estimate dropdown — Fibonacci story points. */
 const ESTIMATE_OPTIONS: readonly Estimate[] = [1, 2, 3, 5, 8, 13];
 /** Sentinel used by dropdowns to model the "clear" action under `string` schemas. */
@@ -50,9 +50,9 @@ export const teamMembersQueryKey = (organizationId: string) =>
 
 /** Color tokens by priority — drives the dropdown trigger pill tint. */
 const PRIORITY_COLOR: Record<Priority, string> = {
-  'release-blocker': 'var(--color-danger)',
-  core: 'var(--color-glyph-blocked)',
-  normal: 'var(--color-glyph-progress)',
+  urgent: 'var(--color-danger)',
+  core: 'var(--color-glyph-progress)',
+  normal: 'var(--color-accent)',
   backlog: 'var(--color-text-muted)',
 };
 

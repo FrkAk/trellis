@@ -26,12 +26,12 @@ import { formatRelative } from './relativeTime';
 const FILTER_PARAM_KEYS = { tags: 'tags', categories: 'cat', statuses: 'status', priorities: 'pri', search: 'q' } as const;
 
 /**
- * Priority sort weight — release-blocker is most-urgent (0), null is least
+ * Priority sort weight — urgent is most-urgent (0), null is least
  * (4). Shared between the sort comparator and the `Priority` filter chip
  * order so both surfaces stay in lockstep.
  */
 const PRIORITY_ORDER: Record<Priority, number> = {
-  'release-blocker': 0,
+  urgent: 0,
   core: 1,
   normal: 2,
   backlog: 3,
@@ -41,7 +41,7 @@ const PRIORITY_ORDER: Record<Priority, number> = {
 const UNPRIORITIZED_KEY = 'Unprioritized';
 
 /** Display order for the Priority filter chips — highest urgency first. */
-const PRIORITY_FILTER_ORDER: readonly Priority[] = ['release-blocker', 'core', 'normal', 'backlog'];
+const PRIORITY_FILTER_ORDER: readonly Priority[] = ['urgent', 'core', 'normal', 'backlog'];
 
 /** Display order for status groups — most actionable at the top. */
 const GROUP_ORDER: readonly TaskGroupKey[] = [

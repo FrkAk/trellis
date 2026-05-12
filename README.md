@@ -154,7 +154,7 @@ Mymir ships as a Next.js web app plus vendor-native plugins for Claude Code, Cod
 ```
 
 ```text
-❯ Priority is release-blocker, draft ACs are enough, and monorepo detection should ask the user.
+❯ Priority is urgent, draft ACs are enough, and monorepo detection should ask the user.
 ```
 
 **Tune in the UI.** Inspect edges, read execution records, and edit descriptions, ACs, tags, or dependencies directly. The agent loop and the UI write to the same store, so edits land by the next tool call.

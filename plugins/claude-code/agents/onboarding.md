@@ -328,7 +328,7 @@ This is the single most reliable defense against compaction. If the conversation
 - **files**: globbed from the subsystem directory, repo-relative. **Must be paths that actually exist** (you will verify in Phase 5).
 - **acceptanceCriteria**: 2 to 4 binary criteria, each marked `{text, checked: true}` since shipped.
 - **category**: one of the project categories.
-- **tags**: all three dimensions (work-type, cross-cutting, tech). Set `priority` as a first-class field; default for shipped work is `core` unless a critical capability is partial (then `release-blocker`).
+- **tags**: all three dimensions (work-type, cross-cutting, tech). Set `priority` as a first-class field; default for shipped work is `core` unless a critical capability is partial (then `urgent`).
 - **status** = `'done'`.
 - **DO NOT pass `overwriteArrays=true`**. Append is the safe default. Onboarding is creating tasks, not updating existing ones; overwrite is irrelevant here.
 
