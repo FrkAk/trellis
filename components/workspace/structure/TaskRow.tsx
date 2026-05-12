@@ -159,7 +159,7 @@ export function TaskRow({
         {lastActive}
       </span>
 
-      <span className="-ml-1 flex w-6 shrink-0 items-center justify-end">
+      <span className="-ml-1 flex w-8 shrink-0 items-center justify-end">
         <AssigneeStack userIds={assigneeUserIds} memberLookup={memberLookup} />
       </span>
 
@@ -314,20 +314,26 @@ function AssigneeStack({ userIds, memberLookup }: AssigneeStackProps) {
       {visible.map((userId, i) => {
         const member = memberLookup.get(userId);
         const label = member?.name ?? userId.slice(0, 4);
+        const isLastVisible = i === visible.length - 1;
         return (
-          <span key={userId} className={i === 0 ? '' : '-ml-1.5'} title={member?.name ?? `User ${userId.slice(0, 8)}`}>
+          <span
+            key={userId}
+            className={`relative ${i === 0 ? '' : '-ml-2'}`}
+            title={member?.name ?? `User ${userId.slice(0, 8)}`}
+          >
             <Avatar name={label} size={18} />
+            {isLastVisible && overflow > 0 && (
+              <span
+                aria-hidden="true"
+                className="absolute -top-1 -right-1 inline-flex h-[11px] min-w-[11px] items-center justify-center rounded-full border border-border-strong bg-surface-raised px-[2px] font-mono text-[7.5px] font-semibold leading-none text-text-secondary"
+                title={`${overflow} more assignee${overflow === 1 ? '' : 's'}`}
+              >
+                +{overflow}
+              </span>
+            )}
           </span>
         );
       })}
-      {overflow > 0 && (
-        <span
-          className="-ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-border-strong bg-surface-raised px-1 font-mono text-[9px] font-medium text-text-secondary"
-          title={`${overflow} more assignee${overflow === 1 ? '' : 's'}`}
-        >
-          +{overflow}
-        </span>
-      )}
     </span>
   );
 }

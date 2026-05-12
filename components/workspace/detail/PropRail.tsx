@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar } from '@/components/shared/Avatar';
 import { Markdown } from '@/components/shared/Markdown';
 import { MonoId } from '@/components/shared/MonoId';
@@ -29,8 +29,9 @@ import {
 } from '@/components/shared/icons';
 import type { TaskEdge } from '@/lib/db/schema';
 import type { Priority, Estimate, TaskStatus } from '@/lib/types';
-import type { AssigneeRef } from '@/lib/data/views';
+import type { AssigneeRef, ProjectGraphSlim, TaskFull } from '@/lib/data/views';
 import { isLegacyPriorityTag } from '@/lib/ui/legacy-priority-tags';
+import { projectKeys, taskKeys } from '@/lib/query/keys';
 
 /** Display order for the Status dropdown — matches the lifecycle ribbon. */
 const STATUS_OPTIONS: readonly TaskStatus[] = ['draft', 'planned', 'in_progress', 'done', 'cancelled'];
@@ -59,6 +60,8 @@ const PRIORITY_COLOR: Record<Priority, string> = {
 interface PropRailProps {
   /** Task UUID. */
   taskId: string;
+  /** Project UUID — needed to address the slim graph and task detail caches for optimistic updates. */
+  projectId: string;
   /** Task status. */
   status: TaskStatus;
   /** Task priority, or null when unset. */
@@ -103,6 +106,7 @@ interface PropRailProps {
  */
 export function PropRail({
   taskId,
+  projectId,
   status,
   priority,
   estimate,
@@ -179,11 +183,63 @@ export function PropRail({
     onGraphChange?.();
   }, [taskId, onGraphChange]);
 
-  const handleAssigneesChange = useCallback(async (nextUserIds: string[]) => {
-    // Multi-select replaces the full set; overwriteArrays=true is intentional.
-    await updateTask(taskId, { assigneeIds: nextUserIds }, true);
-    onGraphChange?.();
-  }, [taskId, onGraphChange]);
+  // Optimistic assignee updates: rewrite both the task-detail cache
+  // (drives PropRail's trigger + name resolution) and the slim graph
+  // cache (drives every TaskRow's avatar stack) so every consumer
+  // snaps to the new state immediately, without waiting for the
+  // round-trip. Writes are chained — `overwriteArrays=true` would
+  // otherwise let parallel responses race, with the last response
+  // winning regardless of click order. Invalidation is suppressed
+  // until the chain drains so intermediate refetches can't clobber
+  // the user's latest local intent.
+  const queryClient = useQueryClient();
+  const assigneeMutationChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingAssigneeWritesRef = useRef(0);
+  const handleAssigneesChange = useCallback((nextUserIds: string[]) => {
+    const taskKey = taskKeys.detail(projectId, taskId);
+    const graphKey = projectKeys.graph(projectId);
+
+    const members =
+      queryClient.getQueryData<MemberView[]>(teamMembersQueryKey(organizationId)) ?? [];
+    const memberById = new Map(members.map((m) => [m.userId, m]));
+    const nextAssignees: AssigneeRef[] = nextUserIds
+      .map((id) => memberById.get(id))
+      .filter((m): m is MemberView => m !== undefined)
+      .map((m) => ({ userId: m.userId, name: m.name, email: m.email }));
+
+    queryClient.setQueryData<TaskFull>(taskKey, (prev) =>
+      prev ? { ...prev, assignees: nextAssignees } : prev,
+    );
+    queryClient.setQueryData<ProjectGraphSlim>(graphKey, (prev) =>
+      prev
+        ? {
+            ...prev,
+            tasks: prev.tasks.map((t) =>
+              t.id === taskId
+                ? { ...t, assigneeUserIds: nextUserIds, assigneeCount: nextUserIds.length }
+                : t,
+            ),
+          }
+        : prev,
+    );
+
+    pendingAssigneeWritesRef.current += 1;
+    const myTurn = assigneeMutationChainRef.current.then(async () => {
+      try {
+        await updateTask(taskId, { assigneeIds: nextUserIds }, true);
+      } finally {
+        pendingAssigneeWritesRef.current -= 1;
+        // Only invalidate once the entire chain has drained, otherwise an
+        // intermediate refetch overwrites our optimistic state with a
+        // mid-sequence server snapshot.
+        if (pendingAssigneeWritesRef.current === 0) {
+          onGraphChange?.();
+        }
+      }
+    });
+    assigneeMutationChainRef.current = myTurn.catch(() => {});
+    return myTurn;
+  }, [projectId, taskId, organizationId, queryClient, onGraphChange]);
 
   return (
     <aside
@@ -912,7 +968,25 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
     };
   }, [open]);
 
-  const activeIds = useMemo(() => new Set(assignees.map((a) => a.userId)), [assignees]);
+  // Local source of truth for which members are checked. Rapid clicks
+  // need to read the latest intent synchronously, not the prop-derived
+  // set that lags behind in-flight mutations. The ref shadows the state
+  // so async callbacks read the live value even before React commits the
+  // next render.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(assignees.map((a) => a.userId)),
+  );
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
+  const pendingMutationsRef = useRef(0);
+
+  // Sync from props only when no mutations are in flight. Otherwise we
+  // race: a settled-but-not-final mutation updates `assignees` to an
+  // intermediate state and overwrites the user's latest local intent.
+  useEffect(() => {
+    if (pendingMutationsRef.current > 0) return;
+    setSelectedIds(new Set(assignees.map((a) => a.userId)));
+  }, [assignees]);
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -923,12 +997,20 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
     );
   }, [members, q]);
 
-  const toggleMember = (userId: string) => {
-    const next = new Set(activeIds);
+  const toggleMember = useCallback(async (userId: string) => {
+    const next = new Set(selectedIdsRef.current);
     if (next.has(userId)) next.delete(userId);
     else next.add(userId);
-    onChange([...next]);
-  };
+    selectedIdsRef.current = next;
+    setSelectedIds(next);
+
+    pendingMutationsRef.current += 1;
+    try {
+      await Promise.resolve(onChange([...next]));
+    } finally {
+      pendingMutationsRef.current -= 1;
+    }
+  }, [onChange]);
 
   return (
     <>
@@ -948,16 +1030,24 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
           </span>
         ) : (
           <span className="inline-flex items-center">
-            {assignees.slice(0, 2).map((a, i) => (
-              <span key={a.userId} className={i === 0 ? '' : '-ml-1.5'}>
-                <Avatar name={a.name} size={18} ring />
-              </span>
-            ))}
-            {assignees.length > 2 && (
-              <span className="-ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-border-strong bg-surface-raised px-1 font-mono text-[9px] font-medium text-text-secondary">
-                +{assignees.length - 2}
-              </span>
-            )}
+            {assignees.slice(0, 2).map((a, i) => {
+              const visible = assignees.slice(0, 2);
+              const overflow = assignees.length - visible.length;
+              const isLastVisible = i === visible.length - 1;
+              return (
+                <span key={a.userId} className={`relative ${i === 0 ? '' : '-ml-2'}`}>
+                  <Avatar name={a.name} size={18} />
+                  {isLastVisible && overflow > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-1 -right-1 inline-flex h-[11px] min-w-[11px] items-center justify-center rounded-full border border-border-strong bg-surface-raised px-[2px] font-mono text-[7.5px] font-semibold leading-none text-text-secondary"
+                    >
+                      +{overflow}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           </span>
         )}
       </button>
@@ -1009,7 +1099,7 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
                   </p>
                 )}
                 {!isPending && !isError && filtered.map((m) => {
-                  const on = activeIds.has(m.userId);
+                  const on = selectedIds.has(m.userId);
                   return (
                     <button
                       key={m.userId}

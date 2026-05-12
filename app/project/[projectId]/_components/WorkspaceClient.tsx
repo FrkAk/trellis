@@ -329,6 +329,7 @@ function WorkspaceBodyWithSelection(
     taskFullMatches && selectedTaskFull ? (
       <PropRail
         taskId={taskId}
+        projectId={projectId}
         status={selectedTaskFull.status}
         priority={selectedTaskFull.priority}
         estimate={selectedTaskFull.estimate}
