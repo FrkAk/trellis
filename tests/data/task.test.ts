@@ -445,3 +445,33 @@ test("searchTasksPaged reports hasCriteria via LEFT JOIN, not correlated EXISTS"
   expect(withAcRow).toBeDefined();
   expect(withoutAcRow).toBeDefined();
 });
+
+test("concurrent same-text criterion appends collapse to one row via unique(task_id, text)", async () => {
+  const f = await seedUserOrgProject("dedupracecrit");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  const calls = Array.from({ length: 10 }, () =>
+    updateTask(ctx, task.id, { acceptanceCriteria: ["duplicate-X"] }),
+  );
+  await Promise.all(calls);
+
+  const final = await getTaskFull(ctx, task.id);
+  const sameText = final.acceptanceCriteria.filter((c) => c.text === "duplicate-X");
+  expect(sameText.length).toBe(1);
+});
+
+test("concurrent same-text decision appends collapse to one row via unique(task_id, text)", async () => {
+  const f = await seedUserOrgProject("dedupracedec");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  const calls = Array.from({ length: 10 }, () =>
+    updateTask(ctx, task.id, { decisions: ["duplicate-Y"] }),
+  );
+  await Promise.all(calls);
+
+  const final = await getTaskFull(ctx, task.id);
+  const sameText = final.decisions.filter((d) => d.text === "duplicate-Y");
+  expect(sameText.length).toBe(1);
+});

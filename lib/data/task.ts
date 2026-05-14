@@ -146,11 +146,13 @@ function normalizeDecisions(input: unknown[]): Decision[] {
  * against the existing rows by id-OR-text (matching the legacy JSONB merge
  * semantics) and upserts at the next available `position`.
  *
- * Concurrent appends in different transactions can both read `MAX(position) +
- * 1` and land at the same position. This is acceptable: `position` is
- * presentation-only, has no unique constraint, and the UI orders by
- * `(position, id)` so output stays deterministic. The PK and FK guarantees
- * hold regardless.
+ * Text dedup is race-safe under concurrent appends because
+ * `UNIQUE (task_id, text)` is enforced at the DB level and the upsert
+ * targets that constraint — two transactions inserting the same text with
+ * different ids collapse to one row with the second writer's id and
+ * metadata. Position is presentation-only with no unique constraint;
+ * concurrent appends may land at the same position, broken deterministically
+ * by `(position, id)` on read.
  *
  * @param tx - Drizzle transaction handle.
  * @param taskId - UUID of the parent task.
@@ -216,9 +218,9 @@ async function applyCriteriaWrite(
       })),
     )
     .onConflictDoUpdate({
-      target: taskAcceptanceCriteria.id,
+      target: [taskAcceptanceCriteria.taskId, taskAcceptanceCriteria.text],
       set: {
-        text: sql`EXCLUDED.text`,
+        id: sql`EXCLUDED.id`,
         checked: sql`EXCLUDED.checked`,
         position: sql`EXCLUDED.position`,
         updatedAt: sql`NOW()`,
@@ -229,7 +231,8 @@ async function applyCriteriaWrite(
 /**
  * Materialize decisions state for a task. Mirrors {@link applyCriteriaWrite}:
  * `replace` truncates and reinserts; `append` deduplicates by id-OR-text
- * and upserts at the next position. Same concurrent-position guidance.
+ * and upserts at the next position. `UNIQUE (task_id, text)` enforces
+ * race-safe text dedup at the DB level.
  *
  * @param tx - Drizzle transaction handle.
  * @param taskId - UUID of the parent task.
@@ -297,9 +300,9 @@ async function applyDecisionsWrite(
       })),
     )
     .onConflictDoUpdate({
-      target: taskDecisions.id,
+      target: [taskDecisions.taskId, taskDecisions.text],
       set: {
-        text: sql`EXCLUDED.text`,
+        id: sql`EXCLUDED.id`,
         source: sql`EXCLUDED.source`,
         decisionDate: sql`EXCLUDED.decision_date`,
         position: sql`EXCLUDED.position`,
