@@ -579,6 +579,61 @@ test("getTaskFull returns criteria in position order, not insertion order", asyn
   expect(ordered).toEqual(["A", "C", "D", "B"]);
 });
 
+test("getTaskFull ties on position resolve deterministically by id", async () => {
+  // Regression guard: positions are presentation-only with no unique
+  // constraint; concurrent appends in `applyCriteriaWrite` /
+  // `applyDecisionsWrite` can land at the same position. The read path
+  // (`fetchTaskFull` and `fetchTaskChildren`) must tie-break by `id` so
+  // the row order is stable across calls.
+  const f = await seedUserOrgProject("positiontie");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  await updateTask(ctx, task.id, { acceptanceCriteria: ["A", "B", "C"] });
+  await updateTask(ctx, task.id, { decisions: ["D1", "D2", "D3"] });
+
+  // Force two criteria and two decisions to share a position so the
+  // tie-break has actual ties to resolve.
+  const direct = postgres(getConnectionString(), { max: 1 });
+  try {
+    await direct`
+      UPDATE task_acceptance_criteria SET position = 7
+      WHERE task_id = ${task.id}::uuid AND text IN ('A', 'B')
+    `;
+    await direct`
+      UPDATE task_decisions SET position = 9
+      WHERE task_id = ${task.id}::uuid AND text IN ('D1', 'D2')
+    `;
+  } finally {
+    await direct.end({ timeout: 5 });
+  }
+
+  const first = await getTaskFull(ctx, task.id);
+  const second = await getTaskFull(ctx, task.id);
+  const third = await getTaskFull(ctx, task.id);
+
+  const critOrder = (r: Awaited<ReturnType<typeof getTaskFull>>) =>
+    r.acceptanceCriteria.map((c) => c.id);
+  const decOrder = (r: Awaited<ReturnType<typeof getTaskFull>>) =>
+    r.decisions.map((d) => d.id);
+
+  expect(critOrder(first)).toEqual(critOrder(second));
+  expect(critOrder(second)).toEqual(critOrder(third));
+  expect(decOrder(first)).toEqual(decOrder(second));
+  expect(decOrder(second)).toEqual(decOrder(third));
+
+  // And the tie-break key must be `id ASC` — the two tied criteria
+  // appear in `id` order at the head of the list.
+  const tiedCrit = first.acceptanceCriteria
+    .filter((c) => c.text === "A" || c.text === "B")
+    .map((c) => c.id);
+  expect(tiedCrit).toEqual([...tiedCrit].sort());
+  const tiedDec = first.decisions
+    .filter((d) => d.text === "D1" || d.text === "D2")
+    .map((d) => d.id);
+  expect(tiedDec).toEqual([...tiedDec].sort());
+});
+
 test("updateTask return value carries the freshly-written criteria", async () => {
   const f = await seedUserOrgProject("returnval");
   const ctx = makeAuthContext(f.userId);

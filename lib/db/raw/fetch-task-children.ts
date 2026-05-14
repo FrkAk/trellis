@@ -35,10 +35,10 @@ export async function fetchTaskChildren(
     conn,
     sql`
       SELECT
-        (SELECT json_agg(json_build_object('id', c.id, 'text', c.text, 'checked', c.checked) ORDER BY c.position)
+        (SELECT json_agg(json_build_object('id', c.id, 'text', c.text, 'checked', c.checked) ORDER BY c.position, c.id)
          FROM task_acceptance_criteria c
          WHERE c.task_id = ${taskId}::uuid) AS acceptance_criteria,
-        (SELECT json_agg(json_build_object('id', d.id, 'text', d.text, 'source', d.source, 'date', d.decision_date) ORDER BY d.position)
+        (SELECT json_agg(json_build_object('id', d.id, 'text', d.text, 'source', d.source, 'date', d.decision_date) ORDER BY d.position, d.id)
          FROM task_decisions d
          WHERE d.task_id = ${taskId}::uuid) AS decisions
     `,

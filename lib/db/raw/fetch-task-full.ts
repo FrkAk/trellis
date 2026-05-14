@@ -71,10 +71,10 @@ export async function fetchTaskFull(
          FROM task_assignees ta
          JOIN neon_auth."user" u ON u.id = ta.user_id
          WHERE ta.task_id = t.id) AS assignees,
-        (SELECT json_agg(json_build_object('id', c.id, 'text', c.text, 'checked', c.checked) ORDER BY c.position)
+        (SELECT json_agg(json_build_object('id', c.id, 'text', c.text, 'checked', c.checked) ORDER BY c.position, c.id)
          FROM task_acceptance_criteria c
          WHERE c.task_id = t.id) AS acceptance_criteria,
-        (SELECT json_agg(json_build_object('id', d.id, 'text', d.text, 'source', d.source, 'date', d.decision_date) ORDER BY d.position)
+        (SELECT json_agg(json_build_object('id', d.id, 'text', d.text, 'source', d.source, 'date', d.decision_date) ORDER BY d.position, d.id)
          FROM task_decisions d
          WHERE d.task_id = t.id) AS decisions,
         (SELECT json_agg(json_build_object('id', l.id, 'kind', l.kind, 'url', l.url, 'label', l.label, 'createdAt', l.created_at) ORDER BY l.created_at)
