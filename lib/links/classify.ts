@@ -196,7 +196,12 @@ function classifyDoc(host: string): ClassifiedLink {
  *
  * @param rawUrl - User-supplied URL string.
  * @returns ClassifiedLink with kind, label, host, and optional owner/repo/number.
- * @throws {MalformedLinkError} When the URL constructor rejects the input.
+ * @throws {MalformedLinkError} When the URL constructor rejects the input or
+ *   the parsed protocol is anything other than `http:` / `https:`. `javascript:`,
+ *   `data:`, `file:`, and friends are stored verbatim and rendered as `href`,
+ *   so accepting them would turn the Links section into a click-to-exec XSS
+ *   vector. The protocol gate is the single chokepoint that both the UI
+ *   (`addTaskLink`) and the MCP `prUrl` sugar funnel through.
  */
 export function classifyLink(rawUrl: string): ClassifiedLink {
   let parsed: URL;
@@ -204,6 +209,10 @@ export function classifyLink(rawUrl: string): ClassifiedLink {
     parsed = new URL(rawUrl);
   } catch (e) {
     throw new MalformedLinkError(rawUrl, e);
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new MalformedLinkError(rawUrl);
   }
 
   const host = normalizeHost(parsed.host);

@@ -73,6 +73,26 @@ test("throws MalformedLinkError on bad input", () => {
   expect(() => classifyLink("not a url")).toThrow(MalformedLinkError);
 });
 
+test("throws MalformedLinkError on javascript: URLs (XSS-in-href guard)", () => {
+  expect(() => classifyLink("javascript:alert(1)")).toThrow(MalformedLinkError);
+  expect(() => classifyLink("JavaScript:alert(1)")).toThrow(MalformedLinkError);
+});
+
+test("throws MalformedLinkError on data: URLs (XSS-in-href guard)", () => {
+  expect(() =>
+    classifyLink("data:text/html,<script>alert(1)</script>"),
+  ).toThrow(MalformedLinkError);
+});
+
+test("throws MalformedLinkError on file: URLs (local-resource guard)", () => {
+  expect(() => classifyLink("file:///etc/passwd")).toThrow(MalformedLinkError);
+});
+
+test("accepts http: and https: URLs", () => {
+  expect(classifyLink("http://example.com/a").host).toBe("example.com");
+  expect(classifyLink("https://example.com/a").host).toBe("example.com");
+});
+
 test("strips www prefix from host", () => {
   const result = classifyLink("https://www.example.com/page");
   expect(result.host).toBe("example.com");
