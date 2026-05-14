@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import { useUndo, UndoButton } from '@/hooks/useUndo';
 import { addTaskLink, removeTaskLink } from '@/lib/graph/mutations';
+import { classifyLink } from '@/lib/links/classify';
 import {
   IconFigma,
   IconGitHub,
@@ -197,9 +198,10 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
       const trimmed = url.trim();
       if (!trimmed) { setAdding(false); return; }
       // Light client-side validation so the user gets immediate feedback;
-      // the server runs the same parse via classifyLink.
+      // shares the same classifier the server runs, so scheme-less input
+      // (`google.com`) and non-http schemes stay consistent across surfaces.
       try {
-        new URL(trimmed);
+        classifyLink(trimmed);
       } catch {
         flashError('Invalid URL.');
         return;
@@ -348,7 +350,7 @@ function LinkAddForm({ onSubmit, onCancel }: LinkAddFormProps) {
       <div className="space-y-2 p-3">
         <input
           autoFocus
-          type="url"
+          type="text"
           inputMode="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
@@ -356,7 +358,7 @@ function LinkAddForm({ onSubmit, onCancel }: LinkAddFormProps) {
             if (e.key === 'Enter') { e.preventDefault(); submit(); }
             if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
           }}
-          placeholder="https://…"
+          placeholder="github.com/owner/repo/pull/1"
           className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 font-mono text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent"
         />
         <div className="flex items-center gap-1.5">
