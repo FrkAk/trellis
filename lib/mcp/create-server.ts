@@ -136,8 +136,8 @@ Drop to \`mymir_query\` for browse / lookup:
 Run before transitioning a task to \`in_review\`, \`done\`, or \`cancelled\`. The implementer phase terminates at \`in_review\` with the full payload; \`done\` is reserved for the HOTL operator after PR approval (no extra fields required, transition only).
 
 1. Detect mode by transcript.
-   - Dispatched: your context shows a parent agent invoked you. Mark done directly with the full payload and return a one-sentence summary to the parent. Do not ask.
-   - Direct: invoked by the user in a normal session. Ask "Ready to mark this done?" with a one-sentence \`executionRecord\` preview. Wait for explicit confirmation.
+   - Dispatched: your context shows a parent agent invoked you. Mark \`in_review\` directly with the full payload (the implementer's terminal write); the HOTL operator finalizes to \`done\`. Return a one-sentence summary to the parent. Do not ask.
+   - Direct: invoked by the user in a normal session. Ask "Ready to mark this \`in_review\`?" with a one-sentence \`executionRecord\` preview. Wait for explicit confirmation; the HOTL operator finalizes to \`done\` after PR approval.
    - Uncertain: default to asking. A spurious confirmation is cheap; an unauthorized status change is expensive.
 
 2. Populate required fields. \`executionRecord\`, \`decisions\`, \`files\`, \`acceptanceCriteria\`. The server returns \`_hints\` for any missing fields; re-call with the additions before continuing. For \`cancelled\`: \`executionRecord\` carries the rationale (why abandoned, what was tried) and \`decisions\` records anything learned.

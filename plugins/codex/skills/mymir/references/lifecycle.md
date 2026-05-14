@@ -68,7 +68,7 @@ Before transitioning a task to `in_review`, `done`, or `cancelled`:
 ### 2.1. Detect mode by transcript
 
 - **Dispatched mode**: your context shows you were invoked via the Task tool by a parent agent. Mark `in_review` directly with the full payload (the implementer's terminal write); the HOTL operator finalizes to `done`. Return to the parent with the task ref and a one-sentence summary. Do not ask.
-- **Direct mode**: invoked by the user in a normal session. Ask "Ready to mark this done?" with a one-sentence executionRecord preview. Wait for explicit confirmation.
+- **Direct mode**: invoked by the user in a normal session. Ask "Ready to mark this `in_review`?" with a one-sentence executionRecord preview. Wait for explicit confirmation; the HOTL operator finalizes to `done` after PR approval.
 - **Uncertain**: default to asking. A spurious confirmation prompt is cheap; an unauthorized status change is expensive.
 
 ### 2.2. Populate the required fields
