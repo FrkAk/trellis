@@ -1557,11 +1557,26 @@ export type TaskUpdate = {
   prUrl?: string | null;
 };
 
-/** Update result enriches the raw `Task` row with the post-write criteria
- * and decisions so callers that consult them (e.g. tool-handlers'
- * completion-protocol hint checks) see the same shape they saw on the
- * JSONB-storage path. Empty arrays when none exist; the fields are still
- * always present on a non-no-op update. */
+/**
+ * Update result enriches the raw `Task` row with the post-write criteria
+ * and decisions so callers that consult them (completion-protocol hint
+ * checks in `lib/graph/tool-handlers.ts`) see the same shape they saw on
+ * the JSONB-storage path.
+ *
+ * WARNING — partial contract: `acceptanceCriteria` and `decisions` are
+ * the freshly-fetched persisted state ONLY when `updateTask` wrote child
+ * tables (criteria or decisions passed) or transitioned `status`. On any
+ * other path (title / description / tags / files / assignees / prUrl
+ * only), both arrays are returned as `[]` regardless of what is
+ * persisted — the post-write refetch is skipped to save a round-trip.
+ *
+ * Read them ONLY when your call set one of:
+ *   - `input.acceptanceCriteria`
+ *   - `input.decisions`
+ *   - `input.status`
+ *
+ * For any other caller, re-fetch via `getTaskFull(ctx, taskId)` instead.
+ */
 export type UpdateTaskResult = typeof tasks.$inferSelect & {
   acceptanceCriteria: AcceptanceCriterion[];
   decisions: Decision[];
@@ -1576,9 +1591,11 @@ export type UpdateTaskResult = typeof tasks.$inferSelect & {
  * @param taskId - UUID of the task to update.
  * @param input - Partial fields to update.
  * @param overwriteArrays - When true, replace array fields instead of appending.
- * @returns The updated row with post-write criteria and decisions joined in.
- *   On a pure no-op (assigneeIds=[] in append mode and nothing else),
- *   criteria/decisions still come from the live tables.
+ * @returns The updated row. `acceptanceCriteria` / `decisions` reflect the
+ *   freshly-fetched persisted state ONLY when this call wrote child tables
+ *   (criteria or decisions in `input`) or changed `status`. On any other
+ *   path both arrays are returned empty regardless of what is persisted —
+ *   see the `UpdateTaskResult` JSDoc for the full partial-contract notes.
  */
 export async function updateTask(
   ctx: AuthContext,
@@ -1808,9 +1825,12 @@ export async function updateTask(
   // transitions to done/in_review/cancelled) see the freshest state.
   //
   // One round-trip via `fetchTaskChildren` — both `json_agg` subqueries
-  // ride a single SELECT. Skipped entirely when neither a child write nor
-  // a status change occurred (a pure title/description/tags/files update
-  // has no consumer of the post-state).
+  // ride a single SELECT. PARTIAL CONTRACT: skipped entirely when
+  // neither a child write nor a status change occurred. Callers on the
+  // skip path see `[]` regardless of persisted state; this is documented
+  // on `UpdateTaskResult`. Do not extend the consumer set without
+  // either (a) including their call site in the refetch trigger or
+  // (b) routing them through `getTaskFull` afterwards.
   const wroteChildren =
     formattedCriteria !== undefined || formattedDecisions !== undefined;
   const statusChanged = typeof input.status === "string";
