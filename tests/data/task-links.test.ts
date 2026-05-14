@@ -319,6 +319,36 @@ test("link read paths never fetch the stored URL (SSRF guard)", async () => {
   expect(seen.filter((u) => u.includes("ssrf-canary"))).toEqual([]);
 });
 
+test("context builders never fetch the stored link URL (SSRF guard)", async () => {
+  const f = await seedUserOrgProject("links-ssrf-ctx");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+  await addTaskLink(ctx, task.id, "https://ssrf-canary-ctx.invalid/probe");
+
+  const seen: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const u =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    seen.push(u);
+    return originalFetch.call(globalThis, input, init);
+  }) as typeof globalThis.fetch;
+
+  try {
+    await buildAgentContext(ctx, task.id);
+    await buildWorkingContext(ctx, task.id);
+    await buildSummaryContext(ctx, task.id);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  expect(seen.filter((u) => u.includes("ssrf-canary"))).toEqual([]);
+});
+
 test("getTaskFull surfaces the links array on the read path", async () => {
   const f = await seedUserOrgProject("links-full");
   const ctx = makeAuthContext(f.userId);
