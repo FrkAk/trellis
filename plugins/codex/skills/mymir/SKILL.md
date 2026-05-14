@@ -72,6 +72,7 @@ Six tools. Read tools have cost (slim → very heavy); pick the lightest that an
 | `working` | medium | refining, discussing, or reviewing a task (criteria, decisions, 1-hop edges, siblings). |
 | `agent` | heavy | handing off to a coding agent. Includes implementation plan, multi-hop upstream execution records, files, "Done Means", downstream specs. ~4-8K tokens. |
 | `planning` | heavy | writing an implementation plan. Includes project description, acceptance criteria, upstream execution records, downstream specs. |
+| `review` | heavy | reviewing an `in_review` task. Renders `implementationPlan` alongside `executionRecord`, surfaces the PR link from `task_links` (kind `pull_request`), computes plan-vs-files drift, lists downstream impact, emits review-lens prompts (security / perf / reliability / observability / codebase standards). Read by `mymir:review` in composer Phase 4 and in direct review dispatch. |
 
 `mymir_query type='search'` returns `_hints` that tell you which depth to use. Follow them. Don't guess.
 
@@ -140,15 +141,17 @@ You handle most Mymir interactions inline. The four agents are escalations for h
 | Decompose a project: large, multi-domain, or sensitive | Dispatch **`mymir:decompose`** for the gated 4-phase pipeline |
 | Split a single existing oversize task into children within an active project ("split this task", "decompose RZE-42", composer's oversize handler) | Dispatch **`mymir:decompose-task`** for the gated split + edge-rewiring + parent-cancel pipeline |
 | Add a new feature or capability cluster to an active project ("add a feature for X", "decompose this idea into tasks", "extend the project with Y") | Dispatch **`mymir:decompose-feature`** for the gated feature-addition pipeline |
-| Drive tasks end-to-end through research + plan + implement + propagate ("ship the backlog", "run the next task", "compose through my queue", "loop through mymir tasks", a named task ref to take all the way to a PR) | Suggest user invoke **`/mymir:composer`** (backlog mode) or **`/mymir:composer <taskRef>`** (single-task mode). Composer is a slash-command skill that orchestrates three dispatched subagents per task in clean per-phase contexts; the user has to type the slash command (and paste the `/goal` harness composer emits on first turn) for it to start. |
+| Drive tasks end-to-end through research + plan + implement + review + propagate ("ship the backlog", "run the next task", "compose through my queue", "loop through mymir tasks", a named task ref to take all the way to a PR) | Suggest user invoke **`/mymir:composer`** (backlog mode) or **`/mymir:composer <taskRef>`** (single-task mode). Composer is a slash-command skill that orchestrates four dispatched subagents per task in clean per-phase contexts; the user has to type the slash command (and paste the `/goal` harness composer emits on first turn) for it to start. |
+| Review an `in_review` task or a PR by URL ("review MYMR-N", "review this PR", "review `<PR URL>`", "what does the review subagent think of MYMR-N") | Dispatch **`mymir:review`** for a five-lens structured verdict (`approve` / `request-changes` / `block`). The verdict is advisory; HOTL still owns the `in_review → done` transition on GitHub. |
 | Status, next task, mark done, plan a draft, refine, dispatch, create or delete task | Handle inline. **Do not** dispatch `mymir:manage` for these; they are day-to-day. |
 | Strategic review, rebalance the graph, audit dependencies, prune orphans, connect missing edges, audit blockers, consolidate categories or tags, graph-health check, "is this project on track?" | Dispatch **`mymir:manage`** for deep CTO mode |
 
 ### Dispatch protocol
 
-Two distinct cases:
+Three distinct cases:
 
 - **Dispatching a coding sub-agent to implement a single task** (the most common case in a multi-session workflow). Brief them that they are dispatched. They follow the Completion Protocol (lifecycle §2): mark the task `in_review` directly with the full Completion Protocol payload (the implementer's terminal write; HOTL flips to `done` after PR approval), no asking, return one-sentence summary. They open a PR per §10 step 3 if the work changed code.
+- **Dispatching the review sub-agent (`mymir:review`)** for an `in_review` task or a PR. The subagent reads `mymir_context depth='review'` and returns a structured verdict (`approve` / `request-changes` / `block`) with per-lens reasoning, AC evaluation against the diff, plan-vs-files drift, and downstream impact. It is read-only over Mymir; it does not flip status, write to `decisions`, or touch the working tree. Surface the verdict to the user verbatim; HOTL still owns `in_review → done` on GitHub.
 - **Dispatching a meta-agent (`mymir:brainstorm` / `mymir:decompose` / `mymir:decompose-task` / `mymir:decompose-feature` / `mymir:onboarding` / `mymir:manage`)**. Each has its own gates and reporting style documented in its agent file. The Completion Protocol applies only when they themselves mark a task done as part of their work. Brief them on the user intent, then trust their phase-gating.
 
 ## Workflows
@@ -202,7 +205,7 @@ Lead with slim tools.
 2. `mymir_context depth='agent'`. Multi-hop deps, execution records, ACs.
 3. **Understand before doing.** Read the description, the executionRecords from upstream tasks, and the relevant code. Reason about what could go wrong. Ask if anything is unclear. Then implement. Rushing here produces work that misses the actual requirement.
 4. Confirm before marking in_review. Completion Protocol (lifecycle §2): if you were dispatched (parent agent visible in your transcript), mark in_review directly; otherwise ask.
-5. `mymir_task action='update' status='in_review' executionRecord='...' decisions=[...] files=[...] acceptanceCriteria=[...]`. Read response `_hints`. Re-call with missing fields if any. **Do not pass `overwriteArrays=true`** unless replacing the arrays is the intent and the user has confirmed. The default append behavior is safe. After the PR is approved, the HOTL operator flips the task `in_review → done` — agents do not self-promote.
+5. `mymir_task action='update' status='in_review' executionRecord='...' decisions=[...] files=[...] acceptanceCriteria=[...] prUrl='<gh-pr-url>'`. Pass `prUrl` whenever a PR was opened (the dominant case); the backend upserts a `task_links` row with `kind='pull_request'` so the review subagent and detail UI can resolve the PR. Omit only when no PR exists (research / decision-only / Mymir-only refinement). Read response `_hints`. Re-call with missing fields if any. **Do not pass `overwriteArrays=true`** unless replacing the arrays is the intent and the user has confirmed. The default append behavior is safe. After the PR is approved, the HOTL operator flips the task `in_review → done` — agents do not self-promote.
 6. **If the work changed code, open a PR.** Detect a PR template (`.github/PULL_REQUEST_TEMPLATE.md` and variants). Fill it concisely from the executionRecord and ACs. Use `[MYMR-N]` bracket form for the primary task ref so Mymir tracks PR status. Skip sections where you have nothing to say. Lifecycle §2 step 3 has the full rules.
 7. **Propagate** (lifecycle §3). `mymir_query type='edges'`, then `mymir_analyze type='downstream'`. Update, create, or remove edges.
 
@@ -215,7 +218,28 @@ Lead with slim tools.
 2.5. If the task is at `in_review` (implementer already populated executionRecord/decisions/files/ACs), the only operator action is the status flip to `done`. Skip the field collection in step 3; jump to propagation.
 3. Collect details. Extract from conversation if the user described the work; ask if they only said "done"; summarize agent reports if a coding agent did the work.
 4. Evaluate each acceptance criterion. `checked: true` if the work clearly satisfies it, `false` otherwise. **Don't auto-check everything.**
-5. Confirm per Completion Protocol. Update with all required fields (append, do not overwrite). Open the PR if applicable. Propagate.
+5. Confirm per Completion Protocol. Update with all required fields (`executionRecord`, `decisions`, `files`, evaluated `acceptanceCriteria`, plus `prUrl` when a PR was opened; append, do not overwrite). Open the PR if applicable. Propagate.
+
+### Review an `in_review` task or a PR
+
+Direct-mode counterpart to composer Phase 4. Use when the user says "review MYMR-N", "review this PR", "review `<PR URL>`", "what does the review subagent think of MYMR-N", or otherwise asks for a structured verdict on work that has already landed at `in_review`.
+
+1. **Resolve the target.**
+   - If the user named a `taskRef`: `mymir_query type='search' query='<taskRef>'`. The task must be at `in_review`; surface its status in the response.
+   - If the user supplied a PR URL but no `taskRef`: parse the bracketed `[MYMR-N]` form from the PR title (`gh pr view <num> --json title`) and resolve the task from there. When the PR title carries no bracket, ask the user which task it ships.
+2. **Confirm `status='in_review'`.** Anything else means the dispatch is premature (still `in_progress`) or archaeological (`done` / `cancelled`); flag it to the user and ask whether to proceed. Reviewing `in_progress` work is meaningless; reviewing a `done` task is archaeology.
+3. **Dispatch the review subagent.** One Task call with `subagent_type='mymir:review'`. Prompt body:
+
+   ```text
+   Target task: <taskRef>
+   PR URL: <url>
+   Mode: direct-review
+   Fetch the bundle via mymir_context depth='review' taskId='<id>'.
+   ```
+
+   The PR URL is optional when `task.links` already carries a `kind='pull_request'` entry; pass it through when you have it to keep the dispatch self-contained.
+4. **Surface the verdict verbatim.** The reviewer returns a structured verdict (`approve` / `request-changes` / `block`) with file-cited reasoning per lens, AC evaluation, plan-vs-files drift, and downstream impact. Do not paraphrase, do not auto-act. The verdict is advisory; HOTL still owns the `in_review → done` transition on GitHub.
+5. **Optional follow-up.** If the verdict's downstream-impact section flags edges that need attention, run propagation per lifecycle §3 to keep the graph honest. Do not flip the task status based on the verdict; only the HOTL operator can move `in_review → done`.
 
 ### Dispatch coding agents in parallel
 
