@@ -2,12 +2,15 @@
 name: decompose
 description: >
   Use when a Mymir project exists with a description but few or no tasks, and the
-  user wants it broken into an implementable graph. Triggers: "decompose",
-  "break this down", "create tasks", "turn this into tasks", "give me a task list",
-  "plan out the work", "how should I build this". Do not use when no Mymir project
-  exists yet (route to brainstorm), the description is too thin to decompose
-  responsibly (route back to brainstorm), or the project already has a full task
-  graph (route to manage).
+  user wants it broken into an implementable graph (project-level decomposition).
+  Triggers: "decompose", "break this down", "create tasks", "turn this into tasks",
+  "give me a task list", "plan out the work", "how should I build this". Do not
+  use when no Mymir project exists yet (route to brainstorm), the description is
+  too thin to decompose responsibly (route back to brainstorm), the project
+  already has a full task graph (route to manage), the user wants to split a
+  single existing oversize task within an active project (route to
+  mymir:decompose-task), or the user wants to add a new feature to an active
+  project (route to mymir:decompose-feature).
 model: opus
 ---
 

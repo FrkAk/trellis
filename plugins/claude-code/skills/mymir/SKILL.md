@@ -138,6 +138,9 @@ You handle most Mymir interactions inline. The four agents are escalations for h
 | Existing repo, no matching Mymir project | After confirmation: dispatch **`mymir:onboarding`**. Fabrication risk is too high to inline. |
 | Decompose a project: ≤300-word description, ≤15 features | Inline. **§ Decompose inline** |
 | Decompose a project: large, multi-domain, or sensitive | Dispatch **`mymir:decompose`** for the gated 4-phase pipeline |
+| Split a single existing oversize task into children within an active project ("split this task", "decompose RZE-42", composer's oversize handler) | Dispatch **`mymir:decompose-task`** for the gated split + edge-rewiring + parent-cancel pipeline |
+| Add a new feature or capability cluster to an active project ("add a feature for X", "decompose this idea into tasks", "extend the project with Y") | Dispatch **`mymir:decompose-feature`** for the gated feature-addition pipeline |
+| Drive tasks end-to-end through research + plan + implement + propagate ("ship the backlog", "run the next task", "compose through my queue", "loop through mymir tasks", a named task ref to take all the way to a PR) | Suggest user invoke **`/mymir:composer`** (backlog mode) or **`/mymir:composer <taskRef>`** (single-task mode). Composer is a slash-command skill that orchestrates three dispatched subagents per task in clean per-phase contexts; the user has to type the slash command (and paste the `/goal` harness composer emits on first turn) for it to start. |
 | Status, next task, mark done, plan a draft, refine, dispatch, create or delete task | Handle inline. **Do not** dispatch `mymir:manage` for these; they are day-to-day. |
 | Strategic review, rebalance the graph, audit dependencies, prune orphans, connect missing edges, audit blockers, consolidate categories or tags, graph-health check, "is this project on track?" | Dispatch **`mymir:manage`** for deep CTO mode |
 
@@ -146,7 +149,7 @@ You handle most Mymir interactions inline. The four agents are escalations for h
 Two distinct cases:
 
 - **Dispatching a coding sub-agent to implement a single task** (the most common case in a multi-session workflow). Brief them that they are dispatched. They follow the Completion Protocol (lifecycle §2): mark the task done directly with full payload, no asking, return one-sentence summary. They open a PR per §10 step 3 if the work changed code.
-- **Dispatching a meta-agent (`mymir:brainstorm` / `mymir:decompose` / `mymir:onboarding` / `mymir:manage`)**. Each has its own gates and reporting style documented in its agent file. The Completion Protocol applies only when they themselves mark a task done as part of their work. Brief them on the user intent, then trust their phase-gating.
+- **Dispatching a meta-agent (`mymir:brainstorm` / `mymir:decompose` / `mymir:decompose-task` / `mymir:decompose-feature` / `mymir:onboarding` / `mymir:manage`)**. Each has its own gates and reporting style documented in its agent file. The Completion Protocol applies only when they themselves mark a task done as part of their work. Brief them on the user intent, then trust their phase-gating.
 
 ## Workflows
 
@@ -174,6 +177,8 @@ Lead with slim tools.
    - `mymir_analyze type='plannable'`. Drafts ready to plan.
    - Pick one on the critical path. **§ Plan a draft task**.
 
+**For end-to-end automation across the queue:** suggest `/mymir:composer` (backlog mode). Composer picks the highest-value ready task each iteration, drives it through research + plan + implement + propagate via dispatched subagents in clean per-phase contexts, then loops until the queue is empty or the user stops. The user paces it via `/goal` (composer emits the harness on first turn; user pastes it). Use this when the user wants the queue shipped without picking each task manually; use the inline picker above when the user wants per-task agency.
+
 ### Refine a task
 
 1. `mymir_context depth='working'`. Current state, edges, siblings.
@@ -200,6 +205,8 @@ Lead with slim tools.
 5. `mymir_task action='update' status='done' executionRecord='...' decisions=[...] files=[...] acceptanceCriteria=[...]`. Read response `_hints`. Re-call with missing fields if any. **Do not pass `overwriteArrays=true`** unless replacing the arrays is the intent and the user has confirmed. The default append behavior is safe.
 6. **If the work changed code, open a PR.** Detect a PR template (`.github/PULL_REQUEST_TEMPLATE.md` and variants). Fill it concisely from the executionRecord and ACs. Use `[MYMR-N]` bracket form for the primary task ref so Mymir tracks PR status. Skip sections where you have nothing to say. Lifecycle §2 step 3 has the full rules.
 7. **Propagate** (lifecycle §3). `mymir_query type='edges'`, then `mymir_analyze type='downstream'`. Update, create, or remove edges.
+
+**For end-to-end automation on a single task:** suggest `/mymir:composer <taskRef>`. Composer drives the named task through research + plan + implement + PR + propagate via dispatched subagents (researcher, planner, implementer) in clean per-phase contexts. Use this when the user wants depth + automation per task; use the inline flow above when the user wants to drive each phase manually with HOTL gates.
 
 ### Mark a task done (user reports completion)
 

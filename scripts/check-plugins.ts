@@ -116,6 +116,24 @@ const shared: SharedGroup[] = [
     ],
   },
   {
+    name: "decompose-task (agent + skill)",
+    canonical: "plugins/claude-code/agents/decompose-task.md",
+    copies: [
+      "plugins/codex/skills/decompose-task/SKILL.md",
+      "plugins/gemini/skills/decompose-task/SKILL.md",
+      "plugins/cursor/skills/decompose-task/SKILL.md",
+    ],
+  },
+  {
+    name: "decompose-feature (agent + skill)",
+    canonical: "plugins/claude-code/agents/decompose-feature.md",
+    copies: [
+      "plugins/codex/skills/decompose-feature/SKILL.md",
+      "plugins/gemini/skills/decompose-feature/SKILL.md",
+      "plugins/cursor/skills/decompose-feature/SKILL.md",
+    ],
+  },
+  {
     name: "manage (agent + skill)",
     canonical: "plugins/claude-code/agents/manage.md",
     copies: [
