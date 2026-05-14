@@ -473,3 +473,141 @@ test("concurrent same-text decision appends collapse to one row via unique(task_
   const sameText = final.decisions.filter((d) => d.text === "duplicate-Y");
   expect(sameText.length).toBe(1);
 });
+
+test("overwriteArrays clears all criteria when called with empty array", async () => {
+  const f = await seedUserOrgProject("emptycrit");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, {
+    projectId: f.projectId,
+    title: "T",
+    acceptanceCriteria: ["A", "B", "C"],
+  });
+
+  const cleared = await updateTask(ctx, task.id, { acceptanceCriteria: [] }, true);
+  expect(cleared.acceptanceCriteria.length).toBe(0);
+
+  const reread = await getTaskFull(ctx, task.id);
+  expect(reread.acceptanceCriteria.length).toBe(0);
+});
+
+test("overwriteArrays clears all decisions when called with empty array", async () => {
+  const f = await seedUserOrgProject("emptydec");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, {
+    projectId: f.projectId,
+    title: "T",
+    decisions: ["First", "Second"],
+  });
+
+  const cleared = await updateTask(ctx, task.id, { decisions: [] }, true);
+  expect(cleared.decisions.length).toBe(0);
+
+  const reread = await getTaskFull(ctx, task.id);
+  expect(reread.decisions.length).toBe(0);
+});
+
+test("single-call dedup collapses same-id and same-text rows in one payload", async () => {
+  const f = await seedUserOrgProject("singlecalldedup");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  const seeded = await updateTask(ctx, task.id, { acceptanceCriteria: ["X"] });
+  const idA = seeded.acceptanceCriteria[0].id;
+
+  // Element 1 collides on id (with new text "Y"); element 2 collides on
+  // text "X" (with a fresh id). Both branches of the `id IN OR text IN`
+  // DELETE must fire in one statement and resolve to two final rows.
+  await updateTask(ctx, task.id, {
+    acceptanceCriteria: [
+      { id: idA, text: "Y" },
+      { id: crypto.randomUUID(), text: "X" },
+    ],
+  });
+
+  const final = await getTaskFull(ctx, task.id);
+  const texts = final.acceptanceCriteria.map((c) => c.text).sort();
+  expect(texts).toEqual(["X", "Y"]);
+});
+
+test("decisions dedup replaces same-id and same-text entries (mirror of criteria)", async () => {
+  const f = await seedUserOrgProject("decdedup");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  const seeded = await updateTask(ctx, task.id, {
+    decisions: [{ text: "chose X", source: "refinement", date: "2026-01-01" }],
+  });
+  const idA = seeded.decisions[0].id;
+
+  // Same-id, different text.
+  await updateTask(ctx, task.id, {
+    decisions: [{ id: idA, text: "chose Y", source: "review", date: "2026-02-01" }],
+  });
+  // Same-text, different id — last writer wins on metadata.
+  await updateTask(ctx, task.id, {
+    decisions: [{ text: "chose Y", source: "review", date: "2026-03-01" }],
+  });
+
+  const final = await getTaskFull(ctx, task.id);
+  expect(final.decisions.length).toBe(1);
+  expect(final.decisions[0].text).toBe("chose Y");
+  expect(final.decisions[0].date).toBe("2026-03-01");
+});
+
+test("getTaskFull returns criteria in position order, not insertion order", async () => {
+  const f = await seedUserOrgProject("ordering");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  await updateTask(ctx, task.id, { acceptanceCriteria: ["A", "B", "C", "D"] });
+
+  // Mutate "B"'s position to 99 directly so insertion-order and position-
+  // order diverge. getTaskFull must reflect position-order.
+  const direct = postgres(getConnectionString(), { max: 1 });
+  try {
+    await direct`
+      UPDATE task_acceptance_criteria
+      SET position = 99
+      WHERE task_id = ${task.id}::uuid AND text = 'B'
+    `;
+  } finally {
+    await direct.end({ timeout: 5 });
+  }
+
+  const final = await getTaskFull(ctx, task.id);
+  const ordered = final.acceptanceCriteria.map((c) => c.text);
+  expect(ordered).toEqual(["A", "C", "D", "B"]);
+});
+
+test("updateTask return value carries the freshly-written criteria", async () => {
+  const f = await seedUserOrgProject("returnval");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  const result = await updateTask(ctx, task.id, {
+    acceptanceCriteria: ["one", "two"],
+  });
+  expect(result.acceptanceCriteria.map((c) => c.text).sort()).toEqual(["one", "two"]);
+});
+
+test("foreign key rejects orphan decision insert", async () => {
+  await seedUserOrgProject("orphandecision");
+
+  const sqlc = postgres(getConnectionString(), { max: 1 });
+  try {
+    const orphanTaskId = "00000000-0000-0000-0000-000000000003";
+    const orphanDecisionId = "00000000-0000-0000-0000-000000000004";
+    let threw = false;
+    try {
+      await sqlc`
+        INSERT INTO task_decisions (id, task_id, text, source, decision_date, position)
+        VALUES (${orphanDecisionId}::uuid, ${orphanTaskId}::uuid, 'orphan', 'refinement', '2026-01-01', 0)
+      `;
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+  } finally {
+    await sqlc.end({ timeout: 5 });
+  }
+});
