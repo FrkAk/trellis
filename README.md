@@ -103,22 +103,35 @@ Self-hosted: edit `plugins/cursor/mcp.json` to point at your deployment URL befo
 
 ### What gets installed
 
-All four plugins bundle the same components:
+All four plugins bundle the shared components:
 
 | Component | What it does |
 | --- | --- |
 | **6 MCP tools** | `mymir_project`, `mymir_task`, `mymir_edge`, `mymir_query`, `mymir_context`, `mymir_analyze` |
-| **Brainstorm agent** | Explore and shape a project idea through structured conversation |
-| **Onboarding agent** | Reverse-engineer an existing codebase into a task graph with shipped work recorded as `done` |
-| **Decompose agent** | Break a project into tasks with dependency edges |
-| **Manage agent** | Navigate, refine, track progress, restructure |
-| **Mymir skill** | Auto-invokes when conversation matches project planning |
+| **`/mymir` skill** | Auto-invokes when conversation matches project planning; routes to inline workflows or hands off to a deep-mode workflow when needed |
+| **Brainstorm workflow** | Explore and shape a project idea through structured conversation |
+| **Onboarding workflow** | Reverse-engineer an existing codebase into a task graph with shipped work recorded as `done` |
+| **Decompose workflow** | Break a project brief into a dependency graph |
+| **Manage workflow** | Strategic CTO-mode review: rebalance the graph, audit dependencies, prune orphans, consolidate categories |
+
+In Codex, Cursor, and Gemini each workflow is a skill invoked by slash command. In Claude Code each is also available as a dispatchable agent (via the Task tool) so the main `/mymir` skill can hand off work in a clean per-agent context.
+
+**Claude Code additionally bundles:**
+
+| Component | What it does |
+| --- | --- |
+| **`/mymir:composer` skill** | End-to-end task orchestrator. Picks the highest-value ready task (or one named ref), drives it through research → plan → implement → propagate via three dispatched subagents per task in clean per-phase contexts, loops until queue empty or user stops. Requires `/goal` harness for backlog mode (composer emits it on first turn; user pastes). |
+| **Composer subagents** | `mymir:composer-researcher` gathers grounded context and refines the task; `mymir:composer-planner` writes the unabridged implementation plan; `mymir:composer-implementer` ships the code, opens a PR, and marks the task done. |
+| **`mymir:decompose-task` agent** | Splits an existing oversize task in an active project into 2 to N children, rewires every dependency edge touching the parent, cancels the parent with rationale citing the children. Composer's oversize handler routes here. |
+| **`mymir:decompose-feature` agent** | Adds a new feature or capability cluster to an active project. Reuses existing categories and tag vocabulary; creates 5 to 20 tasks plus internal and integration edges. |
+
+(Composer depends on a subagent dispatch primitive for clean per-phase contexts and tool-restriction enforcement. Codex, Cursor, and Gemini do not yet have an equivalent, so composer is Claude Code only for now.)
 
 ---
 
 ## How it runs
 
-Mymir ships as a Next.js web app plus vendor-native plugins for Claude Code, Codex, and Gemini. Each plugin bundles 6 MCP tools, four agents (brainstorm, onboarding, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. You don't call tools manually, you just talk.
+Mymir ships as a Next.js web app plus vendor-native plugins for Claude Code, Codex, Cursor, and Gemini. Each plugin bundles 6 MCP tools, the four core workflows (brainstorm, onboarding, decompose, manage), and a `/mymir` skill that auto-invokes when you talk about projects, tasks, or planning. Claude Code adds end-to-end task orchestration via `/mymir:composer` plus `decompose-task` and `decompose-feature` for surgical decomposition within active projects. You don't call tools manually, you just talk.
 
 **Three entry paths, one graph.**
 
@@ -156,6 +169,20 @@ Mymir ships as a Next.js web app plus vendor-native plugins for Claude Code, Cod
 ```text
 ❯ Priority is urgent, draft ACs are enough, and monorepo detection should ask the user.
 ```
+
+**Drive end-to-end (Claude Code).** Once a project is active and tasks are ready, composer can take over. Pick the next task off the critical path, research it in context, plan it, implement it, open the PR, propagate the result, and loop:
+
+```text
+❯ /mymir:composer
+```
+
+Or take one specific task all the way to a PR:
+
+```text
+❯ /mymir:composer MYMR-101
+```
+
+Composer dispatches three subagents per task in clean per-phase contexts (researcher → planner → implementer). The orchestrator stays out of the work itself and only picks tasks, hands off, and propagates.
 
 **Tune in the UI.** Inspect edges, read execution records, and edit descriptions, ACs, tags, or dependencies directly. The agent loop and the UI write to the same store, so edits land by the next tool call.
 

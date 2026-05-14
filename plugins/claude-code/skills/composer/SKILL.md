@@ -31,7 +31,7 @@ If the user typed `/mymir:composer` with no argument, treat it as backlog mode. 
 
 ## The three subagents
 
-Each subagent is a registered plugin agent. The orchestrator dispatches them via the `Agent` tool by `subagent_type`. They have their own files; do not duplicate their logic here.
+Each subagent is a registered plugin agent. The orchestrator dispatches them via the Task tool by `subagent_type`. They have their own files; do not duplicate their logic here.
 
 | Phase | `subagent_type` | File | Writes to Mymir | Returns to orchestrator |
 | --- | --- | --- | --- | --- |
@@ -59,10 +59,12 @@ Do these once, before the first iteration:
 3. **Install the goal harness.** Generate the goal-condition string below and prompt the user to paste it into `/goal`. Composer cannot install `/goal` itself; the user has to type it. Emit the literal code-fence so the user can copy-paste:
 
    ````
-   /goal mymir_analyze type='ready' returns an empty set, OR composer reports three consecutive failed attempts on a task, OR the user types stop, OR (single-task mode) composer reports the target task marked done
+   /goal mymir_analyze type='ready' returns an empty set, OR composer reports three consecutive failed attempts on a task, OR the user types stop, OR (single-task mode) composer reports the target task marked done, OR (single-task mode) composer reports proposed rewrite denied on a task
    ````
 
-   Then proceed. The `/goal` evaluator watches the transcript each turn and ends the session when one of the literal phrases above appears. Composer's job is to emit those literal phrases at the right moments (see *Stop conditions*).
+   The `/goal` evaluator watches the transcript each turn and ends the session when one of the literal phrases above appears. Composer's job is to emit those literal phrases at the right moments (see *Stop conditions*).
+
+4. **Confirm the harness fired.** Call `AskUserQuestion`: "Did `/goal` accept the harness?" with options yes / no. On yes, proceed to the loop. On no, emit a one-line warning ("Backlog mode without `/goal` has no automatic exit; type `stop` to halt the loop.") and proceed anyway. Composer cannot force the install; it can only refuse to start silently.
 
 In backlog mode the harness is required; in single-task mode it is optional but recommended. Long single-task runs still benefit from the safety bound.
 
@@ -77,13 +79,12 @@ Per iteration the orchestrator runs:
 1. **Pick the next task.**
    - Backlog mode: `mymir_analyze type='ready' projectId='...'` ∩ `mymir_analyze type='critical_path' projectId='...'`. Rank intersection by priority (`urgent > core > normal > backlog`), break ties by lowest `estimate`. Fall back to highest-priority `ready` task if the intersection is empty. Fall back to `mymir_analyze type='plannable'` if `ready` itself is empty (route through researcher + planner first; nothing to implement yet).
    - Single-task mode: skip selection. The task is the one the user named. If its `state` is already `done` or `cancelled`, emit the done line (see *Stop conditions*) and exit.
-   - **Oversize gate.** If the picked task has `estimate > 13` (per artifacts §5), do not run the pipeline on it. Surface the task ref and ask the user whether to dispatch `mymir:decompose` to split it first or skip it and pick the next ready task. Composer is not a decomposer.
    - Emit a one-paragraph **pick rationale** before claiming so the user can interject:
      > Next pick: `<taskRef>`. Priority=`<value>`, estimate=`<value>`, on critical path=`<yes|no>`. Reason: `<one sentence>`.
 
 2. **Dispatch researcher.** One `Agent` call with `subagent_type='mymir:composer-researcher'`. The prompt body opens with `Target task: <taskRef>` and includes the project's meta payload from bootstrap step 3 verbatim. The task stays at its current status (`draft` if picked from `plannable`, `planned` if picked from `ready`). Researchers do not claim, but they **do** refine: the researcher applies sharpening edits to `description`, `acceptanceCriteria`, `tags`, `category`, `priority`, `estimate`, and `decisions` based on what it finds in the codebase, in docs, and in its security/performance review. The task row evolves under your feet during this phase; that is intentional. Await the brief. Refinement writes are append-only and cannot fail destructively; the only way Phase 1 fails is if the researcher cannot ground its findings (returns `confidence < 0.6` or flags items in *Open questions*). In that case, surface those to the user and pause for an answer before continuing.
 
-   **Post-researcher oversize re-check.** After the researcher returns, re-read the task's `estimate` (the researcher may have refined it upward). If `estimate > 13` or the brief carries the `oversize-task` flag, do **not** advance to the planner. Branch back to the pick-time oversize gate: ask the user whether to dispatch `mymir:decompose` to split, or skip and pick the next ready task. Composer is not a decomposer; oversize tasks discovered during research route out of the pipeline before any plan is written.
+   **Post-researcher gates.** Two signals can divert the iteration before the planner runs. If the brief carries the `oversize-task` flag, defer to *Oversize handling* below. If the brief carries a `## Proposed rewrites` section, defer to *Proposed rewrites handling* below. Estimate refinements within the bounded scale (`1, 2, 3, 5, 8, 13`) are normal refinement and do not gate.
 
 3. **Dispatch planner.** One `Agent` call with `subagent_type='mymir:composer-planner'`. The prompt body includes `Target task: <taskRef>`, the task's current `status` so the planner knows whether it is writing a new plan or re-validating an existing one, the research brief verbatim, and a pointer to `mymir_context depth='planning'` (the planner fetches it itself). The planner owns the `draft → planned` transition: when the task entered at `draft`, the planner writes the full `implementationPlan` and flips status to `planned` in one call; when the task entered at `planned`, the planner re-validates against the brief and either keeps the plan as-is without mutating the task (a silent re-validation is the correct trace) or refreshes the plan when the brief shows real drift. Verify the planner's write by polling `mymir_context depth='summary' taskId='<id>'` once before advancing. If no plan is visible after a `draft` entry (or the planner reports failure), retry once with the failure message appended to the dispatch; on a second failure, treat the iteration as a failed attempt (see *Failure handling*).
 
@@ -92,6 +93,34 @@ Per iteration the orchestrator runs:
 5. **Propagate.** Once the implementer reports `done` and returns a PR URL, run propagation per lifecycle §3: `mymir_query type='edges' taskId='<id>'` then `mymir_analyze type='downstream' taskId='<id>'`. Update or retire edge notes the implementer's work invalidated. Edge-note content follows artifacts §3: one to three short sentences, written as a brief to the downstream task's coding agent (what specifically does this task get from the target). No prose recaps. Surface newly-unblocked tasks in the next pick rationale.
 
 6. **Loop.** Single-task mode: emit the done line (see *Stop conditions* item 4) and exit. Backlog mode: return to step 1.
+
+### Oversize handling
+
+`estimate` is bounded to Fibonacci values `1, 2, 3, 5, 8, 13` (artifacts §5); no task in Mymir can carry an estimate above 13. Oversize is a *scope-detection* signal, not a numeric overflow: the researcher discovers during exploration that a task's true scope exceeds what `13` represents and raises the `oversize-task` flag in the brief.
+
+Single checkpoint, post-researcher: if the brief carries `oversize-task`, surface the task ref and ask the user whether to dispatch `mymir:decompose-task` to split or skip and pick the next ready task. Do not write a plan. Do not claim. Composer is not a decomposer; oversize routes out to the specialist agent before the planner runs.
+
+Estimate refinements within the bounded scale (researcher bumps `5` to `8`, or `13` down to `8`) are normal. Needs evolve as exploration uncovers scope; the researcher updates `estimate` up or down within `[1, 13]` as warranted. That is refinement, not an oversize event.
+
+### Proposed rewrites handling
+
+The researcher may propose substantive rewrites of `description` or `acceptanceCriteria` rather than apply them directly (researcher prose: *Substantive rewrites: propose, do not apply*). When the brief carries a `## Proposed rewrites` section, do not advance to the planner. Surface each proposal to the user via `AskUserQuestion`: show the original value, the proposed value, and the researcher's one-line rationale; offer accept / deny per field.
+
+On accept, apply the proposal via `mymir_task action='update'` and re-dispatch the researcher with the rewritten task. The fresh research run reads the rewritten description and AC as ground truth, writes a new brief, and the planner runs against that brief. A rewrite the user accepted invalidates the prior brief; re-dispatching is what keeps the planner grounded in the post-rewrite scope.
+
+On deny, end the iteration. Backlog mode: pick the next task; the denied task keeps its silently-applied refinements and stays at its current status. Single-task mode: emit `composer reports proposed rewrite denied on <taskRef>` to the transcript (matches the `/goal` clause) and exit.
+
+Subsequent rewrite proposals on the re-dispatched run go through the same gate. The user can deny at any cycle to break out; there is no implicit cap.
+
+### Phase entry and exit conditions
+
+| Phase | Entry condition | Exit condition | Failure surface |
+|---|---|---|---|
+| Researcher | Task at `draft` or `planned`; pick rationale emitted | Brief returned, `confidence ≥ 0.6`, no `oversize-task` flag, no pending `## Proposed rewrites` (or all accepted and re-dispatched), refinements landed in Mymir | `confidence < 0.6` pauses for user; oversize routes to *Oversize handling*; proposed rewrites route to *Proposed rewrites handling* |
+| Planner | Task at `draft` (write new plan) or `planned` (re-validate); brief in dispatch prompt | `implementationPlan` visible via `mymir_context depth='summary'`; status flipped to `planned` if entry was `draft` | No plan after one retry counts as a failed attempt per *Failure handling* |
+| Implementer | Task at `planned`; plan saved to Mymir | Status `done`, full Completion Protocol payload, PR URL returned | Tests/lint/typecheck red unrecoverable, or PR not opened, counts as a failed attempt; partial success (PR opened, `done` not marked) recovered per *Failure handling* |
+
+**Recovering after orchestrator compaction.** Infer the current phase from the task's Mymir status alone. `draft` with no plan: researcher pending. `draft` with plan present, or `planned`: planner done, implementer pending. `in_progress`: implementer pending or partial-success recovery (see *Failure handling*). `done`: iteration complete; advance to propagation.
 
 ### The orchestrator does not write `status`
 
@@ -114,7 +143,11 @@ A failed attempt is any of: implementer reports tests/lint/typecheck red and can
 2. Leave the task at its current Mymir status (do not auto-cancel; the task is not broken, the attempt was).
 3. In backlog mode, move on to the next pick. In single-task mode, retry the iteration up to three total attempts (counting attempt 1). After three failures, emit `composer reports three consecutive failed attempts on <taskRef>` to the transcript (matches the `/goal` clause) and exit.
 
+   **Why the asymmetry.** Backlog mode optimizes throughput across the queue; a stubborn task should not block other ready work. The failed task stays at `in_progress` for human triage. Single-task mode optimizes completion of one named task; retries are warranted because there is nothing else to fall through to.
+
 Each retry dispatches the implementer fresh with the parent attempt's failure summary appended to the prompt; the researcher and planner are not re-run unless the failure clearly traces to a planning gap (e.g., the plan references a file that does not exist).
+
+**Partial success: PR opened, `done` not marked.** If a retry's pre-flight finds the task at `in_progress` with an open PR matching the branch name pattern (`<type>/<taskRef-lowercased>-<title-slug>`), do not re-implement. Resume the Completion Protocol: re-evaluate acceptance criteria against the PR diff, populate `executionRecord` / `decisions` / `files`, mark `done`. The PR is the load-bearing artifact; the missing status write is recoverable. This is a single-attempt recovery; if it fails, count it toward the failure budget per rule 3.
 
 ## Stop conditions
 
@@ -124,8 +157,9 @@ The orchestrator emits one of these literal phrases to the transcript when the c
 2. `composer reports three consecutive failed attempts on <taskRef>`: same task failed three times in single-task mode (or after the orchestrator manually retried in backlog mode).
 3. The user typed `stop` at any prompt: exit immediately after the current in-flight write finishes.
 4. (Single-task mode only) `composer reports the target task marked done`: emitted right after step 6's propagation completes.
+5. (Single-task mode only) `composer reports proposed rewrite denied on <taskRef>`: emitted right after the user denies a substantive rewrite proposal in single-task mode (see *Proposed rewrites handling*).
 
-Do not invent new stop phrases. The `/goal` condition the user pastes during bootstrap matches these four verbatim; any drift breaks the harness.
+Do not invent new stop phrases. The `/goal` condition the user pastes during bootstrap matches these five verbatim; any drift breaks the harness.
 
 ## Reuse points from the mymir skill
 
@@ -141,10 +175,10 @@ If a flow exists in the mymir skill, do not reinvent it inside a subagent. Cite 
 
 ## What composer is not
 
-- **Not a decomposer.** Oversize tasks route to `mymir:decompose`. Composer asks first; never silently splits a task.
+- **Not a decomposer.** Oversize tasks route to `mymir:decompose-task`. Composer asks first; never silently splits a task.
 - **Not a refiner.** Composer's researcher proposes refinements via the brief; the planner applies them through the canonical `mymir_task` update path. If the user wants pure refinement, they should run the `mymir` skill directly.
 - **Not a code reviewer.** The PR is reviewed on GitHub like any other PR. The implementer marks the task `done` in dispatched mode immediately after opening the PR; if the user wants a human gate before `done`, they should run single-task mode and watch the loop, or run the `mymir` skill manually instead.
-- **Not a session-resilience layer.** Long runs that hit auto-compaction should rely on `/goal` to bound the session and `mymir_query type='meta'` to re-acquire project state on resume; composer does not persist its own session file.
+- **Not a session-resilience layer.** Long runs that hit auto-compaction rely on `/goal` to bound the session and on `mymir_query type='meta'` plus the per-task Mymir status to re-acquire project state on resume; composer does not persist its own session file. The orchestrator's "current phase" is implicit, derived from transcript and task status; after compaction it reconstructs per the *Phase entry and exit conditions* table. For runs likely to span compaction, prefer single-task mode and re-invoke composer per task rather than running an unbounded backlog loop. See `skills/mymir/references/resilience.md` for the broader resilience primitives.
 
 ## See also
 
