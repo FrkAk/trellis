@@ -45,6 +45,7 @@ import {
 } from "@/lib/context/_core/working";
 import { buildAgentContext } from "@/lib/context/_core/agent";
 import { buildPlanningContext } from "@/lib/context/_core/planning";
+import { buildReviewContext } from "@/lib/context/_core/review";
 import {
   getReadyTasks,
   getBlockedTasks,
@@ -491,6 +492,9 @@ function inReviewStatusHints(
     );
   }
   hints.push(
+    "Next call for the review subagent (composer Phase 4 or direct review dispatch): mymir_context depth='review' taskId='<this task>'. The bundle renders implementationPlan alongside executionRecord, surfaces the PR link, computes plan-vs-files drift, and emits review-lens prompts.",
+  );
+  hints.push(
     "Run mymir_analyze type='downstream' to propagate (lifecycle §3): update edge notes, retire stale edges, surface new dependencies revealed by this completion.",
   );
   return hints;
@@ -778,7 +782,7 @@ export type QueryParams = {
 /** Params for mymir_context. */
 export type ContextParams = {
   taskId: string;
-  depth: "summary" | "working" | "agent" | "planning";
+  depth: "summary" | "working" | "agent" | "planning" | "review";
   projectId?: string;
 };
 
@@ -1391,6 +1395,8 @@ export async function handleContext(
         return ok(await buildAgentContext(ctx, p.taskId));
       case "planning":
         return ok(await buildPlanningContext(ctx, p.taskId));
+      case "review":
+        return ok(await buildReviewContext(ctx, p.taskId));
     }
   } catch (e) {
     return translateError(e);
