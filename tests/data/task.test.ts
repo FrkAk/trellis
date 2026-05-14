@@ -52,9 +52,8 @@ test("concurrent updateTask calls preserve every appended decision", async () =>
   await Promise.all(calls);
 
   const final = await getTaskFull(ctx, task.id);
-  const decisions = final.decisions as { text: string }[];
-  expect(decisions.length).toBe(5);
-  const texts = decisions.map((d) => d.text).sort();
+  expect(final.decisions.length).toBe(5);
+  const texts = final.decisions.map((d) => d.text).sort();
   expect(texts).toEqual([
     "Decision 0",
     "Decision 1",
@@ -62,6 +61,142 @@ test("concurrent updateTask calls preserve every appended decision", async () =>
     "Decision 3",
     "Decision 4",
   ]);
+});
+
+test("concurrent updateTask calls preserve every appended criterion", async () => {
+  const f = await seedUserOrgProject("criteriarace");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
+
+  const calls = Array.from({ length: 5 }, (_, i) =>
+    updateTask(ctx, task.id, { acceptanceCriteria: [`Criterion ${i}`] }),
+  );
+  await Promise.all(calls);
+
+  const final = await getTaskFull(ctx, task.id);
+  expect(final.acceptanceCriteria.length).toBe(5);
+  const texts = final.acceptanceCriteria.map((c) => c.text).sort();
+  expect(texts).toEqual([
+    "Criterion 0",
+    "Criterion 1",
+    "Criterion 2",
+    "Criterion 3",
+    "Criterion 4",
+  ]);
+});
+
+test("criteria replace via overwriteArrays=true clears prior entries", async () => {
+  const f = await seedUserOrgProject("criteriareplace");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, {
+    projectId: f.projectId,
+    title: "T",
+    acceptanceCriteria: ["A", "B", "C"],
+  });
+
+  await updateTask(ctx, task.id, { acceptanceCriteria: ["D"] }, true);
+
+  const final = await getTaskFull(ctx, task.id);
+  expect(final.acceptanceCriteria.length).toBe(1);
+  expect(final.acceptanceCriteria[0].text).toBe("D");
+});
+
+test("decisions replace via overwriteArrays=true clears prior entries", async () => {
+  const f = await seedUserOrgProject("decisionsreplace");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, {
+    projectId: f.projectId,
+    title: "T",
+    decisions: ["First", "Second", "Third"],
+  });
+
+  await updateTask(ctx, task.id, { decisions: ["Final"] }, true);
+
+  const final = await getTaskFull(ctx, task.id);
+  expect(final.decisions.length).toBe(1);
+  expect(final.decisions[0].text).toBe("Final");
+});
+
+test("deleteTask cascades criteria and decisions", async () => {
+  const f = await seedUserOrgProject("cascadechildren");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, {
+    projectId: f.projectId,
+    title: "T",
+    acceptanceCriteria: ["A", "B"],
+    decisions: ["D1", "D2"],
+  });
+
+  await deleteTask(ctx, task.id);
+
+  const sqlc = postgres(getConnectionString(), { max: 1 });
+  try {
+    const [acRow] = await sqlc<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM task_acceptance_criteria WHERE task_id = ${task.id}
+    `;
+    const [decRow] = await sqlc<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM task_decisions WHERE task_id = ${task.id}
+    `;
+    expect(Number(acRow.count)).toBe(0);
+    expect(Number(decRow.count)).toBe(0);
+  } finally {
+    await sqlc.end({ timeout: 5 });
+  }
+});
+
+test("foreign key rejects orphan criterion insert", async () => {
+  await seedUserOrgProject("orphancriterion");
+
+  const sqlc = postgres(getConnectionString(), { max: 1 });
+  try {
+    const orphanTaskId = "00000000-0000-0000-0000-000000000001";
+    const orphanCriterionId = "00000000-0000-0000-0000-000000000002";
+    let threw = false;
+    try {
+      await sqlc`
+        INSERT INTO task_acceptance_criteria (id, task_id, text, checked, position)
+        VALUES (${orphanCriterionId}::uuid, ${orphanTaskId}::uuid, 'orphan', false, 0)
+      `;
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+  } finally {
+    await sqlc.end({ timeout: 5 });
+  }
+});
+
+test("append-mode dedup replaces same-id and same-text criterion entries", async () => {
+  const f = await seedUserOrgProject("dedup");
+  const ctx = makeAuthContext(f.userId);
+  const task = await createTask(ctx, {
+    projectId: f.projectId,
+    title: "T",
+    acceptanceCriteria: [{ id: "11111111-1111-4111-8111-111111111111", text: "X" }],
+  });
+
+  // Same id: row replaced in-place; text updated.
+  await updateTask(ctx, task.id, {
+    acceptanceCriteria: [
+      { id: "11111111-1111-4111-8111-111111111111", text: "X-modified" },
+    ],
+  });
+  let full = await getTaskFull(ctx, task.id);
+  expect(full.acceptanceCriteria.length).toBe(1);
+  expect(full.acceptanceCriteria[0].id).toBe("11111111-1111-4111-8111-111111111111");
+  expect(full.acceptanceCriteria[0].text).toBe("X-modified");
+
+  // Same text, different id: the old id row is deleted (text-match dedup) and
+  // the new id is inserted with the updated text.
+  await updateTask(ctx, task.id, {
+    acceptanceCriteria: [
+      { id: "22222222-2222-4222-8222-222222222222", text: "X-modified" },
+    ],
+  });
+  full = await getTaskFull(ctx, task.id);
+  expect(full.acceptanceCriteria.length).toBe(1);
+  expect(full.acceptanceCriteria[0].id).toBe("22222222-2222-4222-8222-222222222222");
+  expect(full.acceptanceCriteria[0].text).toBe("X-modified");
 });
 
 test("searchTasksPaged paginates by (order, id) cursor", async () => {
