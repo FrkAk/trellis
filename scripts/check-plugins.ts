@@ -151,6 +151,15 @@ const shared: SharedGroup[] = [
       "plugins/cursor/skills/onboarding/SKILL.md",
     ],
   },
+  {
+    name: "review (agent + skill)",
+    canonical: "plugins/claude-code/agents/review.md",
+    copies: [
+      "plugins/codex/skills/review/SKILL.md",
+      "plugins/gemini/skills/review/SKILL.md",
+      "plugins/cursor/skills/review/SKILL.md",
+    ],
+  },
 ];
 
 const fieldSyncs: FieldSync[] = [

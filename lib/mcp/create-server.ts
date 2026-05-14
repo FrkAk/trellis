@@ -374,8 +374,8 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
       description: DESCRIPTIONS.mymir_context,
       inputSchema: z.object({
         taskId: z.uuid().describe("Task UUID."),
-        depth: z.enum(["summary", "working", "agent", "planning"]).default("working")
-          .describe("summary=task header + description + counts + 1-hop edges with notes (folds in `mymir_query type='edges'`). working=criteria, decisions, 1-hop edges, siblings (does NOT render executionRecord, files, or implementationPlan). agent=multi-hop deps + upstream execution records + files + downstream; renders the task's own executionRecord when status is done/cancelled (use BEFORE coding, and to read a finished task's record). planning=project description, prereqs, ACs, downstream specs (use BEFORE writing the implementation plan)."),
+        depth: z.enum(["summary", "working", "agent", "planning", "review"]).default("working")
+          .describe("summary=task header + description + counts + 1-hop edges with notes (folds in `mymir_query type='edges'`). working=criteria, decisions, 1-hop edges, siblings (does NOT render executionRecord, files, or implementationPlan). agent=multi-hop deps + upstream execution records + files + downstream; renders the task's own executionRecord when status is done/cancelled (use BEFORE coding, and to read a finished task's record). planning=project description, prereqs, ACs, downstream specs (use BEFORE writing the implementation plan). review=in_review review bundle: implementationPlan alongside executionRecord, PR link surfaced, plan-vs-files drift, AC evaluation, downstream impact, review-lens prompts (security / perf / reliability / observability / codebase standards). The review subagent reads this depth."),
         projectId: z.uuid().optional()
           .describe("Project UUID. Required for 'working' depth."),
       }),
@@ -443,7 +443,7 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
  */
 export function createMcpServer(ctx: AuthContext): McpServer {
   const server = new McpServer(
-    { name: "mymir", version: "1.7.1" },
+    { name: "mymir", version: "1.7.2" },
     { instructions: INSTRUCTIONS },
   );
   registerAllTools(server, ctx);

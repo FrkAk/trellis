@@ -18,6 +18,7 @@ import { ForbiddenError } from "@/lib/auth/authorization";
 import { buildAgentContext } from "@/lib/context/_core/agent";
 import { buildWorkingContext } from "@/lib/context/_core/working";
 import { buildSummaryContext } from "@/lib/context/_core/summary";
+import { buildReviewContext } from "@/lib/context/_core/review";
 
 afterEach(async () => {
   await truncateAll();
@@ -358,6 +359,19 @@ test("buildSummaryContext denies cross-team callers, blocking any link leak", as
 
   await expect(
     buildSummaryContext(strangerCtx, task.id),
+  ).rejects.toBeInstanceOf(ForbiddenError);
+});
+
+test("buildReviewContext denies cross-team callers, blocking any link leak", async () => {
+  const owner = await seedUserOrgProject("ctx-review-x1");
+  const stranger = await seedUserOrgProject("ctx-review-x2");
+  const ownerCtx = makeAuthContext(owner.userId);
+  const strangerCtx = makeAuthContext(stranger.userId);
+  const task = await createTask(ownerCtx, { projectId: owner.projectId, title: "T" });
+  await updateTask(ownerCtx, task.id, { prUrl: "https://github.com/o/r/pull/13" });
+
+  await expect(
+    buildReviewContext(strangerCtx, task.id),
   ).rejects.toBeInstanceOf(ForbiddenError);
 });
 
