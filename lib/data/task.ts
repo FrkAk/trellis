@@ -1,19 +1,23 @@
 import "server-only";
 
-import { and, asc, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   projects,
   tasks,
   taskEdges,
   taskAssignees,
+  taskAcceptanceCriteria,
+  taskDecisions,
   taskLinks,
   type NewTask,
   type TaskLink,
 } from "@/lib/db/schema";
 import { user, member } from "@/lib/db/auth-schema";
 import { acquireProjectLock } from "@/lib/db/raw/acquire-project-lock";
+import { executeRaw } from "@/lib/db/raw";
 import type {
+  AcceptanceCriterion,
   Decision,
   HistoryEntry,
   TaskStatus,
@@ -49,6 +53,9 @@ import type {
 import { emitTaskEvent } from "@/lib/realtime/events";
 import { classifyLink, MalformedLinkError } from "@/lib/links/classify";
 
+/** Drizzle transaction handle alias for the helpers in this file. */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 /**
  * Build a timestamped history entry.
  * @param entry - Partial entry without id/date.
@@ -82,40 +89,506 @@ export async function appendTaskHistory(
     .where(eq(tasks.id, taskId));
 }
 
+/**
+ * Normalize a criteria input array (strings or partial objects) into the
+ * canonical `AcceptanceCriterion[]` shape, minting ids where missing.
+ *
+ * @param input - Caller-supplied criteria array; may carry strings or
+ *   partial objects with optional `id` / `text` / `description` / `checked`.
+ * @returns Canonical criteria array.
+ */
+function normalizeCriteria(input: unknown[]): AcceptanceCriterion[] {
+  return input.map((c) => {
+    if (typeof c === "string") {
+      return { id: crypto.randomUUID(), text: c, checked: false };
+    }
+    const obj = c as Record<string, unknown>;
+    return {
+      id: (obj.id as string) ?? crypto.randomUUID(),
+      text:
+        (obj.text as string) ?? (obj.description as string) ?? String(c),
+      checked: (obj.checked as boolean) ?? false,
+    };
+  });
+}
+
+/**
+ * Normalize a decisions input array (strings or partial objects) into the
+ * canonical `Decision[]` shape, minting ids and defaulting `source` /
+ * `date` where missing.
+ *
+ * @param input - Caller-supplied decisions array.
+ * @returns Canonical decisions array.
+ */
+function normalizeDecisions(input: unknown[]): Decision[] {
+  return input.map((d) => {
+    if (typeof d === "string") {
+      return {
+        id: crypto.randomUUID(),
+        text: d,
+        date: new Date().toISOString().slice(0, 10),
+        source: "refinement",
+      };
+    }
+    const obj = d as Record<string, unknown>;
+    return {
+      id: (obj.id as string) ?? crypto.randomUUID(),
+      text: (obj.text as string) ?? String(d),
+      date: (obj.date as string) ?? new Date().toISOString().slice(0, 10),
+      source: ((obj.source as Decision["source"]) ?? "refinement"),
+    };
+  });
+}
+
+/**
+ * Materialize criteria state for a task. `replace` deletes every existing
+ * row and inserts the supplied set; `append` deduplicates incoming entries
+ * against the existing rows by id-OR-text (matching the legacy JSONB merge
+ * semantics) and upserts at the next available `position`.
+ *
+ * Concurrent appends in different transactions can both read `MAX(position) +
+ * 1` and land at the same position. This is acceptable: `position` is
+ * presentation-only, has no unique constraint, and the UI orders by
+ * `(position, id)` so output stays deterministic. The PK and FK guarantees
+ * hold regardless.
+ *
+ * @param tx - Drizzle transaction handle.
+ * @param taskId - UUID of the parent task.
+ * @param incoming - Caller-supplied criteria (already normalized).
+ * @param mode - `replace` truncates the existing set; `append` upserts.
+ */
+async function applyCriteriaWrite(
+  tx: Tx,
+  taskId: string,
+  incoming: AcceptanceCriterion[],
+  mode: "append" | "replace",
+): Promise<void> {
+  if (mode === "replace") {
+    await tx
+      .delete(taskAcceptanceCriteria)
+      .where(eq(taskAcceptanceCriteria.taskId, taskId));
+    if (incoming.length > 0) {
+      await tx.insert(taskAcceptanceCriteria).values(
+        incoming.map((c, i) => ({
+          id: c.id,
+          taskId,
+          text: c.text,
+          checked: c.checked,
+          position: i,
+        })),
+      );
+    }
+    return;
+  }
+  if (incoming.length === 0) return;
+
+  const incomingIds = incoming.map((c) => c.id);
+  const incomingTexts = incoming.map((c) => c.text);
+  await tx
+    .delete(taskAcceptanceCriteria)
+    .where(
+      and(
+        eq(taskAcceptanceCriteria.taskId, taskId),
+        or(
+          inArray(taskAcceptanceCriteria.id, incomingIds),
+          inArray(taskAcceptanceCriteria.text, incomingTexts),
+        ),
+      ),
+    );
+
+  const [maxPosRow] = await tx
+    .select({
+      maxPos: sql<number>`COALESCE(MAX(${taskAcceptanceCriteria.position}), -1)`,
+    })
+    .from(taskAcceptanceCriteria)
+    .where(eq(taskAcceptanceCriteria.taskId, taskId));
+  const basePos = (maxPosRow?.maxPos ?? -1) + 1;
+
+  await tx
+    .insert(taskAcceptanceCriteria)
+    .values(
+      incoming.map((c, i) => ({
+        id: c.id,
+        taskId,
+        text: c.text,
+        checked: c.checked,
+        position: basePos + i,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: taskAcceptanceCriteria.id,
+      set: {
+        text: sql`EXCLUDED.text`,
+        checked: sql`EXCLUDED.checked`,
+        position: sql`EXCLUDED.position`,
+        updatedAt: sql`NOW()`,
+      },
+    });
+}
+
+/**
+ * Materialize decisions state for a task. Mirrors {@link applyCriteriaWrite}:
+ * `replace` truncates and reinserts; `append` deduplicates by id-OR-text
+ * and upserts at the next position. Same concurrent-position guidance.
+ *
+ * @param tx - Drizzle transaction handle.
+ * @param taskId - UUID of the parent task.
+ * @param incoming - Caller-supplied decisions (already normalized).
+ * @param mode - `replace` truncates the existing set; `append` upserts.
+ */
+async function applyDecisionsWrite(
+  tx: Tx,
+  taskId: string,
+  incoming: Decision[],
+  mode: "append" | "replace",
+): Promise<void> {
+  if (mode === "replace") {
+    await tx
+      .delete(taskDecisions)
+      .where(eq(taskDecisions.taskId, taskId));
+    if (incoming.length > 0) {
+      await tx.insert(taskDecisions).values(
+        incoming.map((d, i) => ({
+          id: d.id,
+          taskId,
+          text: d.text,
+          source: d.source,
+          decisionDate: d.date,
+          position: i,
+        })),
+      );
+    }
+    return;
+  }
+  if (incoming.length === 0) return;
+
+  const incomingIds = incoming.map((d) => d.id);
+  const incomingTexts = incoming.map((d) => d.text);
+  await tx
+    .delete(taskDecisions)
+    .where(
+      and(
+        eq(taskDecisions.taskId, taskId),
+        or(
+          inArray(taskDecisions.id, incomingIds),
+          inArray(taskDecisions.text, incomingTexts),
+        ),
+      ),
+    );
+
+  const [maxPosRow] = await tx
+    .select({
+      maxPos: sql<number>`COALESCE(MAX(${taskDecisions.position}), -1)`,
+    })
+    .from(taskDecisions)
+    .where(eq(taskDecisions.taskId, taskId));
+  const basePos = (maxPosRow?.maxPos ?? -1) + 1;
+
+  await tx
+    .insert(taskDecisions)
+    .values(
+      incoming.map((d, i) => ({
+        id: d.id,
+        taskId,
+        text: d.text,
+        source: d.source,
+        decisionDate: d.date,
+        position: basePos + i,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: taskDecisions.id,
+      set: {
+        text: sql`EXCLUDED.text`,
+        source: sql`EXCLUDED.source`,
+        decisionDate: sql`EXCLUDED.decision_date`,
+        position: sql`EXCLUDED.position`,
+        updatedAt: sql`NOW()`,
+      },
+    });
+}
+
+/**
+ * Fetch the criteria projection for a task, ordered by position.
+ *
+ * UNCHECKED: this function performs NO authorization. The caller must
+ * assert task access first. The `Unchecked` suffix is the contract — do
+ * not strip it when wrapping or re-exporting.
+ *
+ * @param taskId - UUID of the task.
+ * @returns Ordered array of criteria (empty when none exist).
+ */
+export async function fetchCriteriaUnchecked(
+  taskId: string,
+): Promise<AcceptanceCriterion[]> {
+  return db
+    .select({
+      id: taskAcceptanceCriteria.id,
+      text: taskAcceptanceCriteria.text,
+      checked: taskAcceptanceCriteria.checked,
+    })
+    .from(taskAcceptanceCriteria)
+    .where(eq(taskAcceptanceCriteria.taskId, taskId))
+    .orderBy(asc(taskAcceptanceCriteria.position));
+}
+
+/**
+ * Fetch the decisions projection for a task, ordered by position. Maps
+ * `decision_date` back to the public `date` field.
+ *
+ * UNCHECKED: caller must assert task access first.
+ *
+ * @param taskId - UUID of the task.
+ * @returns Ordered array of decisions (empty when none exist).
+ */
+export async function fetchDecisionsUnchecked(
+  taskId: string,
+): Promise<Decision[]> {
+  const rows = await db
+    .select({
+      id: taskDecisions.id,
+      text: taskDecisions.text,
+      source: taskDecisions.source,
+      date: taskDecisions.decisionDate,
+    })
+    .from(taskDecisions)
+    .where(eq(taskDecisions.taskId, taskId))
+    .orderBy(asc(taskDecisions.position));
+  return rows;
+}
+
+/**
+ * Batch-fetch criteria keyed by task id. Mirrors {@link fetchAssigneesByTaskUnchecked}.
+ *
+ * UNCHECKED: caller must assert access on every supplied taskId.
+ *
+ * @param taskIds - UUIDs to fetch criteria for.
+ * @returns Map of taskId -> AcceptanceCriterion[]; missing tasks omitted.
+ */
+export async function fetchCriteriaByTaskUnchecked(
+  taskIds: string[],
+): Promise<Map<string, AcceptanceCriterion[]>> {
+  const result = new Map<string, AcceptanceCriterion[]>();
+  if (taskIds.length === 0) return result;
+  const rows = await db
+    .select({
+      taskId: taskAcceptanceCriteria.taskId,
+      id: taskAcceptanceCriteria.id,
+      text: taskAcceptanceCriteria.text,
+      checked: taskAcceptanceCriteria.checked,
+    })
+    .from(taskAcceptanceCriteria)
+    .where(inArray(taskAcceptanceCriteria.taskId, taskIds))
+    .orderBy(asc(taskAcceptanceCriteria.position));
+  for (const r of rows) {
+    const list = result.get(r.taskId) ?? [];
+    list.push({ id: r.id, text: r.text, checked: r.checked });
+    result.set(r.taskId, list);
+  }
+  return result;
+}
+
+/**
+ * Batch-fetch decisions keyed by task id.
+ *
+ * UNCHECKED: caller must assert access on every supplied taskId.
+ *
+ * @param taskIds - UUIDs to fetch decisions for.
+ * @returns Map of taskId -> Decision[]; missing tasks omitted.
+ */
+export async function fetchDecisionsByTaskUnchecked(
+  taskIds: string[],
+): Promise<Map<string, Decision[]>> {
+  const result = new Map<string, Decision[]>();
+  if (taskIds.length === 0) return result;
+  const rows = await db
+    .select({
+      taskId: taskDecisions.taskId,
+      id: taskDecisions.id,
+      text: taskDecisions.text,
+      source: taskDecisions.source,
+      date: taskDecisions.decisionDate,
+    })
+    .from(taskDecisions)
+    .where(inArray(taskDecisions.taskId, taskIds))
+    .orderBy(asc(taskDecisions.position));
+  for (const r of rows) {
+    const list = result.get(r.taskId) ?? [];
+    list.push({ id: r.id, text: r.text, source: r.source, date: r.date });
+    result.set(r.taskId, list);
+  }
+  return result;
+}
+
+/**
+ * Build a `(task_id, count)` subquery for criteria counts. Sibling of
+ * {@link assigneeCountSubquery} — LEFT JOIN it against `tasks` instead of
+ * issuing a correlated subquery per row.
+ *
+ * Each call returns a fresh subquery with the same alias; do not reuse in
+ * one query.
+ */
+export function criteriaCountSubquery() {
+  return db
+    .select({
+      taskId: taskAcceptanceCriteria.taskId,
+      count: sql<number>`COUNT(*)::int`.as("count"),
+    })
+    .from(taskAcceptanceCriteria)
+    .groupBy(taskAcceptanceCriteria.taskId)
+    .as("criteria_counts");
+}
+
+/**
+ * Build a `(task_id, count)` subquery for decisions counts. Sibling of
+ * {@link criteriaCountSubquery}.
+ *
+ * Each call returns a fresh subquery with the same alias; do not reuse in
+ * one query.
+ */
+export function decisionsCountSubquery() {
+  return db
+    .select({
+      taskId: taskDecisions.taskId,
+      count: sql<number>`COUNT(*)::int`.as("count"),
+    })
+    .from(taskDecisions)
+    .groupBy(taskDecisions.taskId)
+    .as("decisions_counts");
+}
+
 // ---------------------------------------------------------------------------
 // Single-entity queries
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch the full task row plus the composed `taskRef`. Membership-gated.
+ * Fetch the full task row plus the composed `taskRef`, assignees, criteria,
+ * decisions, and links. Membership-gated.
+ *
+ * Single round-trip: a raw SQL query joins `tasks` to `projects` and folds
+ * `task_assignees`, `task_acceptance_criteria`, `task_decisions`, and
+ * `task_links` into JSON-aggregated subqueries. Replaces the previous
+ * three-query approach (`assertTaskAccess` row + `projects` lookup +
+ * parallel assignees/links fetches) that became necessary once
+ * criteria/decisions moved out of the `tasks` row in MYMR-136.
+ *
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
- * @returns Full task row with composed `taskRef`.
+ * @returns Full task row with composed `taskRef`, assignees, criteria,
+ *   decisions, and links.
  * @throws ForbiddenError when the caller is not a member of the task's team.
  */
 export async function getTaskFull(
   ctx: AuthContext,
   taskId: string,
 ): Promise<TaskFull> {
-  const task = await assertTaskAccess(taskId, ctx);
+  await assertTaskAccess(taskId, ctx);
 
-  const [proj] = await db
-    .select({ identifier: projects.identifier })
-    .from(projects)
-    .where(eq(projects.id, task.projectId))
-    .limit(1);
-  if (!proj) {
+  type RawRow = {
+    id: string;
+    project_id: string;
+    title: string;
+    sequence_number: number;
+    description: string;
+    status: string;
+    order: number;
+    category: string | null;
+    implementation_plan: string | null;
+    execution_record: string | null;
+    tags: string[];
+    priority: string | null;
+    estimate: number | null;
+    files: string[];
+    history: unknown[];
+    created_at: string | Date;
+    updated_at: string | Date;
+    project_identifier: string;
+    assignees: { userId: string; name: string; email: string }[] | null;
+    acceptance_criteria:
+      | { id: string; text: string; checked: boolean }[]
+      | null;
+    decisions:
+      | { id: string; text: string; source: string; date: string }[]
+      | null;
+    links:
+      | {
+          id: string;
+          kind: string;
+          url: string;
+          label: string | null;
+          createdAt: string;
+        }[]
+      | null;
+  };
+
+  const rows = await executeRaw<RawRow>(
+    db,
+    sql`
+      SELECT
+        t.*,
+        p.identifier AS project_identifier,
+        (SELECT json_agg(json_build_object('userId', u.id, 'name', u.name, 'email', u.email) ORDER BY u.name)
+         FROM task_assignees ta
+         JOIN neon_auth."user" u ON u.id = ta.user_id
+         WHERE ta.task_id = t.id) AS assignees,
+        (SELECT json_agg(json_build_object('id', c.id, 'text', c.text, 'checked', c.checked) ORDER BY c.position)
+         FROM task_acceptance_criteria c
+         WHERE c.task_id = t.id) AS acceptance_criteria,
+        (SELECT json_agg(json_build_object('id', d.id, 'text', d.text, 'source', d.source, 'date', d.decision_date) ORDER BY d.position)
+         FROM task_decisions d
+         WHERE d.task_id = t.id) AS decisions,
+        (SELECT json_agg(json_build_object('id', l.id, 'kind', l.kind, 'url', l.url, 'label', l.label, 'createdAt', l.created_at) ORDER BY l.created_at)
+         FROM task_links l
+         WHERE l.task_id = t.id) AS links
+      FROM tasks t
+      JOIN projects p ON p.id = t.project_id
+      WHERE t.id = ${taskId}
+    `,
+  );
+
+  if (rows.length === 0) {
     throw new Error(
-      `Task ${task.id} references missing project ${task.projectId}`,
+      `getTaskFull: task ${taskId} disappeared after access check`,
     );
   }
-  const taskRef = composeTaskRef(asIdentifier(proj.identifier), task.sequenceNumber);
-  const [assignees, links] = await Promise.all([
-    fetchAssigneesUnchecked(taskId),
-    fetchLinksUnchecked(taskId),
-  ]);
-
-  return { ...task, taskRef, assignees, links };
+  const r = rows[0];
+  const taskRef = composeTaskRef(
+    asIdentifier(r.project_identifier),
+    r.sequence_number,
+  );
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    title: r.title,
+    sequenceNumber: r.sequence_number,
+    description: r.description,
+    status: r.status as TaskStatus,
+    order: r.order,
+    category: r.category,
+    implementationPlan: r.implementation_plan,
+    executionRecord: r.execution_record,
+    tags: r.tags ?? [],
+    priority: r.priority as Priority | null,
+    estimate: r.estimate as Estimate | null,
+    files: r.files ?? [],
+    history: (r.history ?? []) as HistoryEntry[],
+    createdAt: r.created_at instanceof Date ? r.created_at : new Date(r.created_at),
+    updatedAt: r.updated_at instanceof Date ? r.updated_at : new Date(r.updated_at),
+    taskRef,
+    assignees: r.assignees ?? [],
+    acceptanceCriteria: r.acceptance_criteria ?? [],
+    decisions: (r.decisions ?? []).map((d) => ({
+      ...d,
+      source: d.source as Decision["source"],
+    })),
+    links: (r.links ?? []).map((l) => ({
+      id: l.id,
+      kind: l.kind,
+      url: l.url,
+      label: l.label,
+      createdAt: new Date(l.createdAt),
+    })),
+  };
 }
 
 /**
@@ -428,47 +901,6 @@ function deriveTaskState(
 }
 
 /**
- * Derive states for a batch of tasks in one project. Internal helper —
- * caller is responsible for asserting project access first.
- *
- * Builds the effective dependency graph once and reuses it for every task in
- * the subset, so dep readiness reflects transitive blocking through cancelled
- * middles rather than just direct edges.
- *
- * Routes through {@link deriveTaskStatesSlim} after computing the slim
- * `hasDescription` / `hasCriteria` booleans from the heavy text columns —
- * single derivation pipeline, no drift.
- *
- * @param projectId - UUID of the project.
- * @param taskSubset - Tasks to derive states for.
- * @returns Map of taskId → TaskState.
- */
-export async function deriveTaskStates(
-  projectId: string,
-  taskSubset: {
-    id: string;
-    status: string;
-    description: string;
-    acceptanceCriteria: unknown;
-  }[],
-): Promise<Map<string, TaskState>> {
-  return deriveTaskStatesSlim(
-    projectId,
-    taskSubset.map((t) => {
-      const criteria = t.acceptanceCriteria as
-        | { id: string; text: string; checked: boolean }[]
-        | null;
-      return {
-        id: t.id,
-        status: t.status,
-        hasDescription: t.description.trim().length > 0,
-        hasCriteria: Array.isArray(criteria) && criteria.length > 0,
-      };
-    }),
-  );
-}
-
-/**
  * Batch state derivation against the slim payload shape — the path the UI
  * fetches via `getProjectGraphSlim`. Avoids selecting `description` and
  * `acceptanceCriteria` from the database just to compute boolean flags;
@@ -564,7 +996,7 @@ export async function searchTasks(
       priority: tasks.priority,
       estimate: tasks.estimate,
       description: tasks.description,
-      acceptanceCriteria: tasks.acceptanceCriteria,
+      hasCriteria: sql<boolean>`EXISTS (SELECT 1 FROM task_acceptance_criteria c WHERE c.task_id = ${tasks.id})`,
       sequenceNumber: tasks.sequenceNumber,
       order: tasks.order,
       assigneeCount: sql<number>`COALESCE(${ac.count}, 0)`,
@@ -601,7 +1033,15 @@ export async function searchTasks(
   }
 
   const trimmed = matchingTasks.slice(0, 20);
-  const stateMap = await deriveTaskStates(projectId, trimmed);
+  const stateMap = await deriveTaskStatesSlim(
+    projectId,
+    trimmed.map((t) => ({
+      id: t.id,
+      status: t.status,
+      hasDescription: t.description.trim().length > 0,
+      hasCriteria: t.hasCriteria,
+    })),
+  );
 
   const identifier = asIdentifier(project.identifier);
   return enrichWithTaskRef(trimmed, identifier).map((t) => ({
@@ -693,7 +1133,7 @@ export async function searchTasksPaged(
       priority: tasks.priority,
       estimate: tasks.estimate,
       description: tasks.description,
-      acceptanceCriteria: tasks.acceptanceCriteria,
+      hasCriteria: sql<boolean>`EXISTS (SELECT 1 FROM task_acceptance_criteria c WHERE c.task_id = ${tasks.id})`,
       sequenceNumber: tasks.sequenceNumber,
       order: tasks.order,
       assigneeCount: sql<number>`COALESCE(${ac.count}, 0)`,
@@ -714,7 +1154,15 @@ export async function searchTasksPaged(
 
   if (trimmed.length === 0) return { rows: [], nextCursor: null };
 
-  const stateMap = await deriveTaskStates(projectId, trimmed);
+  const stateMap = await deriveTaskStatesSlim(
+    projectId,
+    trimmed.map((t) => ({
+      id: t.id,
+      status: t.status,
+      hasDescription: t.description.trim().length > 0,
+      hasCriteria: t.hasCriteria,
+    })),
+  );
   const identifier = asIdentifier(project.identifier);
   const rows = enrichWithTaskRef(trimmed, identifier).map((t) => ({
     id: t.id,
@@ -972,6 +1420,22 @@ export type CreateTaskInput = Omit<NewTask, "id" | "sequenceNumber"> & {
    * insert. Not a column on `tasks`; stripped before the typed insert.
    */
   prUrl?: string | null;
+  /**
+   * Optional initial acceptance criteria. After MYMR-136 these live in
+   * `task_acceptance_criteria`, not on `tasks`. The field is accepted on
+   * input so the restore path (`StructureView.tsx`) and MCP create handler
+   * can pass strings or partial objects; the data layer normalizes and
+   * writes the child table inside the same transaction. Stripped before
+   * the typed insert into `tasks`.
+   */
+  acceptanceCriteria?: unknown[];
+  /**
+   * Optional initial decisions. Parallel of `acceptanceCriteria` — accepts
+   * strings or partial `Decision` shapes, normalized and written to
+   * `task_decisions` inside the same transaction. Stripped before the
+   * typed insert into `tasks`.
+   */
+  decisions?: unknown[];
 };
 
 /**
@@ -1068,52 +1532,42 @@ async function setTaskAssignees(
 export async function createTask(ctx: AuthContext, data: CreateTaskInput) {
   await assertProjectAccess(data.projectId, ctx);
 
-  if (Array.isArray(data.acceptanceCriteria)) {
-    data = {
-      ...data,
-      acceptanceCriteria: (data.acceptanceCriteria as unknown[]).map((c) => {
-        if (typeof c === "string")
-          return { id: crypto.randomUUID(), text: c, checked: false };
-        const obj = c as Record<string, unknown>;
-        return {
-          id: (obj.id as string) ?? crypto.randomUUID(),
-          text:
-            (obj.text as string) ?? (obj.description as string) ?? String(c),
-          checked: (obj.checked as boolean) ?? false,
-        };
-      }),
-    };
-  }
+  const normalizedCriteria = Array.isArray(data.acceptanceCriteria)
+    ? normalizeCriteria(data.acceptanceCriteria)
+    : undefined;
+  const normalizedDecisions = Array.isArray(data.decisions)
+    ? normalizeDecisions(data.decisions)
+    : undefined;
 
-  if (Array.isArray(data.decisions)) {
-    data = {
-      ...data,
-      decisions: (data.decisions as unknown[]).map((d) => {
-        if (typeof d === "string") {
-          return {
-            id: crypto.randomUUID(),
-            text: d,
-            date: new Date().toISOString().slice(0, 10),
-            source: "refinement" as const,
-          };
-        }
-        const obj = d as Record<string, unknown>;
-        return {
-          id: (obj.id as string) ?? crypto.randomUUID(),
-          text: (obj.text as string) ?? String(d),
-          date: (obj.date as string) ?? new Date().toISOString().slice(0, 10),
-          source: (obj.source as Decision["source"]) ?? "refinement",
-        } as Decision;
-      }),
-    };
-  }
+  // formatTaskMarkdownFields walks acceptanceCriteria/decisions when present,
+  // so feed it the normalized arrays before the split so the text-format pass
+  // still runs on every criterion / decision body.
+  const formatInput: Record<string, unknown> = { ...data };
+  if (normalizedCriteria) formatInput.acceptanceCriteria = normalizedCriteria;
+  if (normalizedDecisions) formatInput.decisions = normalizedDecisions;
+  const formatted = await formatTaskMarkdownFields(formatInput);
 
-  data = await formatTaskMarkdownFields(data);
+  const formattedCriteria = Array.isArray(formatted.acceptanceCriteria)
+    ? (formatted.acceptanceCriteria as AcceptanceCriterion[])
+    : undefined;
+  const formattedDecisions = Array.isArray(formatted.decisions)
+    ? (formatted.decisions as Decision[])
+    : undefined;
 
-  // assigneeIds and prUrl are not columns on `tasks`; strip before the
-  // typed insert so the row spread does not poison the values clause.
-  // Junction-table writes happen later inside the same transaction.
-  const { assigneeIds, prUrl, ...taskFields } = data;
+  // acceptanceCriteria, decisions, assigneeIds, and prUrl are not columns on
+  // `tasks`; strip before the typed insert so the row spread does not poison
+  // the values clause. Junction / child-table writes happen later inside the
+  // same transaction.
+  const {
+    assigneeIds,
+    prUrl,
+    acceptanceCriteria: _ac,
+    decisions: _dec,
+    ...taskFields
+  } = formatted as CreateTaskInput;
+  void _ac;
+  void _dec;
+
   if (typeof prUrl === "string") {
     try {
       classifyLink(prUrl);
@@ -1168,6 +1622,13 @@ export async function createTask(ctx: AuthContext, data: CreateTaskInput) {
     if (assigneeIds && assigneeIds.length > 0) {
       await assertAssigneesInTeam(tx, taskFields.projectId, assigneeIds);
       await setTaskAssignees(tx, task.id, assigneeIds, "replace");
+    }
+
+    if (formattedCriteria && formattedCriteria.length > 0) {
+      await applyCriteriaWrite(tx, task.id, formattedCriteria, "replace");
+    }
+    if (formattedDecisions && formattedDecisions.length > 0) {
+      await applyDecisionsWrite(tx, task.id, formattedDecisions, "replace");
     }
 
     if (typeof prUrl === "string" && prUrl.length > 0) {
@@ -1249,6 +1710,16 @@ export type TaskUpdate = {
   prUrl?: string | null;
 };
 
+/** Update result enriches the raw `Task` row with the post-write criteria
+ * and decisions so callers that consult them (e.g. tool-handlers'
+ * completion-protocol hint checks) see the same shape they saw on the
+ * JSONB-storage path. Empty arrays when none exist; the fields are still
+ * always present on a non-no-op update. */
+export type UpdateTaskResult = typeof tasks.$inferSelect & {
+  acceptanceCriteria: AcceptanceCriterion[];
+  decisions: Decision[];
+};
+
 /**
  * Update a task and append a history entry. Protected fields (id, projectId,
  * sequenceNumber, history, createdAt, updatedAt) are stripped before the
@@ -1258,14 +1729,16 @@ export type TaskUpdate = {
  * @param taskId - UUID of the task to update.
  * @param input - Partial fields to update.
  * @param overwriteArrays - When true, replace array fields instead of appending.
- * @returns The updated row.
+ * @returns The updated row with post-write criteria and decisions joined in.
+ *   On a pure no-op (assigneeIds=[] in append mode and nothing else),
+ *   criteria/decisions still come from the live tables.
  */
 export async function updateTask(
   ctx: AuthContext,
   taskId: string,
   input: TaskUpdate,
   overwriteArrays = false,
-) {
+): Promise<UpdateTaskResult> {
   await assertTaskAccess(taskId, ctx);
 
   let changes: Record<string, unknown> = { ...input };
@@ -1305,106 +1778,73 @@ export async function updateTask(
     }
   }
 
-  if (Array.isArray(changes.acceptanceCriteria)) {
-    changes.acceptanceCriteria = (
-      changes.acceptanceCriteria as unknown[]
-    ).map((c) => {
-      if (typeof c === "string") {
-        return { id: crypto.randomUUID(), text: c, checked: false };
-      }
-      const obj = c as Record<string, unknown>;
-      return {
-        id: (obj.id as string) ?? crypto.randomUUID(),
-        text: (obj.text as string) ?? (obj.description as string) ?? String(c),
-        checked: (obj.checked as boolean) ?? false,
-      };
-    });
-  }
+  // acceptanceCriteria and decisions write child tables, not the tasks row.
+  // Pull them out before the typed update; normalize for downstream writes.
+  const rawCriteria =
+    "acceptanceCriteria" in changes
+      ? (changes.acceptanceCriteria as unknown[])
+      : undefined;
+  delete changes.acceptanceCriteria;
+  const rawDecisions =
+    "decisions" in changes ? (changes.decisions as unknown[]) : undefined;
+  delete changes.decisions;
+  const normalizedCriteria = rawCriteria
+    ? normalizeCriteria(rawCriteria)
+    : undefined;
+  const normalizedDecisions = rawDecisions
+    ? normalizeDecisions(rawDecisions)
+    : undefined;
 
-  if (Array.isArray(changes.decisions)) {
-    changes.decisions = (changes.decisions as unknown[]).map((d) => {
-      if (typeof d === "string") {
-        return {
-          id: crypto.randomUUID(),
-          text: d,
-          date: new Date().toISOString().slice(0, 10),
-          source: "refinement",
-        };
-      }
-      const obj = d as Record<string, unknown>;
-      return {
-        id: (obj.id as string) ?? crypto.randomUUID(),
-        text: (obj.text as string) ?? String(d),
-        date: (obj.date as string) ?? new Date().toISOString().slice(0, 10),
-        source: (obj.source as string) ?? "refinement",
-      };
-    });
-  }
-
-  changes = await formatTaskMarkdownFields(changes);
+  // Markdown-format the criteria/decisions text alongside the row's own
+  // text fields so the formatter still runs on every body.
+  const formatInput: Record<string, unknown> = { ...changes };
+  if (normalizedCriteria) formatInput.acceptanceCriteria = normalizedCriteria;
+  if (normalizedDecisions) formatInput.decisions = normalizedDecisions;
+  const formatted = await formatTaskMarkdownFields(formatInput);
+  const formattedCriteria = Array.isArray(formatted.acceptanceCriteria)
+    ? (formatted.acceptanceCriteria as AcceptanceCriterion[])
+    : undefined;
+  const formattedDecisions = Array.isArray(formatted.decisions)
+    ? (formatted.decisions as Decision[])
+    : undefined;
+  changes = { ...formatted };
+  delete changes.acceptanceCriteria;
+  delete changes.decisions;
 
   let wasNoOp = false;
   const updated = await db.transaction(async (tx) => {
-    // Re-read the row under FOR UPDATE so the merge sees the committed
-    // state from any concurrent updateTask. Without the lock, two callers
-    // both reading from outside the tx would compute their merged arrays
-    // against the same baseline and the second write would clobber the
-    // first's contribution.
+    // After MYMR-136 the row-level INSERT/UPDATE/DELETE on the child tables
+    // is atomic per row via MVCC + ON CONFLICT (id) DO UPDATE, so the old
+    // `FOR UPDATE` row lock that serialized concurrent merges is no longer
+    // required. A plain SELECT is sufficient for the no-op short-circuit
+    // and the history-row baseline.
     const [current] = await tx
       .select()
       .from(tasks)
-      .where(eq(tasks.id, taskId))
-      .for("update");
+      .where(eq(tasks.id, taskId));
     if (!current) throw new ForbiddenError("Forbidden", "task", taskId);
 
     // After normalization above, an `assigneeIds: []` in default-append
     // mode collapses to `assigneeIds === undefined`. If that was the
     // only field on the call AND nothing else needs writing (no
-    // assignee write, no prUrl write), the call is a pure no-op: skip
-    // the tasks-row bump, the empty history entry, and the downstream
-    // realtime emit.
+    // assignee write, no prUrl write, no criteria/decisions write), the
+    // call is a pure no-op: skip the tasks-row bump, the empty history
+    // entry, and the downstream realtime emit.
     if (
       Object.keys(changes).length === 0 &&
       assigneeIds === undefined &&
-      !hasPrUrl
+      !hasPrUrl &&
+      formattedCriteria === undefined &&
+      formattedDecisions === undefined
     ) {
       wasNoOp = true;
       return current;
     }
 
-    if (!overwriteArrays) {
-      if (Array.isArray(changes.decisions)) {
-        const existing = (current.decisions ?? []) as Record<string, unknown>[];
-        const incoming = changes.decisions as Record<string, unknown>[];
-        const incomingIds = new Set(incoming.map((c) => c.id));
-        const incomingTexts = new Set(incoming.map((c) => c.text));
-        changes.decisions = [
-          ...existing.filter(
-            (c) => !incomingIds.has(c.id) && !incomingTexts.has(c.text),
-          ),
-          ...incoming,
-        ];
-      }
-      if (Array.isArray(changes.acceptanceCriteria)) {
-        const existing = (current.acceptanceCriteria ?? []) as Record<
-          string,
-          unknown
-        >[];
-        const incoming = changes.acceptanceCriteria as Record<string, unknown>[];
-        const incomingIds = new Set(incoming.map((c) => c.id));
-        const incomingTexts = new Set(incoming.map((c) => c.text));
-        changes.acceptanceCriteria = [
-          ...existing.filter(
-            (c) => !incomingIds.has(c.id) && !incomingTexts.has(c.text),
-          ),
-          ...incoming,
-        ];
-      }
-      if (Array.isArray(changes.files)) {
-        const existing = (current.files ?? []) as string[];
-        const merged = new Set([...existing, ...(changes.files as string[])]);
-        changes.files = [...merged];
-      }
+    if (!overwriteArrays && Array.isArray(changes.files)) {
+      const existing = (current.files ?? []) as string[];
+      const merged = new Set([...existing, ...(changes.files as string[])]);
+      changes.files = [...merged];
     }
 
     const isStatusChange =
@@ -1412,6 +1852,8 @@ export async function updateTask(
     const fieldList = [
       ...Object.keys(changes),
       ...(assigneeIds !== undefined ? ["assigneeIds"] : []),
+      ...(formattedCriteria !== undefined ? ["acceptanceCriteria"] : []),
+      ...(formattedDecisions !== undefined ? ["decisions"] : []),
       ...(hasPrUrl ? ["prUrl"] : []),
     ];
     const entry = makeHistoryEntry({
@@ -1423,15 +1865,48 @@ export async function updateTask(
       actor: "ai",
     });
 
-    const [row] = await tx
-      .update(tasks)
-      .set({
-        ...changes,
-        history: sql`${tasks.history} || ${JSON.stringify([entry])}::jsonb`,
-        updatedAt: new Date(),
-      })
-      .where(eq(tasks.id, taskId))
-      .returning();
+    let row = current;
+    if (Object.keys(changes).length > 0) {
+      const [updatedRow] = await tx
+        .update(tasks)
+        .set({
+          ...changes,
+          history: sql`${tasks.history} || ${JSON.stringify([entry])}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(eq(tasks.id, taskId))
+        .returning();
+      row = updatedRow;
+    } else {
+      // No `tasks` row column changed; still append the history entry and
+      // bump updated_at so the cache validator advances on this turn.
+      const [updatedRow] = await tx
+        .update(tasks)
+        .set({
+          history: sql`${tasks.history} || ${JSON.stringify([entry])}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(eq(tasks.id, taskId))
+        .returning();
+      row = updatedRow;
+    }
+
+    if (formattedCriteria !== undefined) {
+      await applyCriteriaWrite(
+        tx,
+        taskId,
+        formattedCriteria,
+        overwriteArrays ? "replace" : "append",
+      );
+    }
+    if (formattedDecisions !== undefined) {
+      await applyDecisionsWrite(
+        tx,
+        taskId,
+        formattedDecisions,
+        overwriteArrays ? "replace" : "append",
+      );
+    }
 
     if (assigneeIds !== undefined) {
       await assertAssigneesInTeam(tx, current.projectId, assigneeIds);
@@ -1469,10 +1944,29 @@ export async function updateTask(
     return row;
   });
 
-  // Reflect a prUrl-only call (no other field changes) as a meaningful
-  // realtime event so detail surfaces see the link arrive.
-  if (!wasNoOp || hasPrUrl) emitTaskEvent(updated.projectId, taskId);
-  return updated;
+  // Reflect a prUrl- or criteria/decisions-only call (no other field
+  // changes) as a meaningful realtime event so detail surfaces see the
+  // change arrive.
+  if (
+    !wasNoOp ||
+    hasPrUrl ||
+    formattedCriteria !== undefined ||
+    formattedDecisions !== undefined
+  ) {
+    emitTaskEvent(updated.projectId, taskId);
+  }
+  // Surface the post-update criteria/decisions on the returned row so
+  // callers that read `result.acceptanceCriteria` / `result.decisions`
+  // (e.g. tool-handlers' completion-protocol hint checks) see the same
+  // shape they saw on the JSONB-storage path.
+  const [postCriteria, postDecisions] = await Promise.all([
+    fetchCriteriaUnchecked(taskId),
+    fetchDecisionsUnchecked(taskId),
+  ]);
+  return Object.assign(updated, {
+    acceptanceCriteria: postCriteria,
+    decisions: postDecisions,
+  });
 }
 
 // ---------------------------------------------------------------------------

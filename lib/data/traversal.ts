@@ -7,7 +7,7 @@ import { fetchDependencyChain } from "@/lib/db/raw/fetch-dependency-chain";
 import { fetchDownstream } from "@/lib/db/raw/fetch-downstream";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
 import { buildEffectiveDepGraph } from "@/lib/graph/effective-deps";
-import { deriveTaskStates } from "@/lib/data/task";
+import { deriveTaskStatesSlim } from "@/lib/data/task";
 import type { AuthContext } from "@/lib/auth/context";
 import {
   assertProjectAccess,
@@ -211,14 +211,14 @@ export type ReadyTask = {
  * own, but the walk continues through them to find the next active
  * prerequisite (which is the actual wall).
  *
- * Delegates the derivation to `deriveTaskStates` so this analyzer agrees
+ * Delegates the derivation to `deriveTaskStatesSlim` so this analyzer agrees
  * with search-result `state`, `getPlannableTasks`, `mymir_analyze
  * type='blocked'`, and the slim payload's `task.state`. Single source of
  * truth — no parallel implementations to drift.
  *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
- * @returns Array of ready tasks (state === 'ready' from deriveTaskStates).
+ * @returns Array of ready tasks (state === 'ready' from deriveTaskStatesSlim).
  */
 export async function getReadyTasks(
   ctx: AuthContext,
@@ -234,7 +234,7 @@ export async function getReadyTasks(
       status: tasks.status,
       tags: tasks.tags,
       description: tasks.description,
-      acceptanceCriteria: tasks.acceptanceCriteria,
+      hasCriteria: sql<boolean>`EXISTS (SELECT 1 FROM task_acceptance_criteria c WHERE c.task_id = ${tasks.id})`,
       sequenceNumber: tasks.sequenceNumber,
     })
     .from(tasks)
@@ -242,7 +242,15 @@ export async function getReadyTasks(
 
   if (allTasks.length === 0) return [];
 
-  const stateMap = await deriveTaskStates(projectId, allTasks);
+  const stateMap = await deriveTaskStatesSlim(
+    projectId,
+    allTasks.map((t) => ({
+      id: t.id,
+      status: t.status,
+      hasDescription: t.description.trim().length > 0,
+      hasCriteria: t.hasCriteria,
+    })),
+  );
 
   return allTasks
     .filter((task) => stateMap.get(task.id) === "ready")
@@ -271,12 +279,12 @@ export type PlannableTask = {
 /**
  * Find draft tasks that are plannable now: have a description, at least one
  * acceptance criterion, AND every effective dep is done. Delegates the
- * readiness logic to `deriveTaskStates` so this analyzer agrees with
+ * readiness logic to `deriveTaskStatesSlim` so this analyzer agrees with
  * search-result `state` and `mymir_analyze type='blocked'`.
  *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
- * @returns Array of plannable tasks (state === 'plannable' from deriveTaskStates).
+ * @returns Array of plannable tasks (state === 'plannable' from deriveTaskStatesSlim).
  */
 export async function getPlannableTasks(
   ctx: AuthContext,
@@ -292,7 +300,7 @@ export async function getPlannableTasks(
       status: tasks.status,
       tags: tasks.tags,
       description: tasks.description,
-      acceptanceCriteria: tasks.acceptanceCriteria,
+      hasCriteria: sql<boolean>`EXISTS (SELECT 1 FROM task_acceptance_criteria c WHERE c.task_id = ${tasks.id})`,
       sequenceNumber: tasks.sequenceNumber,
     })
     .from(tasks)
@@ -300,7 +308,15 @@ export async function getPlannableTasks(
 
   if (allTasks.length === 0) return [];
 
-  const stateMap = await deriveTaskStates(projectId, allTasks);
+  const stateMap = await deriveTaskStatesSlim(
+    projectId,
+    allTasks.map((t) => ({
+      id: t.id,
+      status: t.status,
+      hasDescription: t.description.trim().length > 0,
+      hasCriteria: t.hasCriteria,
+    })),
+  );
 
   return allTasks
     .filter((task) => stateMap.get(task.id) === "plannable")

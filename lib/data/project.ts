@@ -116,7 +116,7 @@ export async function getProjectGraphSlim(
       updatedAt: tasks.updatedAt,
       sequenceNumber: tasks.sequenceNumber,
       hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
-      hasCriteria: sql<boolean>`jsonb_array_length(${tasks.acceptanceCriteria}) > 0`,
+      hasCriteria: sql<boolean>`EXISTS (SELECT 1 FROM task_acceptance_criteria tac WHERE tac.task_id = ${tasks.id})`,
       assigneeCount: sql<number>`COALESCE(${ac.count}, 0)`,
       assigneeUserIds: sql<string[]>`COALESCE(${au.userIds}, '{}'::uuid[])`,
     })
