@@ -118,12 +118,13 @@ Drop to \`mymir_query\` for browse / lookup:
 2. Context. \`mymir_context taskId='...' depth='agent'\`. Multi-hop dependencies, upstream execution records, acceptance criteria.
 3. Understand before doing. Read the description, the executionRecords from upstream tasks, and the relevant code. Reason about what could go wrong. Ask if anything is unclear. Then implement. Rushing here produces work that misses the actual requirement.
 4. Build the work.
-5. Mark done via the Completion Protocol below. The \`done\` update carries:
+5. Mark in_review via the Completion Protocol below. The \`in_review\` update carries:
    - \`executionRecord\`: 3 to 5 sentences with concrete file paths, function names, endpoints. Description is scope; executionRecord is HOW it was built.
    - \`decisions\`: one line per technical choice. Format: CHOICE plus WHY.
    - \`files\`: every path created or modified.
    - \`acceptanceCriteria\`: pass each item as \`{text, checked: true|false}\`. Evaluate against the work; do not auto-check everything.
    Do not pass \`overwriteArrays=true\` unless replacing the arrays is the intent and the user has confirmed.
+   The HOTL gate flips \`in_review → done\` after PR approval/merge. Agents must not self-promote to \`done\`.
 6. Propagate per the Propagate section.
 
 ## Plan a draft task
@@ -132,7 +133,7 @@ Drop to \`mymir_query\` for browse / lookup:
 3. \`mymir_task action='update' implementationPlan='<full markdown>' status='planned'\`. Save the complete unabridged plan. Do not summarize.
 
 ## Completion Protocol
-Run before transitioning a task to \`done\` or \`cancelled\`.
+Run before transitioning a task to \`in_review\`, \`done\`, or \`cancelled\`. The implementer phase terminates at \`in_review\` with the full payload; \`done\` is reserved for the HOTL operator after PR approval (no extra fields required, transition only).
 
 1. Detect mode by transcript.
    - Dispatched: your context shows a parent agent invoked you. Mark done directly with the full payload and return a one-sentence summary to the parent. Do not ask.
@@ -244,8 +245,8 @@ export function registerAllTools(server: McpServer, ctx: AuthContext): void {
           .describe("Verb+noun, imperative. Required for create (e.g. 'Implement JWT auth', not 'Auth'). Artifacts §1."),
         description: z.string().optional()
           .describe("2-4 sentences (up to 6-8 for genuinely complex tasks; single-sentence rejected): what + who it serves + where it fits in the architecture. Required for create. Artifacts §1."),
-        status: z.enum(["draft", "planned", "in_progress", "done", "cancelled"]).optional()
-          .describe("Lifecycle: draft → planned → in_progress → done. cancelled = terminal abandoned work; populate executionRecord with rationale. Cancelled deps are transparent: dependents stay blocked through the cancelled task's own unsatisfied deps. Excluded from progress and critical path."),
+        status: z.enum(["draft", "planned", "in_progress", "in_review", "done", "cancelled"]).optional()
+          .describe("Lifecycle: draft → planned → in_progress → in_review → done. The implementer subagent's terminal write is `in_review` (PR opened, tests green); the HOTL gate flips to `done` after PR approval. cancelled = terminal abandoned work; populate executionRecord with rationale. Cancelled deps are transparent: dependents stay blocked through the cancelled task's own unsatisfied deps. Excluded from progress and critical path."),
         acceptanceCriteria: z.array(
           z.union([
             z.string(),
