@@ -8,8 +8,10 @@
 -- through the parent table's RLS rather than duplicating the membership
 -- join, so adding new auth schema columns doesn't ripple here.
 --
--- `task_edges` is asymmetric on purpose: USING gates source-side reads;
--- WITH CHECK validates BOTH endpoints on INSERT/UPDATE.
+-- `task_edges` USING and WITH CHECK both require both endpoints visible.
+-- USING-side symmetry matters because Postgres does not evaluate WITH CHECK
+-- on DELETE; without it, a source-side member could delete (or read) an
+-- edge whose target lives in a foreign team.
 
 -- projects — 1-hop directly on organization_id
 DROP POLICY IF EXISTS "projects_member_access" ON "projects";
@@ -22,12 +24,13 @@ DROP POLICY IF EXISTS "tasks_member_access" ON "tasks";
 CREATE POLICY "tasks_member_access" ON "tasks" AS PERMISSIVE FOR ALL TO public
   USING (project_id IN (SELECT id FROM public.projects));
 
--- task_edges — USING is source-only (read scoping); WITH CHECK validates BOTH
--- endpoints belong to a task the caller can reach. INSERT/UPDATE go through
--- WITH CHECK; DELETE only fires USING (deferred finding in docs/review_results.md).
+-- task_edges — both endpoints must be visible (see header on the DELETE quirk).
 DROP POLICY IF EXISTS "task_edges_member_access" ON "task_edges";
 CREATE POLICY "task_edges_member_access" ON "task_edges" AS PERMISSIVE FOR ALL TO public
-  USING (source_task_id IN (SELECT id FROM public.tasks))
+  USING (
+    source_task_id IN (SELECT id FROM public.tasks)
+    AND target_task_id IN (SELECT id FROM public.tasks)
+  )
   WITH CHECK (
     source_task_id IN (SELECT id FROM public.tasks)
     AND target_task_id IN (SELECT id FROM public.tasks)

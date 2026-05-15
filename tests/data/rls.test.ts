@@ -236,4 +236,59 @@ describe("RLS — defense-in-depth on team isolation", () => {
       await c.end({ timeout: 5 });
     }
   });
+
+  test("task_edges USING hides cross-team edges from source-side member — SELECT and DELETE are both blocked", async () => {
+    const fxA = await seedUserOrgProject("rls-edge-del-a");
+    const fxB = await seedUserOrgProject("rls-edge-del-b");
+
+    const sr = serviceRoleConnect();
+    let taskAId: string;
+    let taskBId: string;
+    try {
+      const [a] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fxA.projectId}, 'task-A', 1)
+        RETURNING id
+      `;
+      const [b] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fxB.projectId}, 'task-B', 1)
+        RETURNING id
+      `;
+      taskAId = a.id;
+      taskBId = b.id;
+      await sr`
+        INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+        VALUES (${taskAId}, ${taskBId}, 'depends_on')
+      `;
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    try {
+      await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fxA.userId}, true)`;
+        const visible = await tx<{ source_task_id: string; target_task_id: string }[]>`
+          SELECT source_task_id, target_task_id FROM task_edges
+          WHERE source_task_id = ${taskAId}
+        `;
+        expect(visible.length).toBe(0);
+        await tx`DELETE FROM task_edges WHERE source_task_id = ${taskAId}`;
+      });
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+
+    const sr2 = serviceRoleConnect();
+    try {
+      const [row] = await sr2<{ count: number }[]>`
+        SELECT count(*)::int AS count FROM task_edges
+        WHERE source_task_id = ${taskAId} AND target_task_id = ${taskBId}
+      `;
+      expect(row.count).toBe(1);
+    } finally {
+      await sr2.end({ timeout: 5 });
+    }
+  });
 });
