@@ -202,7 +202,7 @@ export function ForceGraph({
   // synchronously before first paint — no flash of incorrectly-positioned
   // nodes, no top-left frame on initial open.
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [light, setLight] = useState(false);
+  const [light, setLight] = useState(isLightMode);
   const [zoomLevel, setZoomLevel] = useState(1);
 
   const tier = useMemo(() => getTierConfig(getDeviceTier()), []);
@@ -230,9 +230,10 @@ export function ForceGraph({
     [edges, filteredTaskIds, edgeFilter],
   );
 
-  // Theme detection with mutation observer
+  // Theme detection with mutation observer — initial value comes from the
+  // lazy `useState` initialiser above, so this effect only owns the live
+  // subscription to subsequent class flips.
   useEffect(() => {
-    setLight(isLightMode());
     const observer = new MutationObserver(() => setLight(isLightMode()));
     observer.observe(document.documentElement, {
       attributes: true,
@@ -327,10 +328,18 @@ export function ForceGraph({
   const ticking = state === "settling";
 
   // Refs that the camera effect and render loop can read without re-firing.
+  // Mirrored in an effect so the assignment happens after commit (the rule
+  // forbids ref writes during render). Consumers run in effects / RAF / event
+  // handlers, all of which fire after commit, so the one-render delay is
+  // invisible.
   const nodesForFitRef = useRef<GraphNode[]>([]);
-  nodesForFitRef.current = nodes;
   const sizeRef = useRef(size);
-  sizeRef.current = size;
+  useEffect(() => {
+    nodesForFitRef.current = nodes;
+  }, [nodes]);
+  useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
 
   // Link counts for node sizing
   const linkCounts = useMemo(() => buildLinkCounts(links), [links]);
@@ -549,7 +558,13 @@ export function ForceGraph({
 
   // -----------------------------------------------------------------------
   // Drawing
+  //
+  // Mutates per-node animation lerps in place every frame — see the inline
+  // block below for the rationale. The hook-level `immutability` disable
+  // mirrors the inner block disable; the rule reports at both the mutation
+  // site and the containing hook.
   // -----------------------------------------------------------------------
+  // eslint-disable-next-line react-hooks/immutability
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -647,6 +662,12 @@ export function ForceGraph({
     // sync pre-tick paths still get a fade-in if a node was uncached.
     // At degrade level 2 we snap to target instead so the render loop's
     // `hasAnimating` flag drops to false and we stop redrawing for free.
+    //
+    // The lerp fields are canvas-only and never drive React reconciliation,
+    // so the React Compiler's immutability invariant doesn't apply — moving
+    // them off the node object into a side Map would burn allocation budget
+    // on every frame for 200+ node graphs.
+    /* eslint-disable react-hooks/immutability */
     if (effLerps) {
       for (const n of nodes) {
         if (n._enterT < 1) n._enterT = Math.min(1, n._enterT + 0.04);
@@ -671,6 +692,7 @@ export function ForceGraph({
         n._hoverT = n.id === hovered || n.id === selectedNodeId ? 1 : 0;
       }
     }
+    /* eslint-enable react-hooks/immutability */
 
     // --- Links ---
     for (const l of links) {
@@ -1205,7 +1227,11 @@ export function ForceGraph({
 
   // -----------------------------------------------------------------------
   // Render loop — drives canvas redraws while there's anything in motion.
+  // Calls `draw()` which mutates the per-node lerp fields in place. The
+  // `immutability` rule reports at the containing effect as well as the
+  // mutation site, so both need to be silenced.
   // -----------------------------------------------------------------------
+  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
     let raf: number;
     let running = true;

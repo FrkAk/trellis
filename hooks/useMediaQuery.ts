@@ -1,6 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
+
+/** No-op subscriber used on the server where `matchMedia` doesn't exist. */
+const noopSubscribe = () => () => {};
 
 /**
  * Track a CSS media query as boolean state. SSR returns the `defaultValue`
@@ -11,25 +14,22 @@ import { useEffect, useState } from 'react';
  * @returns `true` when the query currently matches.
  */
 export function useMediaQuery(query: string, defaultValue = false): boolean {
-  const [matches, setMatches] = useState(defaultValue);
-  const [prevQuery, setPrevQuery] = useState(query);
+  // `subscribe` must keep a stable identity per `query` — `useSyncExternalStore`
+  // re-subscribes whenever the function reference changes, which without
+  // memoisation would mean an unsubscribe+resubscribe on every render.
+  const subscribe = useCallback(
+    (callback: () => void) => {
+      if (typeof window === 'undefined') return noopSubscribe();
+      const mql = window.matchMedia(query);
+      mql.addEventListener('change', callback);
+      return () => mql.removeEventListener('change', callback);
+    },
+    [query],
+  );
 
-  if (query !== prevQuery) {
-    setPrevQuery(query);
-    if (typeof window !== 'undefined') {
-      setMatches(window.matchMedia(query).matches);
-    }
-  }
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mql = window.matchMedia(query);
-    if (mql.matches !== matches) setMatches(mql.matches);
-    const listener = (e: MediaQueryListEvent) => setMatches(e.matches);
-    mql.addEventListener('change', listener);
-    return () => mql.removeEventListener('change', listener);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
-
-  return matches;
+  return useSyncExternalStore(
+    subscribe,
+    () => (typeof window === 'undefined' ? defaultValue : window.matchMedia(query).matches),
+    () => defaultValue,
+  );
 }

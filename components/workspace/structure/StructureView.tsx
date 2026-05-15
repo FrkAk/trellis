@@ -582,6 +582,14 @@ export function StructureView({
   // Sizes include borders so positions stay pixel-accurate without needing
   // `measureElement`. Group headers ship `border-y` (+2px) on a 30px row;
   // task and new-task rows ship `border-b` (+1px) on a 34px row.
+  //
+  // `useVirtualizer` returns methods backed by interior mutability, so
+  // React Compiler skips memoizing this component automatically — the
+  // skip is safe (per React docs) and TanStack Virtual has no compatible
+  // alternative API. The lint rule just announces the auto-skip; suppress
+  // the warning since there's no library-side fix available.
+  // https://react.dev/reference/eslint-plugin-react-hooks/lints/incompatible-library
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: flatItems.length,
     getScrollElement: () => scrollRef.current,

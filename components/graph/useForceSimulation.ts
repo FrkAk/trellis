@@ -503,9 +503,12 @@ export function useForceSimulation(
    *  without stomping the adaptive `centerStrength * 0.55`. */
   const cfgRef = useRef<ForceConfig | null>(null);
   /** Mirror the latest tick callback into a ref so attached d3-force
-   *  handlers don't capture a stale closure. */
+   *  handlers don't capture a stale closure. Effect-time write (rather than
+   *  render-time) keeps the React Compiler safe-mutation invariant. */
   const onTickRef = useRef<(() => void) | undefined>(onTick);
-  onTickRef.current = onTick;
+  useEffect(() => {
+    onTickRef.current = onTick;
+  }, [onTick]);
   useEffect(() => {
     dimsRef.current = { width, height };
   }, [width, height]);
@@ -517,12 +520,17 @@ export function useForceSimulation(
 
   // Mirror React state into refs so effects and callbacks can read latest
   // values without listing them as deps (which would re-fire too aggressively).
-  nodesRef.current = nodes;
-  linksRef.current = links;
+  // Writes happen post-commit via `useEffect`; downstream consumers (the
+  // topology effect, attached d3 handlers, the consumer's render loop) all
+  // run after commit, so the one-render delay is invisible.
   const selectedRef = useRef(selectedNodeId);
-  selectedRef.current = selectedNodeId;
   const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
+  useEffect(() => {
+    nodesRef.current = nodes;
+    linksRef.current = links;
+    selectedRef.current = selectedNodeId;
+    projectIdRef.current = projectId;
+  });
 
   // Topology fingerprint — ids + edges only. Statuses and titles go through
   // `propsKey` and never trigger a simulation rebuild.
@@ -593,6 +601,13 @@ export function useForceSimulation(
 
   // -----------------------------------------------------------------------
   // Topology effect — (re)build the simulation on real structural changes.
+  //
+  // The setState calls coordinate with imperative d3-force lifecycle
+  // (sim.stop, attach handlers, restart) and the state machine cannot be
+  // derived from props alone — `setState("cold")` here is the cleanup
+  // counterpart to the live-tick branches that fire `setState("settling"|
+  // "settled"|"focused")`. Disabling `set-state-in-effect` on the relevant
+  // sites is intentional.
   // -----------------------------------------------------------------------
   useEffect(() => {
     if (taskList.length === 0) {
@@ -600,9 +615,11 @@ export function useForceSimulation(
       simRef.current = null;
       nodesRef.current = [];
       linksRef.current = [];
+      /* eslint-disable react-hooks/set-state-in-effect */
       setNodes([]);
       setLinks([]);
       setState("cold");
+      /* eslint-enable react-hooks/set-state-in-effect */
       return;
     }
 
@@ -713,6 +730,11 @@ export function useForceSimulation(
     if (ns.length === 0) return;
     const byId = new Map(taskList.map((t) => [t.id, t] as const));
     let changed = false;
+    // In-place property mutation is deliberate: d3-force's simulation
+    // references node objects by identity, so swapping in fresh objects
+    // would reset positions every time a status flipped. The lint rule
+    // flags this; the design requires it.
+    /* eslint-disable react-hooks/immutability */
     for (const n of ns) {
       const t = byId.get(n.id);
       if (!t) continue;
@@ -725,6 +747,7 @@ export function useForceSimulation(
         changed = true;
       }
     }
+    /* eslint-enable react-hooks/immutability */
     if (changed) setNodes([...ns]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propsKey]);
@@ -750,6 +773,11 @@ export function useForceSimulation(
       }
     }
 
+    // State-machine transitions tied to imperative d3 coordination
+    // (sim.stop, pin/unpin via fx/fy). The state cannot be derived because
+    // the same `selectedNodeId` value drives different transitions
+    // depending on the simulation's prior phase.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (selectedNodeId) {
       const next = ns.find((n) => n.id === selectedNodeId);
       if (next && next.x != null && next.y != null) {
@@ -763,6 +791,7 @@ export function useForceSimulation(
       // the consumer animates a fit-to-graph.
       setState("settled");
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [selectedNodeId]);
 
   // -----------------------------------------------------------------------
