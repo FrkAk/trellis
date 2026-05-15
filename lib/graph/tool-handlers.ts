@@ -87,6 +87,7 @@ import {
   InsufficientRoleError,
   assertTaskAccess,
 } from "@/lib/auth/authorization";
+import { withUserContext } from "@/lib/db/rls";
 
 /**
  * Build variant-warning hints for proposed tags against existing project tags.
@@ -1156,7 +1157,10 @@ export async function handleTask(
           );
         }
         if (p.status === "in_review") {
-          const persistedLinks = await fetchLinksUnchecked(p.taskId);
+          const taskId = p.taskId;
+          const persistedLinks = await withUserContext(ctx.userId, (tx) =>
+            fetchLinksUnchecked(taskId, tx),
+          );
           updateHints.push(
             ...inReviewStatusHints(
               {

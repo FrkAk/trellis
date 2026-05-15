@@ -26,7 +26,7 @@ export async function grantOrgAccess(
 ): Promise<void> {
   try {
     if (broker.hasConnections(userId)) {
-      const projectIds = await listOrgProjectIds(orgId);
+      const projectIds = await listOrgProjectIds(userId, orgId);
       for (const id of projectIds) {
         broker.register(userId, `project:${id}`);
       }
@@ -64,7 +64,7 @@ export async function revokeOrgAccess(
 ): Promise<void> {
   try {
     if (broker.hasConnections(userId)) {
-      const projectIds = await listOrgProjectIds(orgId);
+      const projectIds = await listOrgProjectIds(userId, orgId);
       for (const id of projectIds) {
         broker.unregister(userId, `project:${id}`);
       }

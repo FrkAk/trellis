@@ -11,7 +11,8 @@ import {
   sql,
 } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { withUserContext } from "@/lib/db/rls";
+import { type Conn } from "@/lib/db/raw";
+import { withUserContext, type Tx } from "@/lib/db/rls";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
 import {
   assigneeCountExpr,
@@ -103,84 +104,90 @@ export async function getProjectGraphSlim(
 ): Promise<ProjectGraphSlim> {
   const { project } = await assertProjectAccess(projectId, ctx);
 
-  const tasksQ = db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      category: tasks.category,
-      tags: tasks.tags,
-      priority: tasks.priority,
-      estimate: tasks.estimate,
-      order: tasks.order,
-      updatedAt: tasks.updatedAt,
-      sequenceNumber: tasks.sequenceNumber,
-      hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
-      hasCriteria: hasCriteriaExpr(),
-      assigneeCount: assigneeCountExpr(),
-      assigneeUserIds: assigneeUserIdsExpr(),
-    })
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId))
-    .orderBy(asc(tasks.order));
+  return withUserContext(ctx.userId, async (tx) => {
+    const tasksQ = tx
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        category: tasks.category,
+        tags: tasks.tags,
+        priority: tasks.priority,
+        estimate: tasks.estimate,
+        order: tasks.order,
+        updatedAt: tasks.updatedAt,
+        sequenceNumber: tasks.sequenceNumber,
+        hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
+        hasCriteria: hasCriteriaExpr(),
+        assigneeCount: assigneeCountExpr(),
+        assigneeUserIds: assigneeUserIdsExpr(),
+      })
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId))
+      .orderBy(asc(tasks.order));
 
-  const edgesQ = db
-    .select()
-    .from(taskEdges)
-    .where(
-      or(
-        sql`${taskEdges.sourceTaskId} IN (SELECT id FROM ${tasks} WHERE ${tasks.projectId} = ${projectId})`,
-        sql`${taskEdges.targetTaskId} IN (SELECT id FROM ${tasks} WHERE ${tasks.projectId} = ${projectId})`,
-      ),
+    const edgesQ = tx
+      .select()
+      .from(taskEdges)
+      .where(
+        or(
+          sql`${taskEdges.sourceTaskId} IN (SELECT id FROM ${tasks} WHERE ${tasks.projectId} = ${projectId})`,
+          sql`${taskEdges.targetTaskId} IN (SELECT id FROM ${tasks} WHERE ${tasks.projectId} = ${projectId})`,
+        ),
+      );
+
+    const [taskRows, edges] = await Promise.all([tasksQ, edgesQ]);
+    const enriched = enrichWithTaskRef(
+      taskRows,
+      asIdentifier(project.identifier),
     );
 
-  const [taskRows, edges] = await Promise.all([tasksQ, edgesQ]);
-  const enriched = enrichWithTaskRef(taskRows, asIdentifier(project.identifier));
+    // Derived state lives on the slim payload — single source of truth for
+    // every UI surface. Computing it here avoids the client mirroring the
+    // server-side rules and the drift that pattern caused historically.
+    const stateMap = await deriveTaskStatesSlim(
+      projectId,
+      enriched.map((t) => ({
+        id: t.id,
+        status: t.status,
+        hasDescription: t.hasDescription,
+        hasCriteria: t.hasCriteria,
+      })),
+      tx,
+    );
 
-  // Derived state lives on the slim payload — single source of truth for
-  // every UI surface. Computing it here avoids the client mirroring the
-  // server-side rules and the drift that pattern caused historically.
-  const stateMap = await deriveTaskStatesSlim(
-    projectId,
-    enriched.map((t) => ({
+    const slimTasks: TaskGraphSlim[] = enriched.map((t) => ({
       id: t.id,
+      taskRef: t.taskRef,
+      title: t.title,
       status: t.status,
+      category: t.category,
+      tags: t.tags,
+      priority: t.priority,
+      estimate: t.estimate,
+      order: t.order,
+      updatedAt: t.updatedAt,
       hasDescription: t.hasDescription,
       hasCriteria: t.hasCriteria,
-    })),
-  );
+      state: stateMap.get(t.id) ?? "draft",
+      assigneeCount: t.assigneeCount,
+      assigneeUserIds: t.assigneeUserIds,
+    }));
 
-  const slimTasks: TaskGraphSlim[] = enriched.map((t) => ({
-    id: t.id,
-    taskRef: t.taskRef,
-    title: t.title,
-    status: t.status,
-    category: t.category,
-    tags: t.tags,
-    priority: t.priority,
-    estimate: t.estimate,
-    order: t.order,
-    updatedAt: t.updatedAt,
-    hasDescription: t.hasDescription,
-    hasCriteria: t.hasCriteria,
-    state: stateMap.get(t.id) ?? "draft",
-    assigneeCount: t.assigneeCount,
-    assigneeUserIds: t.assigneeUserIds,
-  }));
-
-  return {
-    project: {
-      id: project.id,
-      organizationId: project.organizationId,
-      identifier: project.identifier,
-      title: project.title,
-      status: project.status,
-      updatedAt: project.updatedAt,
-      categories: project.categories,
-    },
-    tasks: slimTasks,
-    edges,
-  };
+    return {
+      project: {
+        id: project.id,
+        organizationId: project.organizationId,
+        identifier: project.identifier,
+        title: project.title,
+        status: project.status,
+        updatedAt: project.updatedAt,
+        categories: project.categories,
+      },
+      tasks: slimTasks,
+      edges,
+    };
+  });
 }
 
 /**
@@ -203,22 +210,24 @@ export async function getProjectChrome(
     ctx,
   );
 
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId));
+  return withUserContext(ctx.userId, async (tx) => {
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId));
 
-  return {
-    id: project.id,
-    title: project.title,
-    description: project.description,
-    identifier: project.identifier,
-    status: project.status,
-    categories: project.categories,
-    organization: org,
-    memberRole,
-    taskCount: count,
-  };
+    return {
+      id: project.id,
+      title: project.title,
+      description: project.description,
+      identifier: project.identifier,
+      status: project.status,
+      categories: project.categories,
+      organization: org,
+      memberRole,
+      taskCount: count,
+    };
+  });
 }
 
 /**
@@ -236,13 +245,15 @@ export async function getProjectMaxUpdatedAt(
   projectId: string,
 ): Promise<Date> {
   await assertProjectAccess(projectId, ctx);
-  const max = await getProjectMaxUpdatedAtRaw(db, projectId);
-  if (!max) {
-    throw new Error(
-      `getProjectMaxUpdatedAt: project ${projectId} disappeared after access check`,
-    );
-  }
-  return max;
+  return withUserContext(ctx.userId, async (tx) => {
+    const max = await getProjectMaxUpdatedAtRaw(tx, projectId);
+    if (!max) {
+      throw new Error(
+        `getProjectMaxUpdatedAt: project ${projectId} disappeared after access check`,
+      );
+    }
+    return max;
+  });
 }
 
 /**
@@ -257,27 +268,38 @@ export async function getProjectMaxUpdatedAt(
 export async function getProjectListMaxUpdatedAt(
   ctx: AuthContext,
 ): Promise<Date> {
-  return getProjectListMaxUpdatedAtRaw(db, ctx.userId);
+  return withUserContext(ctx.userId, async (tx) =>
+    getProjectListMaxUpdatedAtRaw(tx, ctx.userId),
+  );
 }
 
 /**
- * Project ids belonging to a single organization. Org-scoped — no per-user
- * filtering — meant for trusted server-side bookkeeping inside the
- * org-membership hooks where the caller has already established the scope
- * (see `lib/realtime/access.ts`). Do NOT expose this through any route or
- * server action that takes user-supplied input.
+ * Project ids belonging to a single organization. Meant for trusted
+ * server-side bookkeeping inside the org-membership hooks where the caller
+ * has already established the scope (see `lib/realtime/access.ts`). Do NOT
+ * expose this through any route or server action that takes user-supplied
+ * input.
  *
+ * Runs under `withUserContext(userId)` so RLS still scopes the query to the
+ * caller's accessible rows under the `app_user` role; the realtime hook
+ * only ever invokes this for the user who just gained or lost access, so
+ * the user's membership is the correct scope.
+ *
+ * @param userId - Verified user id of the member triggering the lookup.
  * @param organizationId - Organization UUID.
  * @returns Project ids in that org.
  */
 export async function listOrgProjectIds(
+  userId: string,
   organizationId: string,
 ): Promise<string[]> {
-  const rows = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.organizationId, organizationId));
-  return rows.map((r) => r.id);
+  return withUserContext(userId, async (tx) => {
+    const rows = await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.organizationId, organizationId));
+    return rows.map((r) => r.id);
+  });
 }
 
 /**
@@ -292,17 +314,19 @@ export async function listOrgProjectIds(
 export async function listAccessibleProjectIds(
   ctx: AuthContext,
 ): Promise<string[]> {
-  const rows = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .innerJoin(
-      member,
-      and(
-        eq(member.organizationId, projects.organizationId),
-        eq(member.userId, ctx.userId),
-      ),
-    );
-  return rows.map((r) => r.id);
+  return withUserContext(ctx.userId, async (tx) => {
+    const rows = await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .innerJoin(
+        member,
+        and(
+          eq(member.organizationId, projects.organizationId),
+          eq(member.userId, ctx.userId),
+        ),
+      );
+    return rows.map((r) => r.id);
+  });
 }
 
 /**
@@ -332,12 +356,16 @@ export async function getProjectSlim(
  * assemblers — caller has already asserted access on the parent task.
  *
  * @param projectId - UUID of the project.
+ * @param conn - Optional drizzle client or transaction. Defaults to the
+ *   pool client; callers running under a `withUserContext` transaction
+ *   should pass `tx` so the RLS GUC is honored.
  * @returns The identifier string, or null when the project is missing.
  */
 export async function getProjectIdentifier(
   projectId: string,
+  conn: Conn = db,
 ): Promise<string | null> {
-  const [row] = await db
+  const [row] = await conn
     .select({ identifier: projects.identifier })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -358,12 +386,16 @@ export type ProjectHeader = {
  * task.
  *
  * @param projectId - UUID of the project.
+ * @param conn - Optional drizzle client or transaction. Defaults to the
+ *   pool client; callers running under a `withUserContext` transaction
+ *   should pass `tx` so the RLS GUC is honored.
  * @returns The header, or null when the project is missing.
  */
 export async function getProjectHeader(
   projectId: string,
+  conn: Conn = db,
 ): Promise<ProjectHeader | null> {
-  const [row] = await db
+  const [row] = await conn
     .select({
       title: projects.title,
       description: projects.description,
@@ -393,7 +425,9 @@ export async function getProjectTags(
   projectId: string,
 ): Promise<ProjectTag[]> {
   await assertProjectAccess(projectId, ctx);
-  return aggregateProjectTags(db, projectId);
+  return withUserContext(ctx.userId, async (tx) =>
+    aggregateProjectTags(tx, projectId),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -418,45 +452,47 @@ export async function getProjectMeta(
 ): Promise<ProjectMeta> {
   const { project } = await assertProjectAccess(projectId, ctx);
 
-  const [tagVocabulary, statusCounts] = await Promise.all([
-    aggregateProjectTags(db, projectId),
-    db
-      .select({
-        status: tasks.status,
-        count: sql<number>`count(*)::int`.as("count"),
-      })
-      .from(tasks)
-      .where(eq(tasks.projectId, projectId))
-      .groupBy(tasks.status),
-  ]);
+  return withUserContext(ctx.userId, async (tx) => {
+    const [tagVocabulary, statusCounts] = await Promise.all([
+      aggregateProjectTags(tx, projectId),
+      tx
+        .select({
+          status: tasks.status,
+          count: sql<number>`count(*)::int`.as("count"),
+        })
+        .from(tasks)
+        .where(eq(tasks.projectId, projectId))
+        .groupBy(tasks.status),
+    ]);
 
-  const taskStats: ProjectTaskStats = {
-    total: 0,
-    done: 0,
-    inProgress: 0,
-    cancelled: 0,
-  };
-  for (const c of statusCounts) {
-    taskStats.total += c.count;
-    if (c.status === "done") taskStats.done = c.count;
-    else if (c.status === "in_progress") taskStats.inProgress = c.count;
-    else if (c.status === "cancelled") taskStats.cancelled = c.count;
-  }
-  const denominator = taskStats.total - taskStats.cancelled;
-  const progress =
-    denominator > 0 ? Math.round((taskStats.done / denominator) * 100) : 0;
+    const taskStats: ProjectTaskStats = {
+      total: 0,
+      done: 0,
+      inProgress: 0,
+      cancelled: 0,
+    };
+    for (const c of statusCounts) {
+      taskStats.total += c.count;
+      if (c.status === "done") taskStats.done = c.count;
+      else if (c.status === "in_progress") taskStats.inProgress = c.count;
+      else if (c.status === "cancelled") taskStats.cancelled = c.count;
+    }
+    const denominator = taskStats.total - taskStats.cancelled;
+    const progress =
+      denominator > 0 ? Math.round((taskStats.done / denominator) * 100) : 0;
 
-  return {
-    id: project.id,
-    identifier: project.identifier,
-    title: project.title,
-    description: project.description,
-    status: project.status,
-    categories: project.categories,
-    tagVocabulary,
-    taskStats,
-    progress,
-  };
+    return {
+      id: project.id,
+      identifier: project.identifier,
+      title: project.title,
+      description: project.description,
+      status: project.status,
+      categories: project.categories,
+      tagVocabulary,
+      taskStats,
+      progress,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -492,43 +528,45 @@ export type UserTeamEntry = {
 export async function listUserTeams(
   ctx: AuthContext,
 ): Promise<UserTeamEntry[]> {
-  const memberships = await db
-    .select({
-      id: organization.id,
-      name: organization.name,
-      slug: organization.slug,
-      role: member.role,
-    })
-    .from(member)
-    .innerJoin(organization, eq(organization.id, member.organizationId))
-    .where(eq(member.userId, ctx.userId))
-    .orderBy(asc(member.createdAt));
+  return withUserContext(ctx.userId, async (tx) => {
+    const memberships = await tx
+      .select({
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        role: member.role,
+      })
+      .from(member)
+      .innerJoin(organization, eq(organization.id, member.organizationId))
+      .where(eq(member.userId, ctx.userId))
+      .orderBy(asc(member.createdAt));
 
-  if (memberships.length === 0) return [];
+    if (memberships.length === 0) return [];
 
-  const counts = await db
-    .select({
-      organizationId: projects.organizationId,
-      total: sql<number>`count(*)::int`.as("total"),
-    })
-    .from(projects)
-    .where(
-      inArray(
-        projects.organizationId,
-        memberships.map((m) => m.id),
-      ),
-    )
-    .groupBy(projects.organizationId);
+    const counts = await tx
+      .select({
+        organizationId: projects.organizationId,
+        total: sql<number>`count(*)::int`.as("total"),
+      })
+      .from(projects)
+      .where(
+        inArray(
+          projects.organizationId,
+          memberships.map((m) => m.id),
+        ),
+      )
+      .groupBy(projects.organizationId);
 
-  const countByOrg = new Map(counts.map((c) => [c.organizationId, c.total]));
+    const countByOrg = new Map(counts.map((c) => [c.organizationId, c.total]));
 
-  return memberships.map((m) => ({
-    id: m.id,
-    name: m.name,
-    slug: m.slug,
-    role: m.role,
-    projectCount: countByOrg.get(m.id) ?? 0,
-  }));
+    return memberships.map((m) => ({
+      id: m.id,
+      name: m.name,
+      slug: m.slug,
+      role: m.role,
+      projectCount: countByOrg.get(m.id) ?? 0,
+    }));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -567,91 +605,93 @@ export async function listProjectsSlim(
             OR (${projects.updatedAt} = ${afterIso}::timestamptz AND ${projects.id} < ${after.id}))`
     : sql`TRUE`;
 
-  const rawRows = await db
-    .select({
-      project: getTableColumns(projects),
-      organization: {
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
-      },
-      memberRole: member.role,
-    })
-    .from(projects)
-    .innerJoin(
-      member,
-      and(
-        eq(member.organizationId, projects.organizationId),
-        eq(member.userId, ctx.userId),
-      ),
-    )
-    .innerJoin(organization, eq(organization.id, projects.organizationId))
-    .where(cursorClause)
-    .orderBy(desc(projects.updatedAt), desc(projects.id))
-    .limit(limit + 1);
+  return withUserContext(ctx.userId, async (tx) => {
+    const rawRows = await tx
+      .select({
+        project: getTableColumns(projects),
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+        },
+        memberRole: member.role,
+      })
+      .from(projects)
+      .innerJoin(
+        member,
+        and(
+          eq(member.organizationId, projects.organizationId),
+          eq(member.userId, ctx.userId),
+        ),
+      )
+      .innerJoin(organization, eq(organization.id, projects.organizationId))
+      .where(cursorClause)
+      .orderBy(desc(projects.updatedAt), desc(projects.id))
+      .limit(limit + 1);
 
-  const hasMore = rawRows.length > limit;
-  const trimmed = hasMore ? rawRows.slice(0, limit) : rawRows;
-  const last = trimmed[trimmed.length - 1];
-  const nextCursor =
-    hasMore && last
-      ? encodeCursor({
-          updatedAt: new Date(last.project.updatedAt),
-          id: last.project.id,
-        })
-      : null;
+    const hasMore = rawRows.length > limit;
+    const trimmed = hasMore ? rawRows.slice(0, limit) : rawRows;
+    const last = trimmed[trimmed.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? encodeCursor({
+            updatedAt: new Date(last.project.updatedAt),
+            id: last.project.id,
+          })
+        : null;
 
-  if (trimmed.length === 0) return { rows: [], nextCursor: null };
+    if (trimmed.length === 0) return { rows: [], nextCursor: null };
 
-  const projectIds = trimmed.map((p) => p.project.id);
-  const counts = await db
-    .select({
-      projectId: tasks.projectId,
-      status: tasks.status,
-      count: sql<number>`count(*)::int`.as("count"),
-    })
-    .from(tasks)
-    .where(sql`${tasks.projectId} IN ${projectIds}`)
-    .groupBy(tasks.projectId, tasks.status);
+    const projectIds = trimmed.map((p) => p.project.id);
+    const counts = await tx
+      .select({
+        projectId: tasks.projectId,
+        status: tasks.status,
+        count: sql<number>`count(*)::int`.as("count"),
+      })
+      .from(tasks)
+      .where(sql`${tasks.projectId} IN ${projectIds}`)
+      .groupBy(tasks.projectId, tasks.status);
 
-  const statsByProject = new Map<string, ProjectTaskStats>();
-  for (const c of counts) {
-    const stats = statsByProject.get(c.projectId) ?? {
-      total: 0,
-      done: 0,
-      inProgress: 0,
-      cancelled: 0,
-    };
-    stats.total += c.count;
-    if (c.status === "done") stats.done = c.count;
-    else if (c.status === "in_progress") stats.inProgress = c.count;
-    else if (c.status === "cancelled") stats.cancelled = c.count;
-    statsByProject.set(c.projectId, stats);
-  }
-
-  const rows: ProjectListEntry[] = trimmed.map(
-    ({ project, organization: org, memberRole }) => {
-      const taskStats = statsByProject.get(project.id) ?? {
+    const statsByProject = new Map<string, ProjectTaskStats>();
+    for (const c of counts) {
+      const stats = statsByProject.get(c.projectId) ?? {
         total: 0,
         done: 0,
         inProgress: 0,
         cancelled: 0,
       };
-      const denominator = taskStats.total - taskStats.cancelled;
-      return {
-        ...project,
-        organization: org,
-        memberRole,
-        taskStats,
-        progress:
-          denominator > 0
-            ? Math.round((taskStats.done / denominator) * 100)
-            : 0,
-      };
-    },
-  );
+      stats.total += c.count;
+      if (c.status === "done") stats.done = c.count;
+      else if (c.status === "in_progress") stats.inProgress = c.count;
+      else if (c.status === "cancelled") stats.cancelled = c.count;
+      statsByProject.set(c.projectId, stats);
+    }
 
-  return { rows, nextCursor };
+    const rows: ProjectListEntry[] = trimmed.map(
+      ({ project, organization: org, memberRole }) => {
+        const taskStats = statsByProject.get(project.id) ?? {
+          total: 0,
+          done: 0,
+          inProgress: 0,
+          cancelled: 0,
+        };
+        const denominator = taskStats.total - taskStats.cancelled;
+        return {
+          ...project,
+          organization: org,
+          memberRole,
+          taskStats,
+          progress:
+            denominator > 0
+              ? Math.round((taskStats.done / denominator) * 100)
+              : 0,
+        };
+      },
+    );
+
+    return { rows, nextCursor };
+  });
 }
 
 /**
@@ -672,81 +712,83 @@ export async function listProjectsSlim(
 export async function listProjectsForMcp(
   ctx: AuthContext,
 ): Promise<ProjectListEntryMcp[]> {
-  const rawRows = await db
-    .select({
-      id: projects.id,
-      organizationId: projects.organizationId,
-      title: projects.title,
-      identifier: projects.identifier,
-      status: projects.status,
-      organization: {
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
-      },
-      memberRole: member.role,
-    })
-    .from(projects)
-    .innerJoin(
-      member,
-      and(
-        eq(member.organizationId, projects.organizationId),
-        eq(member.userId, ctx.userId),
-      ),
-    )
-    .innerJoin(organization, eq(organization.id, projects.organizationId))
-    .orderBy(desc(projects.updatedAt), desc(projects.id));
+  return withUserContext(ctx.userId, async (tx) => {
+    const rawRows = await tx
+      .select({
+        id: projects.id,
+        organizationId: projects.organizationId,
+        title: projects.title,
+        identifier: projects.identifier,
+        status: projects.status,
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+        },
+        memberRole: member.role,
+      })
+      .from(projects)
+      .innerJoin(
+        member,
+        and(
+          eq(member.organizationId, projects.organizationId),
+          eq(member.userId, ctx.userId),
+        ),
+      )
+      .innerJoin(organization, eq(organization.id, projects.organizationId))
+      .orderBy(desc(projects.updatedAt), desc(projects.id));
 
-  if (rawRows.length === 0) return [];
+    if (rawRows.length === 0) return [];
 
-  const projectIds = rawRows.map((r) => r.id);
-  const counts = await db
-    .select({
-      projectId: tasks.projectId,
-      status: tasks.status,
-      count: sql<number>`count(*)::int`.as("count"),
-    })
-    .from(tasks)
-    .where(sql`${tasks.projectId} IN ${projectIds}`)
-    .groupBy(tasks.projectId, tasks.status);
+    const projectIds = rawRows.map((r) => r.id);
+    const counts = await tx
+      .select({
+        projectId: tasks.projectId,
+        status: tasks.status,
+        count: sql<number>`count(*)::int`.as("count"),
+      })
+      .from(tasks)
+      .where(sql`${tasks.projectId} IN ${projectIds}`)
+      .groupBy(tasks.projectId, tasks.status);
 
-  const statsByProject = new Map<string, ProjectTaskStats>();
-  for (const c of counts) {
-    const stats = statsByProject.get(c.projectId) ?? {
-      total: 0,
-      done: 0,
-      inProgress: 0,
-      cancelled: 0,
-    };
-    stats.total += c.count;
-    if (c.status === "done") stats.done = c.count;
-    else if (c.status === "in_progress") stats.inProgress = c.count;
-    else if (c.status === "cancelled") stats.cancelled = c.count;
-    statsByProject.set(c.projectId, stats);
-  }
+    const statsByProject = new Map<string, ProjectTaskStats>();
+    for (const c of counts) {
+      const stats = statsByProject.get(c.projectId) ?? {
+        total: 0,
+        done: 0,
+        inProgress: 0,
+        cancelled: 0,
+      };
+      stats.total += c.count;
+      if (c.status === "done") stats.done = c.count;
+      else if (c.status === "in_progress") stats.inProgress = c.count;
+      else if (c.status === "cancelled") stats.cancelled = c.count;
+      statsByProject.set(c.projectId, stats);
+    }
 
-  return rawRows.map((row) => {
-    const taskStats = statsByProject.get(row.id) ?? {
-      total: 0,
-      done: 0,
-      inProgress: 0,
-      cancelled: 0,
-    };
-    const denominator = taskStats.total - taskStats.cancelled;
-    return {
-      id: row.id,
-      organizationId: row.organizationId,
-      title: row.title,
-      identifier: row.identifier,
-      status: row.status,
-      organization: row.organization,
-      memberRole: row.memberRole,
-      taskStats,
-      progress:
-        denominator > 0
-          ? Math.round((taskStats.done / denominator) * 100)
-          : 0,
-    };
+    return rawRows.map((row) => {
+      const taskStats = statsByProject.get(row.id) ?? {
+        total: 0,
+        done: 0,
+        inProgress: 0,
+        cancelled: 0,
+      };
+      const denominator = taskStats.total - taskStats.cancelled;
+      return {
+        id: row.id,
+        organizationId: row.organizationId,
+        title: row.title,
+        identifier: row.identifier,
+        status: row.status,
+        organization: row.organization,
+        memberRole: row.memberRole,
+        taskStats,
+        progress:
+          denominator > 0
+            ? Math.round((taskStats.done / denominator) * 100)
+            : 0,
+      };
+    });
   });
 }
 
@@ -788,7 +830,7 @@ export type CreateProjectInput = Omit<
  * @throws If no unique variant found within 1000 attempts.
  */
 async function pickAvailableIdentifier(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tx: Tx,
   organizationId: string,
   base: Identifier,
 ): Promise<Identifier> {
@@ -829,31 +871,39 @@ async function resolveTargetOrgId(
   ctx: AuthContext,
   requested: string | undefined,
 ): Promise<string> {
-  if (requested !== undefined) {
-    if (!isUuid(requested)) {
-      throw new ForbiddenError("Forbidden", "team", requested);
+  return withUserContext(ctx.userId, async (tx) => {
+    if (requested !== undefined) {
+      if (!isUuid(requested)) {
+        throw new ForbiddenError("Forbidden", "team", requested);
+      }
+      const [row] = await tx
+        .select({ id: member.id })
+        .from(member)
+        .where(
+          and(
+            eq(member.userId, ctx.userId),
+            eq(member.organizationId, requested),
+          ),
+        )
+        .limit(1);
+      if (!row) throw new ForbiddenError("Forbidden", "team", requested);
+      return requested;
     }
-    const [row] = await db
-      .select({ id: member.id })
+
+    const memberships = await tx
+      .select({ id: organization.id, name: organization.name })
       .from(member)
-      .where(
-        and(eq(member.userId, ctx.userId), eq(member.organizationId, requested)),
-      )
-      .limit(1);
-    if (!row) throw new ForbiddenError("Forbidden", "team", requested);
-    return requested;
-  }
+      .innerJoin(organization, eq(organization.id, member.organizationId))
+      .where(eq(member.userId, ctx.userId));
 
-  const memberships = await db
-    .select({ id: organization.id, name: organization.name })
-    .from(member)
-    .innerJoin(organization, eq(organization.id, member.organizationId))
-    .where(eq(member.userId, ctx.userId));
-
-  if (memberships.length === 0) throw new NoTeamMembershipError();
-  if (memberships.length === 1) return memberships[0].id;
-  const teams: TeamOption[] = memberships.map((m) => ({ id: m.id, name: m.name }));
-  throw new MultiTeamAmbiguityError(teams);
+    if (memberships.length === 0) throw new NoTeamMembershipError();
+    if (memberships.length === 1) return memberships[0].id;
+    const teams: TeamOption[] = memberships.map((m) => ({
+      id: m.id,
+      name: m.name,
+    }));
+    throw new MultiTeamAmbiguityError(teams);
+  });
 }
 
 /**
@@ -980,11 +1030,14 @@ export async function updateProject(
     const formatted = await formatMarkdown(safe.description);
     safe.description = formatted ?? safe.description;
   }
-  const [updated] = await db
-    .update(projects)
-    .set({ ...safe, updatedAt: new Date() })
-    .where(eq(projects.id, projectId))
-    .returning();
+  const updated = await withUserContext(ctx.userId, async (tx) => {
+    const [row] = await tx
+      .update(projects)
+      .set({ ...safe, updatedAt: new Date() })
+      .where(eq(projects.id, projectId))
+      .returning();
+    return row;
+  });
   emitProjectEvent(projectId);
   return updated;
 }

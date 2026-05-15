@@ -1,8 +1,8 @@
 import "server-only";
 import { and, eq, getTableColumns } from "drizzle-orm";
-import { db } from "@/lib/db";
 import { projects, tasks, type Project, type Task } from "@/lib/db/schema";
 import { member, organization } from "@/lib/db/auth-schema";
+import { withUserContext } from "@/lib/db/rls";
 import type { ProjectListOrganization } from "@/lib/data/views";
 
 /** Resolved project access — what the membership JOIN returns when a caller can read a project. */
@@ -28,28 +28,30 @@ export async function findProjectAccess(
   userId: string,
   projectId: string,
 ): Promise<ProjectAccessRow | null> {
-  const [row] = await db
-    .select({
-      project: getTableColumns(projects),
-      memberRole: member.role,
-      organization: {
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
-      },
-    })
-    .from(projects)
-    .innerJoin(
-      member,
-      and(
-        eq(member.organizationId, projects.organizationId),
-        eq(member.userId, userId),
-      ),
-    )
-    .innerJoin(organization, eq(organization.id, projects.organizationId))
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row ?? null;
+  return withUserContext(userId, async (tx) => {
+    const [row] = await tx
+      .select({
+        project: getTableColumns(projects),
+        memberRole: member.role,
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+        },
+      })
+      .from(projects)
+      .innerJoin(organization, eq(organization.id, projects.organizationId))
+      .innerJoin(
+        member,
+        and(
+          eq(member.organizationId, projects.organizationId),
+          eq(member.userId, userId),
+        ),
+      )
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    return row ?? null;
+  });
 }
 
 /**
@@ -63,18 +65,12 @@ export async function findTaskAccess(
   userId: string,
   taskId: string,
 ): Promise<Task | null> {
-  const [row] = await db
-    .select(getTableColumns(tasks))
-    .from(tasks)
-    .innerJoin(projects, eq(projects.id, tasks.projectId))
-    .innerJoin(
-      member,
-      and(
-        eq(member.organizationId, projects.organizationId),
-        eq(member.userId, userId),
-      ),
-    )
-    .where(eq(tasks.id, taskId))
-    .limit(1);
-  return row ?? null;
+  return withUserContext(userId, async (tx) => {
+    const [row] = await tx
+      .select(getTableColumns(tasks))
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    return row ?? null;
+  });
 }

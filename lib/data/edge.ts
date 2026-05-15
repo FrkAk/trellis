@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, eq, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import type { Conn } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import {
   projects,
@@ -58,18 +59,20 @@ export async function findEdgeByNodes(
 ) {
   await assertTaskAccess(sourceTaskId, ctx);
   await assertTaskAccess(targetTaskId, ctx);
-  const [row] = await db
-    .select()
-    .from(taskEdges)
-    .where(
-      and(
-        eq(taskEdges.sourceTaskId, sourceTaskId),
-        eq(taskEdges.targetTaskId, targetTaskId),
-        eq(taskEdges.edgeType, edgeType),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
+  return withUserContext(ctx.userId, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(taskEdges)
+      .where(
+        and(
+          eq(taskEdges.sourceTaskId, sourceTaskId),
+          eq(taskEdges.targetTaskId, targetTaskId),
+          eq(taskEdges.edgeType, edgeType),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  });
 }
 
 /**
@@ -80,15 +83,17 @@ export async function findEdgeByNodes(
  */
 export async function getTaskEdges(ctx: AuthContext, taskId: string) {
   await assertTaskAccess(taskId, ctx);
-  return db
-    .select()
-    .from(taskEdges)
-    .where(
-      or(
-        eq(taskEdges.sourceTaskId, taskId),
-        eq(taskEdges.targetTaskId, taskId),
-      ),
-    );
+  return withUserContext(ctx.userId, async (tx) => {
+    return tx
+      .select()
+      .from(taskEdges)
+      .where(
+        or(
+          eq(taskEdges.sourceTaskId, taskId),
+          eq(taskEdges.targetTaskId, taskId),
+        ),
+      );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -121,64 +126,66 @@ export async function getTaskEdgesDetailed(
 ): Promise<DetailedEdge[]> {
   await assertTaskAccess(taskId, ctx);
 
-  const edges = await db
-    .select()
-    .from(taskEdges)
-    .where(
-      or(
-        eq(taskEdges.sourceTaskId, taskId),
-        eq(taskEdges.targetTaskId, taskId),
-      ),
-    );
+  return withUserContext(ctx.userId, async (tx) => {
+    const edges = await tx
+      .select()
+      .from(taskEdges)
+      .where(
+        or(
+          eq(taskEdges.sourceTaskId, taskId),
+          eq(taskEdges.targetTaskId, taskId),
+        ),
+      );
 
-  const idsToFetch = new Set<string>();
-  for (const edge of edges) {
-    const isOutgoing = edge.sourceTaskId === taskId;
-    idsToFetch.add(isOutgoing ? edge.targetTaskId : edge.sourceTaskId);
-  }
-
-  const taskInfoMap = new Map<
-    string,
-    { taskRef: string; title: string; status: string }
-  >();
-
-  if (idsToFetch.size > 0) {
-    const ids = [...idsToFetch];
-    const taskRows = await db
-      .select({
-        id: tasks.id,
-        title: tasks.title,
-        status: tasks.status,
-        sequenceNumber: tasks.sequenceNumber,
-        identifier: projects.identifier,
-      })
-      .from(tasks)
-      .innerJoin(projects, eq(tasks.projectId, projects.id))
-      .where(sql`${tasks.id} IN ${ids}`);
-    for (const t of taskRows) {
-      taskInfoMap.set(t.id, {
-        taskRef: composeTaskRef(asIdentifier(t.identifier), t.sequenceNumber),
-        title: t.title,
-        status: t.status,
-      });
-    }
-  }
-
-  return edges
-    .map((edge) => {
+    const idsToFetch = new Set<string>();
+    for (const edge of edges) {
       const isOutgoing = edge.sourceTaskId === taskId;
-      const connectedId = isOutgoing ? edge.targetTaskId : edge.sourceTaskId;
-      const info = taskInfoMap.get(connectedId);
-      if (!info) return null;
-      return {
-        edgeId: edge.id,
-        edgeType: edge.edgeType,
-        direction: isOutgoing ? ("outgoing" as const) : ("incoming" as const),
-        note: edge.note,
-        connectedTask: { id: connectedId, ...info },
-      };
-    })
-    .filter((e): e is DetailedEdge => e !== null);
+      idsToFetch.add(isOutgoing ? edge.targetTaskId : edge.sourceTaskId);
+    }
+
+    const taskInfoMap = new Map<
+      string,
+      { taskRef: string; title: string; status: string }
+    >();
+
+    if (idsToFetch.size > 0) {
+      const ids = [...idsToFetch];
+      const taskRows = await tx
+        .select({
+          id: tasks.id,
+          title: tasks.title,
+          status: tasks.status,
+          sequenceNumber: tasks.sequenceNumber,
+          identifier: projects.identifier,
+        })
+        .from(tasks)
+        .innerJoin(projects, eq(tasks.projectId, projects.id))
+        .where(sql`${tasks.id} IN ${ids}`);
+      for (const t of taskRows) {
+        taskInfoMap.set(t.id, {
+          taskRef: composeTaskRef(asIdentifier(t.identifier), t.sequenceNumber),
+          title: t.title,
+          status: t.status,
+        });
+      }
+    }
+
+    return edges
+      .map((edge) => {
+        const isOutgoing = edge.sourceTaskId === taskId;
+        const connectedId = isOutgoing ? edge.targetTaskId : edge.sourceTaskId;
+        const info = taskInfoMap.get(connectedId);
+        if (!info) return null;
+        return {
+          edgeId: edge.id,
+          edgeType: edge.edgeType,
+          direction: isOutgoing ? ("outgoing" as const) : ("incoming" as const),
+          note: edge.note,
+          connectedTask: { id: connectedId, ...info },
+        };
+      })
+      .filter((e): e is DetailedEdge => e !== null);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -192,11 +199,18 @@ export async function getTaskEdgesDetailed(
  * ids so the OR-on-id-list is safely scoped.
  *
  * @param taskIds - Task ids to filter the endpoints on.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Full edge rows.
  */
-export async function fetchEdgesForTaskIds(taskIds: string[]) {
+export async function fetchEdgesForTaskIds(
+  taskIds: string[],
+  conn: Conn = db,
+) {
   if (taskIds.length === 0) return [];
-  return db
+  return conn
     .select()
     .from(taskEdges)
     .where(
@@ -212,11 +226,18 @@ export async function fetchEdgesForTaskIds(taskIds: string[]) {
  * id set. Used by graph algorithms.
  *
  * @param sourceTaskIds - Task ids to filter the source side on.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Edge endpoints (source/target only — no metadata).
  */
-export async function listDependsOnEdges(sourceTaskIds: string[]) {
+export async function listDependsOnEdges(
+  sourceTaskIds: string[],
+  conn: Conn = db,
+) {
   if (sourceTaskIds.length === 0) return [];
-  return db
+  return conn
     .select({
       sourceTaskId: taskEdges.sourceTaskId,
       targetTaskId: taskEdges.targetTaskId,
@@ -333,10 +354,13 @@ async function loadAuthorizedEdge(edgeId: string, ctx: AuthContext) {
   if (!isUuid(edgeId)) {
     throw new ForbiddenError("Forbidden", "edge", edgeId);
   }
-  const [edge] = await db
-    .select()
-    .from(taskEdges)
-    .where(eq(taskEdges.id, edgeId));
+  const edge = await withUserContext(ctx.userId, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(taskEdges)
+      .where(eq(taskEdges.id, edgeId));
+    return row;
+  });
   if (!edge) throw new ForbiddenError("Forbidden", "edge", edgeId);
   let sourceTask;
   try {

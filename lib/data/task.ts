@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import type { Conn } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import {
   projects,
@@ -325,14 +326,19 @@ async function applyDecisionsWrite(
  * UNCHECKED: caller must assert access on every supplied taskId.
  *
  * @param taskIds - UUIDs to fetch criteria for.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Map of taskId -> AcceptanceCriterion[]; missing tasks omitted.
  */
 export async function fetchCriteriaByTaskUnchecked(
   taskIds: string[],
+  conn: Conn = db,
 ): Promise<Map<string, AcceptanceCriterion[]>> {
   const result = new Map<string, AcceptanceCriterion[]>();
   if (taskIds.length === 0) return result;
-  const rows = await db
+  const rows = await conn
     .select({
       taskId: taskAcceptanceCriteria.taskId,
       id: taskAcceptanceCriteria.id,
@@ -356,14 +362,19 @@ export async function fetchCriteriaByTaskUnchecked(
  * UNCHECKED: caller must assert access on every supplied taskId.
  *
  * @param taskIds - UUIDs to fetch decisions for.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Map of taskId -> Decision[]; missing tasks omitted.
  */
 export async function fetchDecisionsByTaskUnchecked(
   taskIds: string[],
+  conn: Conn = db,
 ): Promise<Map<string, Decision[]>> {
   const result = new Map<string, Decision[]>();
   if (taskIds.length === 0) return result;
-  const rows = await db
+  const rows = await conn
     .select({
       taskId: taskDecisions.taskId,
       id: taskDecisions.id,
@@ -423,7 +434,9 @@ export async function getTaskFull(
   taskId: string,
 ): Promise<TaskFull> {
   await assertTaskAccess(taskId, ctx);
-  const rows = await fetchTaskFull(db, taskId);
+  const rows = await withUserContext(ctx.userId, (tx) =>
+    fetchTaskFull(tx, taskId),
+  );
   if (rows.length === 0) {
     throw new Error(
       `getTaskFull: task ${taskId} disappeared after access check`,
@@ -480,10 +493,17 @@ export async function getTaskFull(
  * it when wrapping or re-exporting.
  *
  * @param taskId - UUID of the task.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Ordered array of assignee refs (empty when nobody is assigned).
  */
-export async function fetchAssigneesUnchecked(taskId: string): Promise<AssigneeRef[]> {
-  return db
+export async function fetchAssigneesUnchecked(
+  taskId: string,
+  conn: Conn = db,
+): Promise<AssigneeRef[]> {
+  return conn
     .select({
       userId: taskAssignees.userId,
       name: user.name,
@@ -507,14 +527,19 @@ export async function fetchAssigneesUnchecked(taskId: string): Promise<AssigneeR
  * wrapping or re-exporting.
  *
  * @param taskIds - UUIDs to fetch assignees for.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Map of taskId -> AssigneeRef[]; missing tasks omitted.
  */
 export async function fetchAssigneesByTaskUnchecked(
   taskIds: string[],
+  conn: Conn = db,
 ): Promise<Map<string, AssigneeRef[]>> {
   const result = new Map<string, AssigneeRef[]>();
   if (taskIds.length === 0) return result;
-  const rows = await db
+  const rows = await conn
     .select({
       taskId: taskAssignees.taskId,
       userId: taskAssignees.userId,
@@ -543,10 +568,17 @@ export async function fetchAssigneesByTaskUnchecked(
  * when wrapping or re-exporting.
  *
  * @param taskId - UUID of the task.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Ordered array of link refs (empty when no links exist).
  */
-export async function fetchLinksUnchecked(taskId: string): Promise<TaskLinkRef[]> {
-  return db
+export async function fetchLinksUnchecked(
+  taskId: string,
+  conn: Conn = db,
+): Promise<TaskLinkRef[]> {
+  return conn
     .select({
       id: taskLinks.id,
       kind: taskLinks.kind,
@@ -598,24 +630,26 @@ export async function getTaskSlim(
   taskId: string,
 ): Promise<TaskSlim> {
   await assertTaskAccess(taskId, ctx);
-  const [row] = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      tags: tasks.tags,
-      category: tasks.category,
-      priority: tasks.priority,
-      estimate: tasks.estimate,
-      order: tasks.order,
-      sequenceNumber: tasks.sequenceNumber,
-      identifier: projects.identifier,
-      assigneeCount: assigneeCountExpr(),
-    })
-    .from(tasks)
-    .innerJoin(projects, eq(projects.id, tasks.projectId))
-    .where(eq(tasks.id, taskId))
-    .limit(1);
+  const [row] = await withUserContext(ctx.userId, (tx) =>
+    tx
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        tags: tasks.tags,
+        category: tasks.category,
+        priority: tasks.priority,
+        estimate: tasks.estimate,
+        order: tasks.order,
+        sequenceNumber: tasks.sequenceNumber,
+        identifier: projects.identifier,
+        assigneeCount: assigneeCountExpr(),
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .where(eq(tasks.id, taskId))
+      .limit(1),
+  );
   if (!row) {
     throw new ForbiddenError("Forbidden", "task", taskId);
   }
@@ -645,7 +679,7 @@ export async function getTaskSlim(
  */
 export async function getProjectTasks(ctx: AuthContext, projectId: string) {
   await assertProjectAccess(projectId, ctx);
-  return listProjectTasks(projectId);
+  return withUserContext(ctx.userId, (tx) => listProjectTasks(projectId, tx));
 }
 
 /**
@@ -654,10 +688,14 @@ export async function getProjectTasks(ctx: AuthContext, projectId: string) {
  * assemblers that have already authorized the parent project.
  *
  * @param projectId - UUID of the project.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Ordered array of tasks.
  */
-export async function listProjectTasks(projectId: string) {
-  return db
+export async function listProjectTasks(projectId: string, conn: Conn = db) {
+  return conn
     .select()
     .from(tasks)
     .where(eq(tasks.projectId, projectId))
@@ -678,22 +716,24 @@ export async function getProjectTasksSlim(
 ): Promise<TaskSlim[]> {
   const { project } = await assertProjectAccess(projectId, ctx);
 
-  const rows = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      tags: tasks.tags,
-      category: tasks.category,
-      priority: tasks.priority,
-      estimate: tasks.estimate,
-      order: tasks.order,
-      sequenceNumber: tasks.sequenceNumber,
-      assigneeCount: assigneeCountExpr(),
-    })
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId))
-    .orderBy(asc(tasks.order));
+  const rows = await withUserContext(ctx.userId, (tx) =>
+    tx
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        tags: tasks.tags,
+        category: tasks.category,
+        priority: tasks.priority,
+        estimate: tasks.estimate,
+        order: tasks.order,
+        sequenceNumber: tasks.sequenceNumber,
+        assigneeCount: assigneeCountExpr(),
+      })
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId))
+      .orderBy(asc(tasks.order)),
+  );
 
   return enrichWithTaskRef(rows, asIdentifier(project.identifier)).map((t) => ({
     id: t.id,
@@ -790,13 +830,18 @@ function deriveTaskState(
  *
  * @param projectId - UUID of the project.
  * @param taskSubset - Tasks in `TaskStateInput` shape.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the underlying `buildEffectiveDepGraph`
+ *   reads participate in the same RLS-scoped frame.
  * @returns Map of taskId → TaskState.
  */
 export async function deriveTaskStatesSlim(
   projectId: string,
   taskSubset: TaskStateInput[],
+  conn: Conn = db,
 ): Promise<Map<string, TaskState>> {
-  const graph = await buildEffectiveDepGraph(projectId);
+  const graph = await buildEffectiveDepGraph(projectId, conn);
   const result = new Map<string, TaskState>();
   for (const task of taskSubset) {
     result.set(task.id, deriveTaskState(task, graph));
@@ -881,34 +926,38 @@ export async function searchTasks(
         END`
       : sql<number>`0`;
 
-  const trimmed = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      tags: tasks.tags,
-      category: tasks.category,
-      priority: tasks.priority,
-      estimate: tasks.estimate,
-      hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
-      hasCriteria: hasCriteriaExpr(),
-      sequenceNumber: tasks.sequenceNumber,
-      order: tasks.order,
-      assigneeCount: assigneeCountExpr(),
-    })
-    .from(tasks)
-    .where(and(...clauses))
-    .orderBy(rankExpr, asc(tasks.order))
-    .limit(20);
-  const stateMap = await deriveTaskStatesSlim(
-    projectId,
-    trimmed.map((t) => ({
-      id: t.id,
-      status: t.status,
-      hasDescription: t.hasDescription,
-      hasCriteria: t.hasCriteria,
-    })),
-  );
+  const { trimmed, stateMap } = await withUserContext(ctx.userId, async (tx) => {
+    const trimmedRows = await tx
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        tags: tasks.tags,
+        category: tasks.category,
+        priority: tasks.priority,
+        estimate: tasks.estimate,
+        hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
+        hasCriteria: hasCriteriaExpr(),
+        sequenceNumber: tasks.sequenceNumber,
+        order: tasks.order,
+        assigneeCount: assigneeCountExpr(),
+      })
+      .from(tasks)
+      .where(and(...clauses))
+      .orderBy(rankExpr, asc(tasks.order))
+      .limit(20);
+    const states = await deriveTaskStatesSlim(
+      projectId,
+      trimmedRows.map((t) => ({
+        id: t.id,
+        status: t.status,
+        hasDescription: t.hasDescription,
+        hasCriteria: t.hasCriteria,
+      })),
+      tx,
+    );
+    return { trimmed: trimmedRows, stateMap: states };
+  });
 
   const identifier = asIdentifier(project.identifier);
   return enrichWithTaskRef(trimmed, identifier).map((t) => ({
@@ -989,45 +1038,60 @@ export async function searchTasksPaged(
             OR (${tasks.order} = ${after.order} AND ${tasks.id} < ${after.id}))`
     : sql`TRUE`;
 
-  const matchingTasks = await db
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      tags: tasks.tags,
-      category: tasks.category,
-      priority: tasks.priority,
-      estimate: tasks.estimate,
-      hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
-      hasCriteria: hasCriteriaExpr(),
-      sequenceNumber: tasks.sequenceNumber,
-      order: tasks.order,
-      assigneeCount: assigneeCountExpr(),
-    })
-    .from(tasks)
-    .where(and(...clauses, cursorClause))
-    .orderBy(desc(tasks.order), desc(tasks.id))
-    .limit(limit + 1);
+  const { trimmed, nextCursor, stateMap } = await withUserContext(
+    ctx.userId,
+    async (tx) => {
+      const matchingTasks = await tx
+        .select({
+          id: tasks.id,
+          title: tasks.title,
+          status: tasks.status,
+          tags: tasks.tags,
+          category: tasks.category,
+          priority: tasks.priority,
+          estimate: tasks.estimate,
+          hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
+          hasCriteria: hasCriteriaExpr(),
+          sequenceNumber: tasks.sequenceNumber,
+          order: tasks.order,
+          assigneeCount: assigneeCountExpr(),
+        })
+        .from(tasks)
+        .where(and(...clauses, cursorClause))
+        .orderBy(desc(tasks.order), desc(tasks.id))
+        .limit(limit + 1);
 
-  const hasMore = matchingTasks.length > limit;
-  const trimmed = hasMore ? matchingTasks.slice(0, limit) : matchingTasks;
-  const last = trimmed[trimmed.length - 1];
-  const nextCursor =
-    hasMore && last
-      ? encodeOrderCursor({ order: last.order, id: last.id })
-      : null;
+      const hasMore = matchingTasks.length > limit;
+      const trimmedRows = hasMore
+        ? matchingTasks.slice(0, limit)
+        : matchingTasks;
+      const last = trimmedRows[trimmedRows.length - 1];
+      const cursor =
+        hasMore && last
+          ? encodeOrderCursor({ order: last.order, id: last.id })
+          : null;
 
-  if (trimmed.length === 0) return { rows: [], nextCursor: null };
+      if (trimmedRows.length === 0) {
+        return { trimmed: trimmedRows, nextCursor: null, stateMap: null };
+      }
 
-  const stateMap = await deriveTaskStatesSlim(
-    projectId,
-    trimmed.map((t) => ({
-      id: t.id,
-      status: t.status,
-      hasDescription: t.hasDescription,
-      hasCriteria: t.hasCriteria,
-    })),
+      const states = await deriveTaskStatesSlim(
+        projectId,
+        trimmedRows.map((t) => ({
+          id: t.id,
+          status: t.status,
+          hasDescription: t.hasDescription,
+          hasCriteria: t.hasCriteria,
+        })),
+        tx,
+      );
+      return { trimmed: trimmedRows, nextCursor: cursor, stateMap: states };
+    },
   );
+
+  if (trimmed.length === 0 || !stateMap) {
+    return { rows: [], nextCursor: null };
+  }
   const identifier = asIdentifier(project.identifier);
   const rows = enrichWithTaskRef(trimmed, identifier).map((t) => ({
     id: t.id,
@@ -1057,13 +1121,18 @@ export async function searchTasksPaged(
  * note into context output.
  * @param projectId - UUID of the project the source task belongs to.
  * @param taskId - UUID of the source task.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Map of target task ID to edge note.
  */
 export async function fetchEdgeNotesBySource(
   projectId: string,
   taskId: string,
+  conn: Conn = db,
 ): Promise<Map<string, string>> {
-  const rows = await db
+  const rows = await conn
     .select({ targetTaskId: taskEdges.targetTaskId, note: taskEdges.note })
     .from(taskEdges)
     .innerJoin(tasks, eq(tasks.id, taskEdges.targetTaskId))
@@ -1087,13 +1156,18 @@ export async function fetchEdgeNotesBySource(
  * for the projectId-filter rationale.
  * @param projectId - UUID of the project the target task belongs to.
  * @param taskId - UUID of the target task.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Map of source task ID to edge note.
  */
 export async function fetchEdgeNotesByTarget(
   projectId: string,
   taskId: string,
+  conn: Conn = db,
 ): Promise<Map<string, string>> {
-  const rows = await db
+  const rows = await conn
     .select({ sourceTaskId: taskEdges.sourceTaskId, note: taskEdges.note })
     .from(taskEdges)
     .innerJoin(tasks, eq(tasks.id, taskEdges.sourceTaskId))
@@ -1122,14 +1196,19 @@ export async function fetchEdgeNotesByTarget(
  * id list that crosses projects, the SQL ignores out-of-project rows.
  * @param projectId - UUID of the project the tasks belong to.
  * @param taskIds - Array of task UUIDs.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Array of task summaries with composed taskRef.
  */
 export async function fetchTaskSummaries(
   projectId: string,
   taskIds: string[],
+  conn: Conn = db,
 ) {
   if (taskIds.length === 0) return [];
-  const rows = await db
+  const rows = await conn
     .select({
       id: tasks.id,
       title: tasks.title,
@@ -1170,14 +1249,19 @@ export type DependencyTaskInfo = {
  *
  * @param projectId - UUID of the project the dependency tasks belong to.
  * @param taskIds - UUIDs of the dependency tasks.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Dep-task projections including `executionRecord` and `taskRef`.
  */
 export async function fetchDependencyTasks(
   projectId: string,
   taskIds: string[],
+  conn: Conn = db,
 ): Promise<DependencyTaskInfo[]> {
   if (taskIds.length === 0) return [];
-  const rows = await db
+  const rows = await conn
     .select({
       id: tasks.id,
       title: tasks.title,
@@ -1215,13 +1299,18 @@ export type SiblingTaskInfo = {
  *
  * @param projectId - UUID of the project.
  * @param excludeTaskId - UUID of the task to omit from the result.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Sibling task projections.
  */
 export async function fetchSiblingTasks(
   projectId: string,
   excludeTaskId: string,
+  conn: Conn = db,
 ): Promise<SiblingTaskInfo[]> {
-  const rows = await db
+  const rows = await conn
     .select({
       id: tasks.id,
       title: tasks.title,
@@ -1251,10 +1340,14 @@ export async function fetchSiblingTasks(
  * algorithms (`buildEffectiveDepGraph`) that only need a small slice.
  *
  * @param projectId - UUID of the project.
+ * @param conn - Drizzle client or transaction handle. Defaults to the bare
+ *   `db` pool client; callers running under a `withUserContext` transaction
+ *   should pass the active `tx` so the read participates in the same
+ *   RLS-scoped frame.
  * @returns Slim rows for every task in the project.
  */
-export async function listTasksForGraph(projectId: string) {
-  return db
+export async function listTasksForGraph(projectId: string, conn: Conn = db) {
+  return conn
     .select({
       id: tasks.id,
       title: tasks.title,
@@ -1854,7 +1947,7 @@ export async function updateTask(
   const statusChanged = typeof input.status === "string";
   const refetchNeeded = wroteChildren || statusChanged;
   const children = refetchNeeded
-    ? await fetchTaskChildren(db, taskId)
+    ? await withUserContext(ctx.userId, (tx) => fetchTaskChildren(tx, taskId))
     : { acceptance_criteria: null, decisions: null };
   return Object.assign(updated, {
     acceptanceCriteria: (children.acceptance_criteria ?? []).map((c) => ({
@@ -1934,15 +2027,17 @@ export async function deleteTask(ctx: AuthContext, taskId: string) {
 export async function deleteTaskPreview(ctx: AuthContext, taskId: string) {
   const task = await assertTaskAccess(taskId, ctx);
 
-  const edgeRows = await db
-    .select({ id: taskEdges.id })
-    .from(taskEdges)
-    .where(
-      or(
-        eq(taskEdges.sourceTaskId, taskId),
-        eq(taskEdges.targetTaskId, taskId),
+  const edgeRows = await withUserContext(ctx.userId, (tx) =>
+    tx
+      .select({ id: taskEdges.id })
+      .from(taskEdges)
+      .where(
+        or(
+          eq(taskEdges.sourceTaskId, taskId),
+          eq(taskEdges.targetTaskId, taskId),
+        ),
       ),
-    );
+  );
 
   return {
     task: { id: task.id, title: task.title },
@@ -2035,11 +2130,13 @@ export async function removeTaskLink(
   ctx: AuthContext,
   linkId: string,
 ): Promise<{ id: string }> {
-  const [link] = await db
-    .select()
-    .from(taskLinks)
-    .where(eq(taskLinks.id, linkId))
-    .limit(1);
+  const [link] = await withUserContext(ctx.userId, (tx) =>
+    tx
+      .select()
+      .from(taskLinks)
+      .where(eq(taskLinks.id, linkId))
+      .limit(1),
+  );
   if (!link) throw new ForbiddenError("Forbidden", "task", linkId);
   const task = await assertTaskAccess(link.taskId, ctx);
 
@@ -2077,11 +2174,13 @@ export async function updateTaskLink(
   linkId: string,
   url: string,
 ): Promise<TaskLink> {
-  const [link] = await db
-    .select()
-    .from(taskLinks)
-    .where(eq(taskLinks.id, linkId))
-    .limit(1);
+  const [link] = await withUserContext(ctx.userId, (tx) =>
+    tx
+      .select()
+      .from(taskLinks)
+      .where(eq(taskLinks.id, linkId))
+      .limit(1),
+  );
   if (!link) throw new ForbiddenError("Forbidden", "task", linkId);
   const task = await assertTaskAccess(link.taskId, ctx);
 
@@ -2096,17 +2195,19 @@ export async function updateTaskLink(
   }
 
   if (classified.url !== link.url) {
-    const [conflict] = await db
-      .select({ id: taskLinks.id })
-      .from(taskLinks)
-      .where(
-        and(
-          eq(taskLinks.taskId, link.taskId),
-          eq(taskLinks.url, classified.url),
-          ne(taskLinks.id, linkId),
-        ),
-      )
-      .limit(1);
+    const [conflict] = await withUserContext(ctx.userId, (tx) =>
+      tx
+        .select({ id: taskLinks.id })
+        .from(taskLinks)
+        .where(
+          and(
+            eq(taskLinks.taskId, link.taskId),
+            eq(taskLinks.url, classified.url),
+            ne(taskLinks.id, linkId),
+          ),
+        )
+        .limit(1),
+    );
     if (conflict) {
       throw new ForbiddenError("Duplicate url", "task", link.taskId);
     }

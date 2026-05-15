@@ -113,8 +113,10 @@ export async function listPendingInvitationsAction(input: {
 export async function cancelInvitationAction(input: {
   invitationId: string;
 }): Promise<TeamActionResult> {
+  let userId: string;
   try {
-    await requireSession();
+    const session = await requireSession();
+    userId = session.user.id;
   } catch {
     return teamFail('unauthorized');
   }
@@ -122,7 +124,7 @@ export async function cancelInvitationAction(input: {
   const parsed = parseOrFail(cancelSchema, input);
   if (!parsed.ok) return parsed;
 
-  const orgId = await findInvitationOrgId(parsed.data.invitationId);
+  const orgId = await findInvitationOrgId(userId, parsed.data.invitationId);
   if (!orgId) return teamFail('not_found');
   if (!(await isOrgAdmin(orgId))) return teamFail('forbidden');
 
