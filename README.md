@@ -36,16 +36,28 @@ cp .env.local.example .env.local
 
 **Bring your own coding agent.** Mymir works directly inside the coding agent you already use: Claude Code, Codex, Cursor, or Gemini CLI. Brainstorm, decompose, and project activation happen there. The web app is for refining specs, planning, and tracking progress on `active` projects from the browser.
 
-Add your credentials to `.env.local` (see `.env.local.example` for the full list):
+Add your credentials to `.env.local` (see `.env.local.example` for the full list). Mymir uses three Postgres roles for defense-in-depth — generate three passwords and wire them into three URLs:
 
 ```bash
-# Postgres: local Docker default; works with any connection string (Neon, Supabase, RDS)
-DATABASE_URL=postgresql://mymir:mymir@localhost:5432/mymir
+# Generate three passwords:
+#   export APP_USER_PASSWORD=$(openssl rand -base64 24)
+#   export SERVICE_ROLE_PASSWORD=$(openssl rand -base64 24)
+#   export AUTH_ROLE_PASSWORD=$(openssl rand -base64 24)
+
+APP_USER_PASSWORD=replace-with-openssl-rand-base64-24
+SERVICE_ROLE_PASSWORD=replace-with-openssl-rand-base64-24
+AUTH_ROLE_PASSWORD=replace-with-openssl-rand-base64-24
+
+DATABASE_URL=postgresql://app_user:<APP_USER_PASSWORD>@localhost:5432/mymir
+DATABASE_SERVICE_ROLE_URL=postgresql://service_role:<SERVICE_ROLE_PASSWORD>@localhost:5432/mymir
+DATABASE_AUTH_URL=postgresql://auth_role:<AUTH_ROLE_PASSWORD>@localhost:5432/mymir
 
 # Better Auth: session secret (openssl rand -base64 32) and callback origin
 BETTER_AUTH_SECRET=generate-a-random-secret-at-least-32-chars
 BETTER_AUTH_URL=http://localhost:3000
 ```
+
+See the "Security model" section below for what each role does.
 
 Spin up Postgres and push the schema:
 
@@ -185,6 +197,29 @@ Or take one specific task all the way to a PR:
 Composer dispatches three subagents per task in clean per-phase contexts (researcher → planner → implementer). The orchestrator stays out of the work itself and only picks tasks, hands off, and propagates.
 
 **Tune in the UI.** Inspect edges, read execution records, and edit descriptions, ACs, tags, or dependencies directly. The agent loop and the UI write to the same store, so edits land by the next tool call.
+
+---
+
+## Security model
+
+Mymir uses three Postgres roles plus Row-Level Security so a compromise of the app cannot leak data beyond what RLS allows.
+
+**`app_user`** (NOBYPASSRLS) — every web request connects through this role via `DATABASE_URL`. RLS policies on all 8 public-schema tables (`projects`, `tasks`, `task_edges`, `task_acceptance_criteria`, `task_decisions`, `task_links`, `task_assignees`, `team_invite_code`) enforce team isolation by joining `neon_auth.member` on `current_setting('app.user_id', TRUE)`. The data ring opens a `withUserContext(userId, …)` transaction before every query, setting the GUC so the policy resolves.
+
+`app_user` is deliberately starved on `neon_auth.*` — it has SELECT on `member`, `organization`, `user`, `invitation` only. It has NO grants on `account` (password hashes), `session` (session tokens), `verification` (codes), `oauthClient*` (client secrets), `oauthAccessToken`/`oauthRefreshToken` (OAuth tokens), or `jwks` (JWT private keys).
+
+**`auth_role`** — Better Auth's connection, via `DATABASE_AUTH_URL`. Full DML on `neon_auth.*`, no grants on `public.*`. A compromise of `auth_role` cannot read or write app data.
+
+**`service_role`** (BYPASSRLS) — migrations (`drizzle-kit push`) and exactly ONE documented runtime bypass site (`lib/data/account.ts:clearOrgMembershipArtifacts`, which has to clean up across both `neon_auth.*` and `public.task_assignees` for a user just removed from an org). Wired via `DATABASE_SERVICE_ROLE_URL`. The three invite-code helpers (lookup / reserve / release) that PR 79 originally routed through this role have moved to `SECURITY DEFINER` SQL functions exposed to `app_user`, so the JS data ring never holds a BYPASSRLS connection for that flow.
+
+**The blast radius** of a successful SQL injection or logic bug under `app_user` is bounded by:
+- The 8 policies in `docker/rls-policies.sql` (joins `neon_auth.member` on the GUC).
+- The 3 `SECURITY DEFINER` function bodies in `docker/rls-functions.sql` (each is short, audit-able, and bounded to incrementing a single counter or returning code metadata).
+- No access to any auth secret (password hashes, OAuth tokens, JWT keys, session tokens).
+
+ESLint forbids bare `db.transaction(...)` outside `lib/db/rls.ts` and the two documented exempt files, so future code can't accidentally open a raw transaction that skips the GUC.
+
+A regression test gate (`bun run test:rls`) runs the full test suite with `DATABASE_URL` pointed at `app_user`, ensuring any new bare-`db` read trips a red test.
 
 ---
 
