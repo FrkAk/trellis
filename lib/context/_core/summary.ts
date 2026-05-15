@@ -10,6 +10,7 @@ import { getTaskFull } from "@/lib/data/task";
 import type { TaskLinkRef } from "@/lib/data/views";
 import { getProjectHeader } from "@/lib/data/project";
 import type { AuthContext } from "@/lib/auth/context";
+import { withUserContext } from "@/lib/db/rls";
 
 /** Detailed edge information for summary context. */
 type EdgeDetail = {
@@ -53,52 +54,56 @@ export async function buildSummaryContext(
   ctx: AuthContext,
   taskId: string,
 ): Promise<SummaryContext> {
+  // getTaskFull and getTaskEdgesDetailed each open their own withUserContext,
+  // so keep them outside the wrap below.
   const task = await getTaskFull(ctx, taskId);
-
-  const project = await getProjectHeader(task.projectId);
-  if (!project) {
-    console.error("Task has no joinable project", {
-      taskId: task.id,
-      projectId: task.projectId,
-    });
-  }
-
   const detailedEdges = await getTaskEdgesDetailed(ctx, taskId);
-  const links = task.links;
 
-  const edges: EdgeDetail[] = detailedEdges.map((e) => ({
-    edgeType: e.edgeType,
-    direction: e.direction,
-    connectedTaskId: e.connectedTask.id,
-    connectedTaskRef: e.connectedTask.taskRef,
-    connectedTaskTitle: e.connectedTask.title,
-    connectedTaskStatus: e.connectedTask.status,
-    note: e.note,
-  }));
+  return withUserContext(ctx.userId, async (tx) => {
+    const project = await getProjectHeader(task.projectId, tx);
+    if (!project) {
+      console.error("Task has no joinable project", {
+        taskId: task.id,
+        projectId: task.projectId,
+      });
+    }
 
-  const edgeCount = buildEdgeCount(edges);
+    const links = task.links;
 
-  const prUrl = links.find((l) => l.kind === "pull_request")?.url ?? null;
+    const edges: EdgeDetail[] = detailedEdges.map((e) => ({
+      edgeType: e.edgeType,
+      direction: e.direction,
+      connectedTaskId: e.connectedTask.id,
+      connectedTaskRef: e.connectedTask.taskRef,
+      connectedTaskTitle: e.connectedTask.title,
+      connectedTaskStatus: e.connectedTask.status,
+      note: e.note,
+    }));
 
-  return {
-    node: {
-      taskRef: task.taskRef,
-      title: task.title,
-      status: task.status,
-      description: task.description,
-      priority: task.priority,
-      estimate: task.estimate,
-      prUrl,
-    },
-    parent: project ? { title: project.title, type: "project" } : null,
-    edgeCount,
-    edges,
-    acceptanceCriteriaCount: task.acceptanceCriteria.length,
-    decisionsCount: task.decisions.length,
-    assigneeCount: task.assignees.length,
-    hasImplementationPlan: !!task.implementationPlan,
-    links,
-  };
+    const edgeCount = buildEdgeCount(edges);
+
+    const prUrl = links.find((l) => l.kind === "pull_request")?.url ?? null;
+
+    return {
+      node: {
+        taskRef: task.taskRef,
+        title: task.title,
+        status: task.status,
+        description: task.description,
+        priority: task.priority,
+        estimate: task.estimate,
+        prUrl,
+      },
+      parent: project ? { title: project.title, type: "project" } : null,
+      edgeCount,
+      edges,
+      acceptanceCriteriaCount: task.acceptanceCriteria.length,
+      decisionsCount: task.decisions.length,
+      assigneeCount: task.assignees.length,
+      hasImplementationPlan: !!task.implementationPlan,
+      links,
+    };
+  });
 }
 
 /**
