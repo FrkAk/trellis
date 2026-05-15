@@ -1,6 +1,39 @@
 import postgres from "postgres";
 import { getConnectionString } from "./container";
 
+/**
+ * Open a postgres connection as `app_user` — the non-BYPASSRLS runtime role
+ * provisioned by `tests/setup/migrate.ts:provisionRoles`. Use this in
+ * RLS-exercising tests to verify policies actually fire; `seedUserOrgProject`
+ * still uses the testcontainer superuser to provision fixtures.
+ *
+ * Caller MUST `.end({ timeout: 5 })` the returned client.
+ *
+ * @returns A `postgres` client bound to the app_user role.
+ */
+export function appUserConnect(): ReturnType<typeof postgres> {
+  const url = new URL(getConnectionString());
+  url.username = "app_user";
+  url.password = "app_user";
+  return postgres(url.toString(), { max: 1 });
+}
+
+/**
+ * Open a postgres connection as `service_role` — the BYPASSRLS connection
+ * used by the 4 documented bypass call sites. Use this in tests that need
+ * to seed `team_invite_code` rows or to verify bypass-path behavior.
+ *
+ * Caller MUST `.end({ timeout: 5 })` the returned client.
+ *
+ * @returns A `postgres` client bound to the service_role role.
+ */
+export function serviceRoleConnect(): ReturnType<typeof postgres> {
+  const url = new URL(getConnectionString());
+  url.username = "service_role";
+  url.password = "service_role";
+  return postgres(url.toString(), { max: 1 });
+}
+
 /** Created-on-demand test fixture: a user, an org with the user as owner, and one project. */
 export type Fixture = {
   userId: string;

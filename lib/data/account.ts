@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { serviceRoleDb } from "@/lib/db";
 import {
   oauthAccessToken,
   oauthConsent,
@@ -28,7 +28,7 @@ export async function clearOrgMembershipArtifacts(
   userId: string,
   orgId: string,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  await serviceRoleDb.transaction(async (tx) => {
     await tx
       .update(session)
       .set({ activeOrganizationId: null })

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, serviceRoleDb } from "@/lib/db";
 import { teamInviteCodes } from "@/lib/db/team-schema";
 
 /** Full invite-code row, inferred from the schema. */
@@ -121,7 +121,7 @@ export type InviteCodeReservation = {
 export async function reserveInviteCodeSlot(
   code: string,
 ): Promise<InviteCodeReservation | null> {
-  const [reserved] = await db
+  const [reserved] = await serviceRoleDb
     .update(teamInviteCodes)
     .set({
       useCount: sql`${teamInviteCodes.useCount} + 1`,
@@ -156,7 +156,7 @@ export async function reserveInviteCodeSlot(
  * @param id - UUID of the invite-code row whose slot was reserved.
  */
 export async function releaseInviteCodeSlot(id: string): Promise<void> {
-  await db
+  await serviceRoleDb
     .update(teamInviteCodes)
     .set({
       useCount: sql`GREATEST(${teamInviteCodes.useCount} - 1, 0)`,
@@ -185,7 +185,7 @@ export async function diagnoseTeamInviteCode(
   code: string,
 ): Promise<InviteCodeDiagnosis> {
   try {
-    const [row] = await db
+    const [row] = await serviceRoleDb
       .select({
         revokedAt: teamInviteCodes.revokedAt,
         expiresAt: teamInviteCodes.expiresAt,

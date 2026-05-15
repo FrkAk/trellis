@@ -11,6 +11,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { withUserContext } from "@/lib/db/rls";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
 import {
   assigneeCountExpr,
@@ -884,7 +885,7 @@ export async function createProject(
       description: (await formatMarkdown(data.description)) ?? data.description,
     };
   }
-  const project = await db.transaction(async (tx) => {
+  const project = await withUserContext(ctx.userId, async (tx) => {
     let identifier = data.identifier;
     if (identifier === undefined) {
       await acquireOrgIdentifierLock(tx, targetOrgId);
@@ -1028,7 +1029,7 @@ export async function renameProjectIdentifier(
     project: ["rename"],
   });
 
-  const updated = await db.transaction(async (tx) => {
+  const updated = await withUserContext(ctx.userId, async (tx) => {
     await acquireOrgIdentifierLock(tx, project.organizationId);
     const [row] = await tx
       .update(projects)
@@ -1061,7 +1062,7 @@ export async function renameCategory(
 ) {
   await assertProjectAccess(projectId, ctx);
 
-  await db.transaction(async (tx) => {
+  await withUserContext(ctx.userId, async (tx) => {
     const [project] = await tx
       .select({ categories: projects.categories })
       .from(projects)
@@ -1099,7 +1100,7 @@ export async function deleteCategory(
 ) {
   await assertProjectAccess(projectId, ctx);
 
-  await db.transaction(async (tx) => {
+  await withUserContext(ctx.userId, async (tx) => {
     const [project] = await tx
       .select({ categories: projects.categories })
       .from(projects)

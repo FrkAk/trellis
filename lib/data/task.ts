@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { withUserContext } from "@/lib/db/rls";
 import {
   projects,
   tasks,
@@ -1426,7 +1427,7 @@ export async function createTask(ctx: AuthContext, data: CreateTaskInput) {
     }
   }
 
-  const result = await db.transaction(async (tx) => {
+  const result = await withUserContext(ctx.userId, async (tx) => {
     await acquireProjectLock(tx, taskFields.projectId);
 
     const [proj] = await tx
@@ -1676,7 +1677,7 @@ export async function updateTask(
   delete changes.decisions;
 
   let wasNoOp = false;
-  const updated = await db.transaction(async (tx) => {
+  const updated = await withUserContext(ctx.userId, async (tx) => {
     // After MYMR-136 the row-level INSERT/UPDATE/DELETE on the child tables
     // is atomic per row via MVCC + ON CONFLICT (id) DO UPDATE, so the old
     // `FOR UPDATE` row lock that serialized concurrent merges is no longer
@@ -1875,7 +1876,7 @@ export async function updateTask(
 export async function deleteTask(ctx: AuthContext, taskId: string) {
   const task = await assertTaskAccess(taskId, ctx);
 
-  const deletedEdges = await db.transaction(async (tx) => {
+  const deletedEdges = await withUserContext(ctx.userId, async (tx) => {
     const removed = await tx
       .delete(taskEdges)
       .where(
@@ -1964,7 +1965,7 @@ export async function addTaskLink(
     throw e;
   }
 
-  const result = await db.transaction(async (tx) => {
+  const result = await withUserContext(ctx.userId, async (tx) => {
     const [inserted] = await tx
       .insert(taskLinks)
       .values({
@@ -2025,7 +2026,7 @@ export async function removeTaskLink(
   if (!link) throw new ForbiddenError("Forbidden", "task", linkId);
   const task = await assertTaskAccess(link.taskId, ctx);
 
-  await db.transaction(async (tx) => {
+  await withUserContext(ctx.userId, async (tx) => {
     await tx.delete(taskLinks).where(eq(taskLinks.id, linkId));
     await tx
       .update(tasks)
@@ -2094,7 +2095,7 @@ export async function updateTaskLink(
     }
   }
 
-  const result = await db.transaction(async (tx) => {
+  const result = await withUserContext(ctx.userId, async (tx) => {
     const [updated] = await tx
       .update(taskLinks)
       .set({
