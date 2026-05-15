@@ -1052,8 +1052,11 @@ export async function handleTask(
             priorStatus = existing.status;
             priorFiles = existing.files as string[] | null;
             if (p.assigneeIds !== undefined && !!p.overwriteArrays) {
+              const taskId = p.taskId;
               priorAssigneeIds = (
-                await fetchAssigneesUnchecked(p.taskId)
+                await withUserContext(ctx.userId, (tx) =>
+                  fetchAssigneesUnchecked(taskId, tx),
+                )
               ).map((a) => a.userId);
             }
             // Criteria and decisions now live in child tables; pull them

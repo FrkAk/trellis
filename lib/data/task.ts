@@ -18,7 +18,10 @@ import {
 import { user, member } from "@/lib/db/auth-schema";
 import { acquireProjectLock } from "@/lib/db/raw/acquire-project-lock";
 import { fetchTaskFull } from "@/lib/db/raw/fetch-task-full";
-import { fetchTaskChildren } from "@/lib/db/raw/fetch-task-children";
+import {
+  fetchTaskChildren,
+  type TaskChildrenRow,
+} from "@/lib/db/raw/fetch-task-children";
 import type {
   AcceptanceCriterion,
   Decision,
@@ -334,7 +337,7 @@ async function applyDecisionsWrite(
  */
 export async function fetchCriteriaByTaskUnchecked(
   taskIds: string[],
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<Map<string, AcceptanceCriterion[]>> {
   const result = new Map<string, AcceptanceCriterion[]>();
   if (taskIds.length === 0) return result;
@@ -370,7 +373,7 @@ export async function fetchCriteriaByTaskUnchecked(
  */
 export async function fetchDecisionsByTaskUnchecked(
   taskIds: string[],
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<Map<string, Decision[]>> {
   const result = new Map<string, Decision[]>();
   if (taskIds.length === 0) return result;
@@ -501,7 +504,7 @@ export async function getTaskFull(
  */
 export async function fetchAssigneesUnchecked(
   taskId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<AssigneeRef[]> {
   return conn
     .select({
@@ -535,7 +538,7 @@ export async function fetchAssigneesUnchecked(
  */
 export async function fetchAssigneesByTaskUnchecked(
   taskIds: string[],
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<Map<string, AssigneeRef[]>> {
   const result = new Map<string, AssigneeRef[]>();
   if (taskIds.length === 0) return result;
@@ -576,7 +579,7 @@ export async function fetchAssigneesByTaskUnchecked(
  */
 export async function fetchLinksUnchecked(
   taskId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<TaskLinkRef[]> {
   return conn
     .select({
@@ -694,7 +697,7 @@ export async function getProjectTasks(ctx: AuthContext, projectId: string) {
  *   RLS-scoped frame.
  * @returns Ordered array of tasks.
  */
-export async function listProjectTasks(projectId: string, conn: Conn = db) {
+export async function listProjectTasks(projectId: string, conn: Conn) {
   return conn
     .select()
     .from(tasks)
@@ -839,7 +842,7 @@ function deriveTaskState(
 export async function deriveTaskStatesSlim(
   projectId: string,
   taskSubset: TaskStateInput[],
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<Map<string, TaskState>> {
   const graph = await buildEffectiveDepGraph(projectId, conn);
   const result = new Map<string, TaskState>();
@@ -1130,7 +1133,7 @@ export async function searchTasksPaged(
 export async function fetchEdgeNotesBySource(
   projectId: string,
   taskId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<Map<string, string>> {
   const rows = await conn
     .select({ targetTaskId: taskEdges.targetTaskId, note: taskEdges.note })
@@ -1165,7 +1168,7 @@ export async function fetchEdgeNotesBySource(
 export async function fetchEdgeNotesByTarget(
   projectId: string,
   taskId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<Map<string, string>> {
   const rows = await conn
     .select({ sourceTaskId: taskEdges.sourceTaskId, note: taskEdges.note })
@@ -1205,7 +1208,7 @@ export async function fetchEdgeNotesByTarget(
 export async function fetchTaskSummaries(
   projectId: string,
   taskIds: string[],
-  conn: Conn = db,
+  conn: Conn,
 ) {
   if (taskIds.length === 0) return [];
   const rows = await conn
@@ -1258,7 +1261,7 @@ export type DependencyTaskInfo = {
 export async function fetchDependencyTasks(
   projectId: string,
   taskIds: string[],
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<DependencyTaskInfo[]> {
   if (taskIds.length === 0) return [];
   const rows = await conn
@@ -1308,7 +1311,7 @@ export type SiblingTaskInfo = {
 export async function fetchSiblingTasks(
   projectId: string,
   excludeTaskId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<SiblingTaskInfo[]> {
   const rows = await conn
     .select({
@@ -1346,7 +1349,7 @@ export async function fetchSiblingTasks(
  *   RLS-scoped frame.
  * @returns Slim rows for every task in the project.
  */
-export async function listTasksForGraph(projectId: string, conn: Conn = db) {
+export async function listTasksForGraph(projectId: string, conn: Conn) {
   return conn
     .select({
       id: tasks.id,
@@ -1787,7 +1790,23 @@ export async function updateTask(
   delete changes.decisions;
 
   let wasNoOp = false;
-  const updated = await withUserContext(ctx.userId, async (tx) => {
+  // Surface the post-update criteria/decisions on the returned row so
+  // callers that read `result.acceptanceCriteria` / `result.decisions`
+  // (e.g. tool-handlers' completion-protocol hint checks on status
+  // transitions to done/in_review/cancelled) see the freshest state.
+  //
+  // One round-trip via `fetchTaskChildren` — both `json_agg` subqueries
+  // ride a single SELECT. PARTIAL CONTRACT: skipped entirely when
+  // neither a child write nor a status change occurred. Callers on the
+  // skip path see `[]` regardless of persisted state; this is documented
+  // on `UpdateTaskResult`. Do not extend the consumer set without
+  // either (a) including their call site in the refetch trigger or
+  // (b) routing them through `getTaskFull` afterwards.
+  const wroteChildren =
+    formattedCriteria !== undefined || formattedDecisions !== undefined;
+  const statusChanged = typeof input.status === "string";
+  const refetchNeeded = wroteChildren || statusChanged;
+  const result = await withUserContext(ctx.userId, async (tx) => {
     // After MYMR-136 the row-level INSERT/UPDATE/DELETE on the child tables
     // is atomic per row via MVCC + ON CONFLICT (id) DO UPDATE, so the old
     // `FOR UPDATE` row lock that serialized concurrent merges is no longer
@@ -1813,7 +1832,11 @@ export async function updateTask(
       formattedDecisions === undefined
     ) {
       wasNoOp = true;
-      return current;
+      const noOpChildren: TaskChildrenRow = {
+        acceptance_criteria: null,
+        decisions: null,
+      };
+      return { row: current, children: noOpChildren };
     }
 
     if (!overwriteArrays && Array.isArray(changes.files)) {
@@ -1916,7 +1939,10 @@ export async function updateTask(
           });
       }
     }
-    return row;
+    const children: TaskChildrenRow = refetchNeeded
+      ? await fetchTaskChildren(tx, taskId)
+      : { acceptance_criteria: null, decisions: null };
+    return { row, children };
   });
 
   // Reflect a prUrl- or criteria/decisions-only call (no other field
@@ -1928,34 +1954,15 @@ export async function updateTask(
     formattedCriteria !== undefined ||
     formattedDecisions !== undefined
   ) {
-    emitTaskEvent(updated.projectId, taskId);
+    emitTaskEvent(result.row.projectId, taskId);
   }
-  // Surface the post-update criteria/decisions on the returned row so
-  // callers that read `result.acceptanceCriteria` / `result.decisions`
-  // (e.g. tool-handlers' completion-protocol hint checks on status
-  // transitions to done/in_review/cancelled) see the freshest state.
-  //
-  // One round-trip via `fetchTaskChildren` — both `json_agg` subqueries
-  // ride a single SELECT. PARTIAL CONTRACT: skipped entirely when
-  // neither a child write nor a status change occurred. Callers on the
-  // skip path see `[]` regardless of persisted state; this is documented
-  // on `UpdateTaskResult`. Do not extend the consumer set without
-  // either (a) including their call site in the refetch trigger or
-  // (b) routing them through `getTaskFull` afterwards.
-  const wroteChildren =
-    formattedCriteria !== undefined || formattedDecisions !== undefined;
-  const statusChanged = typeof input.status === "string";
-  const refetchNeeded = wroteChildren || statusChanged;
-  const children = refetchNeeded
-    ? await withUserContext(ctx.userId, (tx) => fetchTaskChildren(tx, taskId))
-    : { acceptance_criteria: null, decisions: null };
-  return Object.assign(updated, {
-    acceptanceCriteria: (children.acceptance_criteria ?? []).map((c) => ({
+  return Object.assign(result.row, {
+    acceptanceCriteria: (result.children.acceptance_criteria ?? []).map((c) => ({
       id: c.id,
       text: c.text,
       checked: c.checked,
     })),
-    decisions: (children.decisions ?? []).map((d) => ({
+    decisions: (result.children.decisions ?? []).map((d) => ({
       id: d.id,
       text: d.text,
       source: d.source as Decision["source"],
@@ -2130,26 +2137,30 @@ export async function removeTaskLink(
   ctx: AuthContext,
   linkId: string,
 ): Promise<{ id: string }> {
-  const [link] = await withUserContext(ctx.userId, (tx) =>
-    tx
-      .select()
+  const result = await withUserContext(ctx.userId, async (tx) => {
+    const [row] = await tx
+      .select({
+        linkId: taskLinks.id,
+        taskId: taskLinks.taskId,
+        projectId: tasks.projectId,
+      })
       .from(taskLinks)
+      .innerJoin(tasks, eq(tasks.id, taskLinks.taskId))
       .where(eq(taskLinks.id, linkId))
-      .limit(1),
-  );
-  if (!link) throw new ForbiddenError("Forbidden", "task", linkId);
-  const task = await assertTaskAccess(link.taskId, ctx);
+      .limit(1);
+    if (!row) throw new ForbiddenError("Forbidden", "task", linkId);
 
-  await withUserContext(ctx.userId, async (tx) => {
     await tx.delete(taskLinks).where(eq(taskLinks.id, linkId));
     await tx
       .update(tasks)
       .set({ updatedAt: new Date() })
-      .where(eq(tasks.id, link.taskId));
+      .where(eq(tasks.id, row.taskId));
+
+    return row;
   });
 
-  emitTaskEvent(task.projectId, link.taskId);
-  return { id: linkId };
+  emitTaskEvent(result.projectId, result.taskId);
+  return { id: result.linkId };
 }
 
 /**
@@ -2174,46 +2185,45 @@ export async function updateTaskLink(
   linkId: string,
   url: string,
 ): Promise<TaskLink> {
-  const [link] = await withUserContext(ctx.userId, (tx) =>
-    tx
-      .select()
-      .from(taskLinks)
-      .where(eq(taskLinks.id, linkId))
-      .limit(1),
-  );
-  if (!link) throw new ForbiddenError("Forbidden", "task", linkId);
-  const task = await assertTaskAccess(link.taskId, ctx);
-
   let classified;
   try {
     classified = classifyLink(url);
   } catch (e) {
     if (e instanceof MalformedLinkError) {
-      throw new ForbiddenError("Invalid url", "task", link.taskId);
+      throw new ForbiddenError("Invalid url", "task", linkId);
     }
     throw e;
   }
 
-  if (classified.url !== link.url) {
-    const [conflict] = await withUserContext(ctx.userId, (tx) =>
-      tx
+  const result = await withUserContext(ctx.userId, async (tx) => {
+    const [row] = await tx
+      .select({
+        link: taskLinks,
+        projectId: tasks.projectId,
+      })
+      .from(taskLinks)
+      .innerJoin(tasks, eq(tasks.id, taskLinks.taskId))
+      .where(eq(taskLinks.id, linkId))
+      .limit(1);
+    if (!row) throw new ForbiddenError("Forbidden", "task", linkId);
+
+    if (classified.url !== row.link.url) {
+      const [conflict] = await tx
         .select({ id: taskLinks.id })
         .from(taskLinks)
         .where(
           and(
-            eq(taskLinks.taskId, link.taskId),
+            eq(taskLinks.taskId, row.link.taskId),
             eq(taskLinks.url, classified.url),
             ne(taskLinks.id, linkId),
           ),
         )
-        .limit(1),
-    );
-    if (conflict) {
-      throw new ForbiddenError("Duplicate url", "task", link.taskId);
+        .limit(1);
+      if (conflict) {
+        throw new ForbiddenError("Duplicate url", "task", row.link.taskId);
+      }
     }
-  }
 
-  const result = await withUserContext(ctx.userId, async (tx) => {
     const [updated] = await tx
       .update(taskLinks)
       .set({
@@ -2226,11 +2236,12 @@ export async function updateTaskLink(
     await tx
       .update(tasks)
       .set({ updatedAt: new Date() })
-      .where(eq(tasks.id, link.taskId));
-    return updated;
+      .where(eq(tasks.id, row.link.taskId));
+
+    return { updated, projectId: row.projectId, taskId: row.link.taskId };
   });
 
-  emitTaskEvent(task.projectId, link.taskId);
-  return result;
+  emitTaskEvent(result.projectId, result.taskId);
+  return result.updated;
 }
 

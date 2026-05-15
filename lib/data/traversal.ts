@@ -1,7 +1,6 @@
 import "server-only";
 
 import { and, eq, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
 import { type Conn } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import { tasks, projects, taskEdges } from "@/lib/db/schema";
@@ -34,7 +33,7 @@ type Ancestor = { id: string; type: "project"; title: string };
  */
 export async function getAncestors(
   taskId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<Ancestor[]> {
   const [task] = await conn
     .select({ projectId: tasks.projectId })
@@ -82,7 +81,7 @@ export async function getDependencyChain(
   taskId: string,
   projectId: string,
   maxDepth = 10,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<DependencyNode[]> {
   return fetchDependencyChain(conn, taskId, projectId, maxDepth);
 }
@@ -109,7 +108,7 @@ type ConnectedTask = {
  */
 export async function getConnectedTasks(
   taskId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<ConnectedTask[]> {
   const outgoing = await conn
     .select({

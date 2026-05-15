@@ -29,24 +29,43 @@ declare global {
 
 const isNeon = (): boolean => process.env.MYMIR_DB_DRIVER === "neon";
 
+// Pool size budget: Cloudflare Workers spawn ~10 concurrent isolates per
+// deploy under typical load; each gets its own three pools (app_user,
+// auth_role, service_role). Neon Launch tier caps per-branch connections
+// at ~100. Budget: 100 ÷ 3 roles ÷ ~10 isolates ≈ 3 conns/role/isolate.
+// Bump max if the deploy target has more isolates or a higher Neon tier.
+
 /**
  * Build the application Drizzle client for the active driver.
  *
  * @returns Drizzle instance bound to the public schema.
+ * @throws Error when `DATABASE_URL` is unset.
  */
 function buildAppDb(): AppDb {
-  const url = process.env.DATABASE_URL!;
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is required for the app runtime connection (app_user role).",
+    );
+  }
   if (isNeon()) {
-    const pool = new NeonPool({ connectionString: url });
+    const pool = new NeonPool({
+      connectionString: url,
+      max: 3,
+      idleTimeoutMillis: 10_000,
+    });
     return drizzleNeon(pool, { schema: appSchema }) as unknown as AppDb;
   }
-  return drizzlePg(postgres(url), { schema: appSchema });
+  return drizzlePg(postgres(url, { max: 3, idle_timeout: 10 }), {
+    schema: appSchema,
+  });
 }
 
 /**
  * Build the Better-auth Drizzle client for the active driver.
  *
  * @returns Drizzle instance bound to the neon_auth schema.
+ * @throws Error when `DATABASE_AUTH_URL` is unset.
  */
 function buildAuthDb(): AuthDb {
   const url = process.env.DATABASE_AUTH_URL;
@@ -57,10 +76,16 @@ function buildAuthDb(): AuthDb {
     );
   }
   if (isNeon()) {
-    const pool = new NeonPool({ connectionString: url });
+    const pool = new NeonPool({
+      connectionString: url,
+      max: 3,
+      idleTimeoutMillis: 10_000,
+    });
     return drizzleNeon(pool, { schema: authSchema }) as unknown as AuthDb;
   }
-  return drizzlePg(postgres(url), { schema: authSchema });
+  return drizzlePg(postgres(url, { max: 3, idle_timeout: 10 }), {
+    schema: authSchema,
+  });
 }
 
 /**
@@ -79,10 +104,16 @@ function buildServiceRoleDb(): AppDb {
     );
   }
   if (isNeon()) {
-    const pool = new NeonPool({ connectionString: url });
+    const pool = new NeonPool({
+      connectionString: url,
+      max: 3,
+      idleTimeoutMillis: 10_000,
+    });
     return drizzleNeon(pool, { schema: appSchema }) as unknown as AppDb;
   }
-  return drizzlePg(postgres(url), { schema: appSchema });
+  return drizzlePg(postgres(url, { max: 3, idle_timeout: 10 }), {
+    schema: appSchema,
+  });
 }
 
 /**
@@ -116,19 +147,21 @@ export const authDb = new Proxy({} as AuthDb, {
 });
 
 /**
- * Lazily initialized BYPASSRLS Drizzle client. Used by exactly ONE
- * documented bypass site:
+ * Lazily initialized BYPASSRLS Drizzle client. Used by exactly TWO
+ * documented bypass sites:
  *   - `lib/data/account.ts:clearOrgMembershipArtifacts` — cross-schema
  *     cleanup (neon_auth.session/oauth* + public.task_assignees) for a user
- *     just removed from an org. The membership predicate of the public RLS
- *     policies returns zero rows for the removed user, so this cleanup
- *     cannot run under withUserContext.
+ *     just removed from an org.
+ *   - `lib/data/project.ts:listOrgProjectIdsAsAdmin` — wraps the
+ *     SECURITY DEFINER `public.list_org_project_ids(uuid)`. Used by
+ *     `lib/realtime/access.ts:revokeOrgAccess` which runs after the
+ *     member row is already gone, so a member-scoped lookup would
+ *     return zero rows.
  *
  * The three invite-code helpers (reserveInviteCodeSlot, releaseInviteCodeSlot,
  * diagnoseTeamInviteCode) previously used this client; they have moved to
- * SECURITY DEFINER SQL functions exposed to app_user (see
- * docker/rls-functions.sql). Do not add new bypass sites without auditing
- * whether a SECURITY DEFINER function can replace them.
+ * SECURITY DEFINER SQL functions exposed to app_user. Do not add new bypass
+ * sites without auditing whether a SECURITY DEFINER function can replace them.
  *
  * Same lazy-init + globalThis caching semantics as {@link appDb}.
  */

@@ -12,7 +12,7 @@ import {
 } from "@/lib/db/schema";
 import type { EdgeType, HistoryEntry } from "@/lib/types";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
-import { getDependencyChain } from "@/lib/data/traversal";
+import { fetchDependencyChain } from "@/lib/db/raw/fetch-dependency-chain";
 import { appendTaskHistory } from "@/lib/data/task";
 import { formatMarkdown } from "@/lib/markdown/format";
 import type { AuthContext } from "@/lib/auth/context";
@@ -207,7 +207,7 @@ export async function getTaskEdgesDetailed(
  */
 export async function fetchEdgesForTaskIds(
   taskIds: string[],
-  conn: Conn = db,
+  conn: Conn,
 ) {
   if (taskIds.length === 0) return [];
   return conn
@@ -234,7 +234,7 @@ export async function fetchEdgesForTaskIds(
  */
 export async function listDependsOnEdges(
   sourceTaskIds: string[],
-  conn: Conn = db,
+  conn: Conn,
 ) {
   if (sourceTaskIds.length === 0) return [];
   return conn
@@ -300,20 +300,21 @@ export async function createEdge(
     throw new Error("Duplicate edge: an identical edge already exists.");
   }
 
-  if (data.edgeType === "depends_on") {
-    const chain = await getDependencyChain(
-      data.targetTaskId,
-      targetTask.projectId,
-    );
-    const wouldCycle = chain.some((node) => node.id === data.sourceTaskId);
-    if (wouldCycle) {
-      throw new Error(
-        "Circular dependency: adding this edge would create a cycle.",
-      );
-    }
-  }
-
   const edge = await withUserContext(ctx.userId, async (tx) => {
+    if (data.edgeType === "depends_on") {
+      const chain = await fetchDependencyChain(
+        tx,
+        data.targetTaskId,
+        targetTask.projectId,
+        10,
+      );
+      if (chain.some((node) => node.id === data.sourceTaskId)) {
+        throw new Error(
+          "Circular dependency: adding this edge would create a cycle.",
+        );
+      }
+    }
+
     const [created] = await tx.insert(taskEdges).values(data).returning();
 
     const historyEntry = makeHistoryEntry({
@@ -396,6 +397,7 @@ export async function updateEdge(
     };
   }
 
+  let targetProjectIdForCycle: string | undefined;
   if (updates.edgeType && updates.edgeType !== existing.edgeType) {
     const [dup] = await db
       .select({ id: taskEdges.id })
@@ -414,15 +416,7 @@ export async function updateEdge(
 
     if (updates.edgeType === "depends_on") {
       const targetTask = await assertTaskAccess(existing.targetTaskId, ctx);
-      const chain = await getDependencyChain(
-        existing.targetTaskId,
-        targetTask.projectId,
-      );
-      if (chain.some((node) => node.id === existing.sourceTaskId)) {
-        throw new Error(
-          "Circular dependency: changing this edge type would create a cycle.",
-        );
-      }
+      targetProjectIdForCycle = targetTask.projectId;
     }
   }
 
@@ -431,6 +425,20 @@ export async function updateEdge(
   if (updates.note !== undefined) setClause.note = updates.note;
 
   const updated = await withUserContext(ctx.userId, async (tx) => {
+    if (targetProjectIdForCycle) {
+      const chain = await fetchDependencyChain(
+        tx,
+        existing.targetTaskId,
+        targetProjectIdForCycle,
+        10,
+      );
+      if (chain.some((node) => node.id === existing.sourceTaskId)) {
+        throw new Error(
+          "Circular dependency: changing this edge type would create a cycle.",
+        );
+      }
+    }
+
     const [row] = await tx
       .update(taskEdges)
       .set(setClause)

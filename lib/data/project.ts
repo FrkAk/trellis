@@ -10,8 +10,8 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { type Conn } from "@/lib/db/raw";
+import { serviceRoleDb } from "@/lib/db";
+import { executeRaw, type Conn } from "@/lib/db/raw";
 import { withUserContext, type Tx } from "@/lib/db/rls";
 import { projects, tasks, taskEdges } from "@/lib/db/schema";
 import {
@@ -303,6 +303,27 @@ export async function listOrgProjectIds(
 }
 
 /**
+ * Admin/system lookup: project ids for an org, NOT scoped by caller membership.
+ * Used by the better-auth afterRemoveMember hook (lib/realtime/access.ts)
+ * which runs after the member row is deleted — at that point a member-scoped
+ * `listOrgProjectIds` returns []. Routes through the SECURITY DEFINER
+ * function `public.list_org_project_ids`, which is EXECUTE-restricted to
+ * service_role. The JS data ring MUST call this via `serviceRoleDb`.
+ *
+ * @param orgId - UUID of the organization.
+ * @returns Array of project ids in the organization.
+ */
+export async function listOrgProjectIdsAsAdmin(
+  orgId: string,
+): Promise<string[]> {
+  const rows = await executeRaw<{ id: string }>(
+    serviceRoleDb,
+    sql`SELECT id FROM public.list_org_project_ids(${orgId}::uuid)`,
+  );
+  return rows.map((r) => r.id);
+}
+
+/**
  * Project ids the caller can access via team membership. Lightweight
  * companion to {@link listProjectsSlim} — no pagination, no decoration —
  * intended for the realtime broker's bulk-subscription registration on
@@ -363,7 +384,7 @@ export async function getProjectSlim(
  */
 export async function getProjectIdentifier(
   projectId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<string | null> {
   const [row] = await conn
     .select({ identifier: projects.identifier })
@@ -393,7 +414,7 @@ export type ProjectHeader = {
  */
 export async function getProjectHeader(
   projectId: string,
-  conn: Conn = db,
+  conn: Conn,
 ): Promise<ProjectHeader | null> {
   const [row] = await conn
     .select({
@@ -849,12 +870,13 @@ async function pickAvailableIdentifier(
 }
 
 /**
- * Resolve the destination team for a `createProject` call.
+ * Resolve the destination team for a `createProject` call inside an
+ * existing transaction frame.
  *
  * Resolution rules — every path enforces a fresh membership check, so a
  * stale token cannot write into a team the user has been removed from:
  *
- * 1. `data.organizationId` provided → membership-checked; on miss raise
+ * 1. `requested` provided → membership-checked; on miss raise
  *    `ForbiddenError`.
  * 2. Omitted + caller has exactly one membership → use that team.
  * 3. Omitted + caller has multiple memberships → raise
@@ -863,52 +885,58 @@ async function pickAvailableIdentifier(
  * 4. Omitted + caller has zero memberships → raise
  *    {@link NoTeamMembershipError}.
  *
+ * @param tx - Active RLS transaction frame.
  * @param ctx - Resolved auth context.
  * @param requested - Optional explicit `organizationId` from the caller.
  * @returns Verified destination team UUID.
+ * @throws ForbiddenError when `requested` is supplied but the caller is
+ *   not a member of that team.
+ * @throws MultiTeamAmbiguityError when omitted and the caller is in >1 team.
+ * @throws NoTeamMembershipError when omitted and the caller has no teams.
  */
-async function resolveTargetOrgId(
+async function resolveTargetOrgIdInTx(
+  tx: Tx,
   ctx: AuthContext,
   requested: string | undefined,
 ): Promise<string> {
-  return withUserContext(ctx.userId, async (tx) => {
-    if (requested !== undefined) {
-      if (!isUuid(requested)) {
-        throw new ForbiddenError("Forbidden", "team", requested);
-      }
-      const [row] = await tx
-        .select({ id: member.id })
-        .from(member)
-        .where(
-          and(
-            eq(member.userId, ctx.userId),
-            eq(member.organizationId, requested),
-          ),
-        )
-        .limit(1);
-      if (!row) throw new ForbiddenError("Forbidden", "team", requested);
-      return requested;
+  if (requested !== undefined) {
+    if (!isUuid(requested)) {
+      throw new ForbiddenError("Forbidden", "team", requested);
     }
-
-    const memberships = await tx
-      .select({ id: organization.id, name: organization.name })
+    const [row] = await tx
+      .select({ id: member.id })
       .from(member)
-      .innerJoin(organization, eq(organization.id, member.organizationId))
-      .where(eq(member.userId, ctx.userId));
+      .where(
+        and(
+          eq(member.userId, ctx.userId),
+          eq(member.organizationId, requested),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new ForbiddenError("Forbidden", "team", requested);
+    return requested;
+  }
 
-    if (memberships.length === 0) throw new NoTeamMembershipError();
-    if (memberships.length === 1) return memberships[0].id;
-    const teams: TeamOption[] = memberships.map((m) => ({
-      id: m.id,
-      name: m.name,
-    }));
-    throw new MultiTeamAmbiguityError(teams);
-  });
+  const memberships = await tx
+    .select({ id: organization.id, name: organization.name })
+    .from(member)
+    .innerJoin(organization, eq(organization.id, member.organizationId))
+    .where(eq(member.userId, ctx.userId));
+
+  if (memberships.length === 0) throw new NoTeamMembershipError();
+  if (memberships.length === 1) return memberships[0].id;
+  const teams: TeamOption[] = memberships.map((m) => ({
+    id: m.id,
+    name: m.name,
+  }));
+  throw new MultiTeamAmbiguityError(teams);
 }
 
 /**
- * Insert a new project. Destination resolution is handled by
- * {@link resolveTargetOrgId} (always membership-checked).
+ * Insert a new project. Destination resolution and the insert run in a
+ * single `withUserContext` frame — one `set_config` round-trip, and the
+ * membership check shares the transaction snapshot with the insert so
+ * membership cannot be revoked between checks.
  *
  * If `identifier` is omitted, it is derived from the title and auto-suffixed
  * on collision under a transaction-scoped advisory lock keyed on the target
@@ -927,43 +955,52 @@ export async function createProject(
   ctx: AuthContext,
   data: CreateProjectInput,
 ) {
-  const targetOrgId = await resolveTargetOrgId(ctx, data.organizationId);
-
   if (typeof data.description === "string" && data.description.trim()) {
     data = {
       ...data,
       description: (await formatMarkdown(data.description)) ?? data.description,
     };
   }
-  const project = await withUserContext(ctx.userId, async (tx) => {
-    let identifier = data.identifier;
-    if (identifier === undefined) {
-      await acquireOrgIdentifierLock(tx, targetOrgId);
-      identifier = await pickAvailableIdentifier(
-        tx,
-        targetOrgId,
-        deriveIdentifier(data.title),
-      );
-    }
 
-    const [row] = await tx
-      .insert(projects)
-      .values({
-        ...data,
-        identifier,
-        organizationId: targetOrgId,
-        history: [
-          makeHistoryEntry({
-            type: "created",
-            label: "Project created",
-            description: `Project "${data.title}" created.`,
-            actor: "user",
-          }),
-        ],
-      })
-      .returning();
-    return row;
-  });
+  const { project, targetOrgId } = await withUserContext(
+    ctx.userId,
+    async (tx) => {
+      const targetOrgId = await resolveTargetOrgIdInTx(
+        tx,
+        ctx,
+        data.organizationId,
+      );
+
+      let identifier = data.identifier;
+      if (identifier === undefined) {
+        await acquireOrgIdentifierLock(tx, targetOrgId);
+        identifier = await pickAvailableIdentifier(
+          tx,
+          targetOrgId,
+          deriveIdentifier(data.title),
+        );
+      }
+
+      const [row] = await tx
+        .insert(projects)
+        .values({
+          ...data,
+          identifier,
+          organizationId: targetOrgId,
+          history: [
+            makeHistoryEntry({
+              type: "created",
+              label: "Project created",
+              description: `Project "${data.title}" created.`,
+              actor: "user",
+            }),
+          ],
+        })
+        .returning();
+      return { project: row, targetOrgId };
+    },
+  );
+
   await emitProjectListEvent(targetOrgId);
   return project;
 }

@@ -1,5 +1,8 @@
 import "server-only";
-import { listOrgProjectIds } from "@/lib/data/project";
+import {
+  listOrgProjectIds,
+  listOrgProjectIdsAsAdmin,
+} from "@/lib/data/project";
 import { broker } from "@/lib/realtime/broker";
 import { emitProjectListForUser } from "@/lib/realtime/events";
 
@@ -64,7 +67,7 @@ export async function revokeOrgAccess(
 ): Promise<void> {
   try {
     if (broker.hasConnections(userId)) {
-      const projectIds = await listOrgProjectIds(userId, orgId);
+      const projectIds = await listOrgProjectIdsAsAdmin(orgId);
       for (const id of projectIds) {
         broker.unregister(userId, `project:${id}`);
       }

@@ -13,6 +13,14 @@ import { executeRawDiscard } from "@/lib/db/raw";
  */
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+// RFC 4122 UUID, any version, case-insensitive. set_config will accept
+// arbitrary strings, but our RLS predicates cast to uuid; rejecting non-UUID
+// shape here turns a Postgres "invalid input syntax for type uuid" 500 into
+// a clean TypeError. Unicode whitespace (U+00A0, U+2003, etc.), control
+// chars, empty strings, and non-UUID payloads all fail this regex.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Run `fn` inside a Drizzle transaction with `app.user_id` set to the supplied
  * user id for the lifetime of the transaction. The GUC clears automatically on
@@ -25,17 +33,20 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * `true` is `is_local`; scope is identical to `SET LOCAL`.
  *
  * @param userId - Authenticated user id (typically `AuthContext.userId`).
+ *   Must be a valid RFC 4122 UUID string.
  * @param fn - Async callback that performs the protected work.
  * @returns Whatever `fn` returns.
- * @throws {TypeError} When `userId` is empty/nullish. Surfaces misuse loudly
- *   instead of silently degrading to default-deny.
+ * @throws {TypeError} When `userId` is not a valid UUID string. Surfaces
+ *   misuse loudly instead of silently degrading to default-deny.
  */
 export async function withUserContext<T>(
   userId: string,
   fn: (tx: Tx) => Promise<T>,
 ): Promise<T> {
-  if (!userId) {
-    throw new TypeError("withUserContext: userId must be a non-empty string");
+  if (typeof userId !== "string" || !UUID_RE.test(userId)) {
+    throw new TypeError(
+      "withUserContext: userId must be a valid UUID string",
+    );
   }
   return db.transaction(async (tx) => {
     await executeRawDiscard(
