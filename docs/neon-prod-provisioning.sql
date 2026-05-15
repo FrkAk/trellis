@@ -199,6 +199,16 @@ WHERE grantee = 'app_user'
 -- [Apply docker/rls-functions.sql as neondb_owner]
 
 
+-- [PROD UPDATE 2026-05-15] team_invite_code policy split for admin-only writes.
+-- The previous member-access policy let any org member INSERT/UPDATE/DELETE
+-- invite codes via direct SQL. Apply by re-running docker/rls-policies.sql
+-- against the Neon prod database.
+
+-- [PROD UPDATE 2026-05-15] Added list_org_project_ids(uuid) SECURITY DEFINER
+-- function for revokeOrgAccess. Apply by re-running docker/rls-functions.sql
+-- against the Neon prod database.
+
+
 -- =============================================================================
 -- VERIFICATION QUERIES (read-only; safe to re-run anytime)
 -- =============================================================================

@@ -74,3 +74,23 @@ AS $$
 $$;
 REVOKE EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid) TO app_user;
+
+-- Admin/system lookup: list project ids for an org without scoping by the
+-- caller's membership. Used by lib/realtime/access.ts:revokeOrgAccess which
+-- runs in better-auth's afterRemoveMember hook — at that point the user's
+-- membership row is gone, so a member-scoped lookup returns zero rows.
+--
+-- SECURITY: EXECUTE granted to service_role ONLY (not app_user). Cross-org
+-- project enumeration would otherwise be reachable from any compromised
+-- app_user session. The JS data ring calls this via serviceRoleDb, which
+-- is already the documented BYPASSRLS connection.
+CREATE OR REPLACE FUNCTION public.list_org_project_ids(p_org_id uuid)
+RETURNS TABLE (id uuid)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $$
+  SELECT id FROM public.projects WHERE organization_id = p_org_id;
+$$;
+REVOKE EXECUTE ON FUNCTION public.list_org_project_ids(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.list_org_project_ids(uuid) TO service_role;

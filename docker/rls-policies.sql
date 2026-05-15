@@ -39,7 +39,7 @@ CREATE POLICY "projects_member_access" ON "projects" AS PERMISSIVE FOR ALL TO pu
 DROP POLICY IF EXISTS "tasks_member_access" ON "tasks";
 CREATE POLICY "tasks_member_access" ON "tasks" AS PERMISSIVE FOR ALL TO public
   USING (EXISTS (
-    SELECT 1 FROM projects p
+    SELECT 1 FROM public.projects p
     JOIN neon_auth."member" m ON m."organizationId" = p.organization_id
     WHERE p.id = "tasks"."project_id"
       AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
@@ -50,23 +50,23 @@ CREATE POLICY "tasks_member_access" ON "tasks" AS PERMISSIVE FOR ALL TO public
 DROP POLICY IF EXISTS "task_edges_member_access" ON "task_edges";
 CREATE POLICY "task_edges_member_access" ON "task_edges" AS PERMISSIVE FOR ALL TO public
   USING (EXISTS (
-    SELECT 1 FROM tasks t
-    JOIN projects p ON p.id = t.project_id
+    SELECT 1 FROM public.tasks t
+    JOIN public.projects p ON p.id = t.project_id
     JOIN neon_auth."member" m ON m."organizationId" = p.organization_id
     WHERE t.id = "task_edges"."source_task_id"
       AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
   ))
   WITH CHECK (
     EXISTS (
-      SELECT 1 FROM tasks t
-      JOIN projects p ON p.id = t.project_id
+      SELECT 1 FROM public.tasks t
+      JOIN public.projects p ON p.id = t.project_id
       JOIN neon_auth."member" m ON m."organizationId" = p.organization_id
       WHERE t.id = "task_edges"."source_task_id"
         AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
     )
     AND EXISTS (
-      SELECT 1 FROM tasks t
-      JOIN projects p ON p.id = t.project_id
+      SELECT 1 FROM public.tasks t
+      JOIN public.projects p ON p.id = t.project_id
       JOIN neon_auth."member" m ON m."organizationId" = p.organization_id
       WHERE t.id = "task_edges"."target_task_id"
         AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
@@ -77,8 +77,8 @@ CREATE POLICY "task_edges_member_access" ON "task_edges" AS PERMISSIVE FOR ALL T
 DROP POLICY IF EXISTS "task_assignees_member_access" ON "task_assignees";
 CREATE POLICY "task_assignees_member_access" ON "task_assignees" AS PERMISSIVE FOR ALL TO public
   USING (EXISTS (
-    SELECT 1 FROM tasks t
-    JOIN projects p ON p.id = t.project_id
+    SELECT 1 FROM public.tasks t
+    JOIN public.projects p ON p.id = t.project_id
     JOIN neon_auth."member" m ON m."organizationId" = p.organization_id
     WHERE t.id = "task_assignees"."task_id"
       AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
@@ -88,8 +88,8 @@ CREATE POLICY "task_assignees_member_access" ON "task_assignees" AS PERMISSIVE F
 DROP POLICY IF EXISTS "task_acceptance_criteria_member_access" ON "task_acceptance_criteria";
 CREATE POLICY "task_acceptance_criteria_member_access" ON "task_acceptance_criteria" AS PERMISSIVE FOR ALL TO public
   USING (EXISTS (
-    SELECT 1 FROM tasks t
-    JOIN projects p ON p.id = t.project_id
+    SELECT 1 FROM public.tasks t
+    JOIN public.projects p ON p.id = t.project_id
     JOIN neon_auth."member" m ON m."organizationId" = p.organization_id
     WHERE t.id = "task_acceptance_criteria"."task_id"
       AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
@@ -99,8 +99,8 @@ CREATE POLICY "task_acceptance_criteria_member_access" ON "task_acceptance_crite
 DROP POLICY IF EXISTS "task_decisions_member_access" ON "task_decisions";
 CREATE POLICY "task_decisions_member_access" ON "task_decisions" AS PERMISSIVE FOR ALL TO public
   USING (EXISTS (
-    SELECT 1 FROM tasks t
-    JOIN projects p ON p.id = t.project_id
+    SELECT 1 FROM public.tasks t
+    JOIN public.projects p ON p.id = t.project_id
     JOIN neon_auth."member" m ON m."organizationId" = p.organization_id
     WHERE t.id = "task_decisions"."task_id"
       AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
@@ -110,21 +110,44 @@ CREATE POLICY "task_decisions_member_access" ON "task_decisions" AS PERMISSIVE F
 DROP POLICY IF EXISTS "task_links_member_access" ON "task_links";
 CREATE POLICY "task_links_member_access" ON "task_links" AS PERMISSIVE FOR ALL TO public
   USING (EXISTS (
-    SELECT 1 FROM tasks t
-    JOIN projects p ON p.id = t.project_id
+    SELECT 1 FROM public.tasks t
+    JOIN public.projects p ON p.id = t.project_id
     JOIN neon_auth."member" m ON m."organizationId" = p.organization_id
     WHERE t.id = "task_links"."task_id"
       AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
   ));
 
--- team_invite_code — admin policy. Admins of the org can do anything;
--- lookup access for any authenticated user (so non-members can join via
--- code) is granted via SECURITY DEFINER functions in docker/rls-functions.sql
--- (added in a separate task), not through a permissive policy here.
+-- team_invite_code — split: SELECT for all members of the org, writes
+-- (INSERT/UPDATE/DELETE) restricted to admin/owner roles. Defense-in-depth
+-- so a bypass of the action-layer isOrgAdmin check (new endpoint, SQLi
+-- landing) cannot mint or rotate codes from a regular member's session.
 DROP POLICY IF EXISTS "team_invite_code_member_access" ON "team_invite_code";
-CREATE POLICY "team_invite_code_member_access" ON "team_invite_code" AS PERMISSIVE FOR ALL TO public
+DROP POLICY IF EXISTS "team_invite_code_member_select" ON "team_invite_code";
+DROP POLICY IF EXISTS "team_invite_code_admin_write" ON "team_invite_code";
+
+CREATE POLICY "team_invite_code_member_select" ON "team_invite_code"
+  AS PERMISSIVE FOR SELECT TO public
   USING (EXISTS (
     SELECT 1 FROM neon_auth."member" m
     WHERE m."organizationId" = "team_invite_code"."organization_id"
       AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
   ));
+
+CREATE POLICY "team_invite_code_admin_write" ON "team_invite_code"
+  AS PERMISSIVE FOR ALL TO public
+  USING (EXISTS (
+    SELECT 1 FROM neon_auth."member" m
+    WHERE m."organizationId" = "team_invite_code"."organization_id"
+      AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
+      AND m."role" IN ('admin','owner')
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM neon_auth."member" m
+    WHERE m."organizationId" = "team_invite_code"."organization_id"
+      AND m."userId" = (SELECT NULLIF(current_setting('app.user_id', TRUE), '')::uuid)
+      AND m."role" IN ('admin','owner')
+  ));
+
+-- WITH CHECK is explicit (not implicit-from-USING) so the INSERT-time policy
+-- evaluation is unambiguous to readers and future Postgres versions can't
+-- regress the behavior by tightening the implicit-reuse rule.
