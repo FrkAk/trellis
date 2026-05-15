@@ -30,11 +30,6 @@ function linksAs(taskId: string, userId: string) {
   return withUserContext(userId, (tx) => fetchLinksUnchecked(taskId, tx));
 }
 
-// Cross-team enforcement tests rely on RLS firing - under the BYPASSRLS
-// superuser pool used by the default test:db lane, the security boundary
-// isn't reachable. Skip unless MYMIR_TEST_AS_APP_USER=1 (the test:rls lane).
-const rlsOnly = test.skipIf(process.env.MYMIR_TEST_AS_APP_USER !== "1");
-
 afterEach(async () => {
   await truncateAll();
 });
@@ -43,7 +38,7 @@ afterEach(async () => {
 // Security: cross-team isolation and input validation
 // ---------------------------------------------------------------------------
 
-rlsOnly("addTaskLink raises ForbiddenError for callers outside the task's team", async () => {
+test("addTaskLink raises ForbiddenError for callers outside the task's team", async () => {
   const owner = await seedUserOrgProject("links-add-x1");
   const stranger = await seedUserOrgProject("links-add-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -55,7 +50,7 @@ rlsOnly("addTaskLink raises ForbiddenError for callers outside the task's team",
   ).rejects.toBeInstanceOf(ForbiddenError);
 });
 
-rlsOnly("removeTaskLink raises ForbiddenError for callers outside the task's team", async () => {
+test("removeTaskLink raises ForbiddenError for callers outside the task's team", async () => {
   const owner = await seedUserOrgProject("links-rm-x1");
   const stranger = await seedUserOrgProject("links-rm-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -171,7 +166,7 @@ test("updateTaskLink rewrites the URL in place and preserves id and createdAt", 
   expect(updated.kind).toBe("issue");
 });
 
-rlsOnly("updateTaskLink raises ForbiddenError for callers outside the task's team", async () => {
+test("updateTaskLink raises ForbiddenError for callers outside the task's team", async () => {
   const owner = await seedUserOrgProject("links-edit-x1");
   const stranger = await seedUserOrgProject("links-edit-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -338,7 +333,7 @@ test("fetchLinksUnchecked returns links ordered by createdAt ascending", async (
 // Context builders: links must follow the same cross-team gate as the task
 // ---------------------------------------------------------------------------
 
-rlsOnly("buildAgentContext denies cross-team callers, blocking any link leak", async () => {
+test("buildAgentContext denies cross-team callers, blocking any link leak", async () => {
   const owner = await seedUserOrgProject("ctx-agent-x1");
   const stranger = await seedUserOrgProject("ctx-agent-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -351,7 +346,7 @@ rlsOnly("buildAgentContext denies cross-team callers, blocking any link leak", a
   );
 });
 
-rlsOnly("buildWorkingContext denies cross-team callers, blocking any link leak", async () => {
+test("buildWorkingContext denies cross-team callers, blocking any link leak", async () => {
   const owner = await seedUserOrgProject("ctx-working-x1");
   const stranger = await seedUserOrgProject("ctx-working-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -364,7 +359,7 @@ rlsOnly("buildWorkingContext denies cross-team callers, blocking any link leak",
   ).rejects.toBeInstanceOf(ForbiddenError);
 });
 
-rlsOnly("buildSummaryContext denies cross-team callers, blocking any link leak", async () => {
+test("buildSummaryContext denies cross-team callers, blocking any link leak", async () => {
   const owner = await seedUserOrgProject("ctx-summary-x1");
   const stranger = await seedUserOrgProject("ctx-summary-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -377,7 +372,7 @@ rlsOnly("buildSummaryContext denies cross-team callers, blocking any link leak",
   ).rejects.toBeInstanceOf(ForbiddenError);
 });
 
-rlsOnly("buildReviewContext denies cross-team callers, blocking any link leak", async () => {
+test("buildReviewContext denies cross-team callers, blocking any link leak", async () => {
   const owner = await seedUserOrgProject("ctx-review-x1");
   const stranger = await seedUserOrgProject("ctx-review-x2");
   const ownerCtx = makeAuthContext(owner.userId);

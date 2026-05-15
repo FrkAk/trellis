@@ -7,7 +7,6 @@ import {
 import { buildAgentContext } from "@/lib/context/_core/agent";
 import { makeAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";
-import { withAppUserDb } from "@/tests/setup/rls";
 
 afterEach(async () => {
   await truncateAll();
@@ -59,10 +58,8 @@ describe("buildAgentContext under app_user", () => {
     }
 
     const ctx = makeAuthContext(fxB.userId);
-    await withAppUserDb(async () => {
-      await expect(buildAgentContext(ctx, taskInA)).rejects.toThrow(
-        ForbiddenError,
-      );
-    });
+    await expect(buildAgentContext(ctx, taskInA)).rejects.toThrow(
+      ForbiddenError,
+    );
   });
 });

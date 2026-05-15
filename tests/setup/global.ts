@@ -6,30 +6,26 @@ declare global {
 }
 
 /**
- * Idempotent global setup: start the test container and apply migrations
- * once per process. Subsequent calls are no-ops. Call from `beforeAll`
- * in test files that need real DB access.
+ * Idempotent global setup: start the test container, apply migrations as
+ * the container superuser, then rewrite `DATABASE_URL` to `app_user` so
+ * every test exercises the production RLS-bound role. `DATABASE_AUTH_URL`
+ * and `DATABASE_SERVICE_ROLE_URL` are rewritten to their dedicated roles
+ * for the same reason. Migrations run against the original superuser URL
+ * because policies, role grants, and `drizzle-kit push` need owner rights.
+ * Subsequent calls are no-ops.
  */
 export async function setup() {
   if (globalThis.__mymirTestSetupRan) return;
   const url = await startContainer();
-  process.env.DATABASE_URL = url;
-  const baseUrl = process.env.DATABASE_URL!;
-  process.env.DATABASE_AUTH_URL = baseUrl.replace(
-    /^(postgres(?:ql)?):\/\/[^:]+:[^@]+@/,
-    "$1://auth_role:auth_role@",
-  );
-  process.env.DATABASE_SERVICE_ROLE_URL = baseUrl.replace(
-    /^(postgres(?:ql)?):\/\/[^:]+:[^@]+@/,
-    "$1://service_role:service_role@",
-  );
-  await applyMigrations(url);
-  if (process.env.MYMIR_TEST_AS_APP_USER === "1") {
-    process.env.DATABASE_URL = baseUrl.replace(
+  const rewriteRole = (role: string) =>
+    url.replace(
       /^(postgres(?:ql)?):\/\/[^:]+:[^@]+@/,
-      "$1://app_user:app_user@",
+      `$1://${role}:${role}@`,
     );
-  }
+  await applyMigrations(url);
+  process.env.DATABASE_URL = rewriteRole("app_user");
+  process.env.DATABASE_AUTH_URL = rewriteRole("auth_role");
+  process.env.DATABASE_SERVICE_ROLE_URL = rewriteRole("service_role");
   globalThis.__mymirTestSetupRan = true;
 }
 

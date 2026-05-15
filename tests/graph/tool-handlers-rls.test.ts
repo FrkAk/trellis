@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
 import { seedUserOrgProject, serviceRoleConnect } from "@/tests/setup/seed";
-import { withAppUserDb } from "@/tests/setup/rls";
 import { fetchAssigneesUnchecked } from "@/lib/data/task";
 import { db } from "@/lib/db";
 import { withUserContext } from "@/lib/db/rls";
@@ -68,9 +67,7 @@ describe("fetchAssigneesUnchecked behavior under app_user", () => {
       await sr.end({ timeout: 5 });
     }
 
-    await withAppUserDb(async () => {
-      const result = await fetchAssigneesUnchecked(taskId, db);
-      expect(result.length).toBe(0);
-    });
+    const result = await fetchAssigneesUnchecked(taskId, db);
+    expect(result.length).toBe(0);
   });
 });

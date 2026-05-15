@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
-import * as appSchema from "@/lib/db/schema";
 import { truncateAll } from "@/tests/setup/schema";
 import { seedUserOrgProject, serviceRoleConnect } from "@/tests/setup/seed";
-import { getConnectionString } from "@/tests/setup/container";
 import { makeAuthContext } from "@/lib/auth/context";
 import { createEdge } from "@/lib/data/edge";
 
@@ -19,34 +15,6 @@ import { createEdge } from "@/lib/data/edge";
  * uses `fetchDependencyChain(tx, ...)` directly so the recursive walk
  * participates in the same RLS-scoped transaction frame.
  */
-type AppDbCache = ReturnType<typeof drizzle<typeof appSchema>>;
-
-/**
- * Pin the application `db` Proxy to an `app_user`-bound Drizzle client for
- * the duration of `fn` so any module that imports `db` from `@/lib/db`
- * transparently runs under the non-BYPASSRLS role. Restores the previous
- * cache on exit. Mirrors `withAppUserDb` from `rls-dataring.test.ts`.
- *
- * @param fn - Callback to run with the swapped client.
- * @returns Whatever `fn` returns.
- */
-async function withAppUserDb<T>(fn: () => Promise<T>): Promise<T> {
-  const url = new URL(getConnectionString());
-  url.username = "app_user";
-  url.password = "app_user";
-  const client = postgres(url.toString(), { max: 1 });
-  const appUserDb = drizzle(client, { schema: appSchema });
-
-  const g = globalThis as unknown as { __mymirAppDb: AppDbCache | undefined };
-  const previous = g.__mymirAppDb;
-  g.__mymirAppDb = appUserDb;
-  try {
-    return await fn();
-  } finally {
-    g.__mymirAppDb = previous;
-    await client.end({ timeout: 5 });
-  }
-}
 
 afterEach(async () => {
   await truncateAll();
@@ -80,14 +48,12 @@ describe("createEdge cycle detection under app_user", () => {
 
     const ctx = makeAuthContext(fx.userId);
     await expect(
-      withAppUserDb(() =>
-        createEdge(ctx, {
-          sourceTaskId: cId,
-          targetTaskId: aId,
-          edgeType: "depends_on",
-          note: "",
-        }),
-      ),
+      createEdge(ctx, {
+        sourceTaskId: cId,
+        targetTaskId: aId,
+        edgeType: "depends_on",
+        note: "",
+      }),
     ).rejects.toThrow(/circular|cycle/i);
   });
 });

@@ -7,7 +7,6 @@ import {
 import { buildReviewContext } from "@/lib/context/_core/review";
 import { makeAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";
-import { withAppUserDb } from "@/tests/setup/rls";
 
 afterEach(async () => {
   await truncateAll();
@@ -56,10 +55,8 @@ describe("buildReviewContext under app_user", () => {
     }
 
     const ctx = makeAuthContext(fxB.userId);
-    await withAppUserDb(async () => {
-      await expect(buildReviewContext(ctx, taskInAId)).rejects.toThrow(
-        ForbiddenError,
-      );
-    });
+    await expect(buildReviewContext(ctx, taskInAId)).rejects.toThrow(
+      ForbiddenError,
+    );
   });
 });

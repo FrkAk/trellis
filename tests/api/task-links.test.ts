@@ -1,7 +1,6 @@
 import { test, expect, afterEach } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
 import { seedUserOrgProject } from "@/tests/setup/seed";
-import { withAppUserDb } from "@/tests/setup/rls";
 import { broker } from "@/lib/realtime/broker";
 import { GET } from "@/app/api/task/[taskId]/route";
 import { makeAuthContext } from "@/lib/auth/context";
@@ -51,14 +50,12 @@ test("GET /api/task/[id] returns 404 for a cross-team caller (no links leak in b
   });
 
   setSession({ user: { id: stranger.userId } });
-  await withAppUserDb(async () => {
-    const res = await GET(new Request(`http://test/api/task/${task.id}`), {
-      params: Promise.resolve({ taskId: task.id }),
-    });
-    expect(res.status).toBe(404);
-    const body = await res.text();
-    expect(body).not.toContain("pull/secret");
+  const res = await GET(new Request(`http://test/api/task/${task.id}`), {
+    params: Promise.resolve({ taskId: task.id }),
   });
+  expect(res.status).toBe(404);
+  const body = await res.text();
+  expect(body).not.toContain("pull/secret");
 });
 
 test("GET /api/task/[id] returns 401 without a session", async () => {
