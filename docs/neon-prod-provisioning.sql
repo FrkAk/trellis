@@ -52,7 +52,7 @@ CREATE ROLE service_role WITH
 GRANT USAGE ON SCHEMA public TO app_user, service_role;
 GRANT USAGE ON SCHEMA neon_auth TO app_user, service_role;
 
--- service_role only: lets `drizzle-kit push` create new tables when migrating
+-- service_role only: lets `drizzle-kit migrate` create new tables when migrating
 -- via DATABASE_SERVICE_ROLE_URL. app_user must NEVER have CREATE on public.
 GRANT CREATE ON SCHEMA public TO service_role;
 
