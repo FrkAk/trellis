@@ -7,6 +7,7 @@ import {
 import { buildSummaryContext } from "@/lib/context/_core/summary";
 import { makeAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";
+import { withAppUserDb } from "@/tests/setup/rls";
 
 afterEach(async () => {
   await truncateAll();
@@ -60,8 +61,10 @@ describe("buildSummaryContext under app_user", () => {
     }
 
     const ctx = makeAuthContext(fxB.userId);
-    await expect(buildSummaryContext(ctx, taskInAId)).rejects.toThrow(
-      ForbiddenError,
-    );
+    await withAppUserDb(async () => {
+      await expect(buildSummaryContext(ctx, taskInAId)).rejects.toThrow(
+        ForbiddenError,
+      );
+    });
   });
 });

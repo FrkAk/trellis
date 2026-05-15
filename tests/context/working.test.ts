@@ -7,6 +7,7 @@ import {
 import { buildWorkingContext } from "@/lib/context/_core/working";
 import { makeAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";
+import { withAppUserDb } from "@/tests/setup/rls";
 
 afterEach(async () => {
   await truncateAll();
@@ -53,8 +54,10 @@ describe("buildWorkingContext under app_user", () => {
     }
 
     const ctx = makeAuthContext(fxB.userId);
-    await expect(buildWorkingContext(ctx, taskInAId)).rejects.toThrow(
-      ForbiddenError,
-    );
+    await withAppUserDb(async () => {
+      await expect(buildWorkingContext(ctx, taskInAId)).rejects.toThrow(
+        ForbiddenError,
+      );
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
 import { buildPlanningContext } from "@/lib/context/_core/planning";
 import { makeAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";
+import { withAppUserDb } from "@/tests/setup/rls";
 
 afterEach(async () => {
   await truncateAll();
@@ -55,8 +56,10 @@ describe("buildPlanningContext under app_user", () => {
     }
 
     const ctx = makeAuthContext(fxB.userId);
-    await expect(buildPlanningContext(ctx, taskInA)).rejects.toThrow(
-      ForbiddenError,
-    );
+    await withAppUserDb(async () => {
+      await expect(buildPlanningContext(ctx, taskInA)).rejects.toThrow(
+        ForbiddenError,
+      );
+    });
   });
 });
