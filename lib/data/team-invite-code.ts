@@ -1,7 +1,8 @@
 import "server-only";
 
-import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
-import { serviceRoleDb } from "@/lib/db";
+import { eq, sql } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { executeRaw, executeRawDiscard } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import { teamInviteCodes } from "@/lib/db/team-schema";
 
@@ -151,32 +152,21 @@ export type InviteCodeReservation = {
 export async function reserveInviteCodeSlot(
   code: string,
 ): Promise<InviteCodeReservation | null> {
-  const [reserved] = await serviceRoleDb
-    .update(teamInviteCodes)
-    .set({
-      useCount: sql`${teamInviteCodes.useCount} + 1`,
-      updatedAt: sql`NOW()`,
-    })
-    .where(
-      and(
-        eq(teamInviteCodes.code, code),
-        isNull(teamInviteCodes.revokedAt),
-        or(
-          isNull(teamInviteCodes.expiresAt),
-          gt(teamInviteCodes.expiresAt, sql`NOW()`),
-        ),
-        or(
-          isNull(teamInviteCodes.maxUses),
-          lt(teamInviteCodes.useCount, teamInviteCodes.maxUses),
-        ),
-      ),
-    )
-    .returning({
-      id: teamInviteCodes.id,
-      orgId: teamInviteCodes.organizationId,
-      defaultRole: teamInviteCodes.defaultRole,
-    });
-  return reserved ?? null;
+  const rows = await executeRaw<{
+    id: string;
+    organization_id: string;
+    default_role: "member" | "admin";
+  }>(
+    db,
+    sql`SELECT id, organization_id, default_role FROM public.reserve_team_invite_code_slot(${code})`,
+  );
+  const reserved = rows[0];
+  if (!reserved) return null;
+  return {
+    id: reserved.id,
+    orgId: reserved.organization_id,
+    defaultRole: reserved.default_role,
+  };
 }
 
 /**
@@ -186,13 +176,10 @@ export async function reserveInviteCodeSlot(
  * @param id - UUID of the invite-code row whose slot was reserved.
  */
 export async function releaseInviteCodeSlot(id: string): Promise<void> {
-  await serviceRoleDb
-    .update(teamInviteCodes)
-    .set({
-      useCount: sql`GREATEST(${teamInviteCodes.useCount} - 1, 0)`,
-      updatedAt: sql`NOW()`,
-    })
-    .where(eq(teamInviteCodes.id, id));
+  await executeRawDiscard(
+    db,
+    sql`SELECT public.release_team_invite_code_slot(${id}::uuid)`,
+  );
 }
 
 /** Diagnostic outcome categories. */
@@ -215,20 +202,26 @@ export async function diagnoseTeamInviteCode(
   code: string,
 ): Promise<InviteCodeDiagnosis> {
   try {
-    const [row] = await serviceRoleDb
-      .select({
-        revokedAt: teamInviteCodes.revokedAt,
-        expiresAt: teamInviteCodes.expiresAt,
-        maxUses: teamInviteCodes.maxUses,
-        useCount: teamInviteCodes.useCount,
-      })
-      .from(teamInviteCodes)
-      .where(eq(teamInviteCodes.code, code))
-      .limit(1);
+    const rows = await executeRaw<{
+      revoked_at: Date | string | null;
+      expires_at: Date | string | null;
+      max_uses: number | null;
+      use_count: number;
+    }>(
+      db,
+      sql`SELECT revoked_at, expires_at, max_uses, use_count FROM public.lookup_team_invite_code(${code})`,
+    );
+    const row = rows[0];
     if (!row) return "not_found";
-    if (row.revokedAt) return "revoked";
-    if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return "expired";
-    if (row.maxUses !== null && row.useCount >= row.maxUses) return "exhausted";
+    if (row.revoked_at) return "revoked";
+    if (row.expires_at) {
+      const expiresAtMs =
+        row.expires_at instanceof Date
+          ? row.expires_at.getTime()
+          : new Date(row.expires_at).getTime();
+      if (expiresAtMs <= Date.now()) return "expired";
+    }
+    if (row.max_uses !== null && row.use_count >= row.max_uses) return "exhausted";
     return "unknown";
   } catch {
     return "unknown";

@@ -27,11 +27,13 @@ import { organization, user } from "@/lib/db/auth-schema";
  * `docker/rls-policies.sql` (1-hop membership through `neon_auth.member`,
  * applied after `db:push`). The three join-path helpers in
  * `lib/data/team-invite-code.ts` (`reserveInviteCodeSlot`,
- * `releaseInviteCodeSlot`, `diagnoseTeamInviteCode`) use `serviceRoleDb`
- * (BYPASSRLS) because the joining user has no `neon_auth.member` row at
- * the moment of lookup. The four admin helpers (`findTeamInviteCode`,
- * `createTeamInviteCode`, `rotateTeamInviteCode`, `revokeTeamInviteCode`)
- * run under `withUserContext(adminUserId, ...)`; the action layer
+ * `releaseInviteCodeSlot`, `diagnoseTeamInviteCode`) call SECURITY DEFINER
+ * SQL functions (see `docker/rls-functions.sql`) because the joining user
+ * has no `neon_auth.member` row at the moment of lookup — the functions
+ * run as their owner and have a narrow audited surface. The four admin
+ * helpers (`findTeamInviteCode`, `createTeamInviteCode`,
+ * `rotateTeamInviteCode`, `revokeTeamInviteCode`) run under
+ * `withUserContext(adminUserId, ...)`; the action layer
  * (`lib/actions/team-invite-code.ts`) enforces admin membership of the
  * target org via {@link isOrgAdmin} before invoking them, so the admin's
  * GUC satisfies the policy USING/WITH CHECK predicates.

@@ -10,9 +10,9 @@ import { appDb, serviceRoleDb as _serviceRoleDb } from "./connection";
 export const db = appDb;
 
 /**
- * BYPASSRLS Drizzle client. Used by the four documented RLS bypass sites in
- * the data ring (3 invite-code helpers + clearOrgMembershipArtifacts). Wired
- * against `DATABASE_SERVICE_ROLE_URL`.
+ * BYPASSRLS Drizzle client. Used by exactly one documented RLS bypass site
+ * in the data ring (`clearOrgMembershipArtifacts`). Wired against
+ * `DATABASE_SERVICE_ROLE_URL`.
  *
  * @see ./connection.ts for the canonical bypass-site inventory.
  */

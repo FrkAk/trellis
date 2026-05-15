@@ -196,4 +196,44 @@ describe("RLS — defense-in-depth on team isolation", () => {
       await c.end({ timeout: 5 });
     }
   });
+
+  test("task_edges WITH CHECK rejects INSERT with target in another team", async () => {
+    const fxA = await seedUserOrgProject("rls-cross-target-a");
+    const fxB = await seedUserOrgProject("rls-cross-target-b");
+
+    const sr = serviceRoleConnect();
+    let taskAId: string;
+    let taskBId: string;
+    try {
+      const [a] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fxA.projectId}, 'task-A', 1)
+        RETURNING id
+      `;
+      const [b] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fxB.projectId}, 'task-B', 1)
+        RETURNING id
+      `;
+      taskAId = a.id;
+      taskBId = b.id;
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    try {
+      await expect(
+        c.begin(async (tx) => {
+          await tx`SELECT set_config('app.user_id', ${fxA.userId}, true)`;
+          await tx`
+            INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+            VALUES (${taskAId}, ${taskBId}, 'depends_on')
+          `;
+        }),
+      ).rejects.toThrow(/row-level security|violates row-level security/i);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
 });
