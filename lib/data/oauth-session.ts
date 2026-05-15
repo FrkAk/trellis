@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { serviceRoleDb } from "@/lib/db";
 import {
   oauthAccessToken,
   oauthClient,
@@ -8,6 +8,12 @@ import {
   oauthRefreshToken,
   organization,
 } from "@/lib/db/auth-schema";
+
+// app_user has no grants on neon_auth.oauth* (bearer tokens). Helpers in
+// this file are reached only after `requireSession` verifies the caller,
+// so the `userId` argument is trusted and the WHERE clauses are the
+// effective scope.
+const db = serviceRoleDb;
 
 /** Active OAuth session row joined with client and organization metadata. */
 export type OAuthSessionRow = {

@@ -46,9 +46,15 @@ const eslintConfig = [
         },
         {
           selector:
+            "CallExpression[callee.object.name='db'][callee.property.name=/^(select|insert|update|delete)$/]",
+          message:
+            "Bare db.select/insert/update/delete bypasses RLS — under app_user with no GUC, the query default-denies and silently returns empty (or wrong-tenant) data. Wrap the call in withUserContext(userId, async tx => tx.<verb>(...)) from @/lib/db/rls. If this is a documented exempt site, add the file to the ignores list in eslint.config.mjs.",
+        },
+        {
+          selector:
             "CallExpression[callee.object.name='serviceRoleDb'][callee.property.name='transaction']",
           message:
-            "serviceRoleDb.transaction() is BYPASSRLS. The only allowed site is lib/data/account.ts:clearOrgMembershipArtifacts. If you need a new bypass site, audit whether a SECURITY DEFINER function in docker/rls-functions.sql can replace it.",
+            "serviceRoleDb.transaction() is BYPASSRLS. Allowed sites: lib/data/account.ts:clearOrgMembershipArtifacts and lib/data/oauth-session.ts. If you need a new bypass site, audit whether a SECURITY DEFINER function in docker/rls-functions.sql can replace it.",
         },
       ],
       "no-restricted-imports": [

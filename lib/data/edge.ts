@@ -1,7 +1,6 @@
 import "server-only";
 
 import { and, eq, or, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
 import type { Conn } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import {
@@ -286,21 +285,21 @@ export async function createEdge(
     data = { ...data, note: (await formatMarkdown(data.note)) ?? data.note };
   }
 
-  const [existing] = await db
-    .select({ id: taskEdges.id })
-    .from(taskEdges)
-    .where(
-      and(
-        eq(taskEdges.sourceTaskId, data.sourceTaskId),
-        eq(taskEdges.targetTaskId, data.targetTaskId),
-        eq(taskEdges.edgeType, data.edgeType),
-      ),
-    );
-  if (existing) {
-    throw new Error("Duplicate edge: an identical edge already exists.");
-  }
-
   const edge = await withUserContext(ctx.userId, async (tx) => {
+    const [existing] = await tx
+      .select({ id: taskEdges.id })
+      .from(taskEdges)
+      .where(
+        and(
+          eq(taskEdges.sourceTaskId, data.sourceTaskId),
+          eq(taskEdges.targetTaskId, data.targetTaskId),
+          eq(taskEdges.edgeType, data.edgeType),
+        ),
+      );
+    if (existing) {
+      throw new Error("Duplicate edge: an identical edge already exists.");
+    }
+
     if (data.edgeType === "depends_on") {
       const chain = await fetchDependencyChain(
         tx,
@@ -398,26 +397,13 @@ export async function updateEdge(
   }
 
   let targetProjectIdForCycle: string | undefined;
-  if (updates.edgeType && updates.edgeType !== existing.edgeType) {
-    const [dup] = await db
-      .select({ id: taskEdges.id })
-      .from(taskEdges)
-      .where(
-        and(
-          eq(taskEdges.sourceTaskId, existing.sourceTaskId),
-          eq(taskEdges.targetTaskId, existing.targetTaskId),
-          eq(taskEdges.edgeType, updates.edgeType),
-        ),
-      );
-    if (dup)
-      throw new Error(
-        "Duplicate edge: an edge with this type already exists between these tasks.",
-      );
-
-    if (updates.edgeType === "depends_on") {
-      const targetTask = await assertTaskAccess(existing.targetTaskId, ctx);
-      targetProjectIdForCycle = targetTask.projectId;
-    }
+  if (
+    updates.edgeType &&
+    updates.edgeType !== existing.edgeType &&
+    updates.edgeType === "depends_on"
+  ) {
+    const targetTask = await assertTaskAccess(existing.targetTaskId, ctx);
+    targetProjectIdForCycle = targetTask.projectId;
   }
 
   const setClause: Record<string, unknown> = { updatedAt: new Date() };
@@ -425,6 +411,24 @@ export async function updateEdge(
   if (updates.note !== undefined) setClause.note = updates.note;
 
   const updated = await withUserContext(ctx.userId, async (tx) => {
+    if (updates.edgeType && updates.edgeType !== existing.edgeType) {
+      const [dup] = await tx
+        .select({ id: taskEdges.id })
+        .from(taskEdges)
+        .where(
+          and(
+            eq(taskEdges.sourceTaskId, existing.sourceTaskId),
+            eq(taskEdges.targetTaskId, existing.targetTaskId),
+            eq(taskEdges.edgeType, updates.edgeType),
+          ),
+        );
+      if (dup) {
+        throw new Error(
+          "Duplicate edge: an edge with this type already exists between these tasks.",
+        );
+      }
+    }
+
     if (targetProjectIdForCycle) {
       const chain = await fetchDependencyChain(
         tx,

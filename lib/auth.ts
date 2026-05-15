@@ -6,7 +6,7 @@ import * as authSchema from "@/lib/db/auth-schema";
 import { authDb } from "@/lib/db/connection";
 import { clearOrgMembershipArtifacts } from "@/lib/data/account";
 import { ac, owner, admin, member as memberRole } from "@/lib/auth/permissions";
-import { findOrgMemberUserIds } from "@/lib/data/membership";
+import { findOrgMemberUserIdsAsAdmin } from "@/lib/data/membership";
 import { grantOrgAccess, revokeOrgAccess } from "@/lib/realtime/access";
 
 /**
@@ -67,7 +67,7 @@ export const auth = betterAuth({
           ]);
         },
         beforeDeleteOrganization: async ({ organization: org }) => {
-          const userIds = await findOrgMemberUserIds(org.id);
+          const userIds = await findOrgMemberUserIdsAsAdmin(org.id);
           await Promise.all([
             ...userIds.map((userId) =>
               clearOrgMembershipArtifacts(userId, org.id),

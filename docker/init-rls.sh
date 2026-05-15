@@ -66,17 +66,13 @@ ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO app_user;
 
--- neon_auth schema: TIGHT grants for app_user, BROAD grants for auth_role
-GRANT USAGE ON SCHEMA neon_auth TO app_user, service_role, auth_role;
-
--- app_user: only what RLS policies + display projections need
-GRANT SELECT, REFERENCES ON neon_auth."member" TO app_user;
-GRANT SELECT, REFERENCES ON neon_auth.organization TO app_user;
-GRANT SELECT, REFERENCES ON neon_auth."user" TO app_user;
-GRANT SELECT, REFERENCES ON neon_auth.invitation TO app_user;
--- explicitly NOT granted: session, account, verification, oauthClient, oauthAccessToken,
--- oauthRefreshToken, oauthConsent, jwks. These contain secrets (password hashes, OAuth
--- tokens, session tokens, JWT private keys) and must never be readable by app_user.
+-- app_user reaches neon_auth.* only via SECURITY DEFINER functions in
+-- docker/rls-functions.sql. The explicit REVOKEs make re-runs idempotent
+-- when upgrading from the pre-lockdown provisioning.
+GRANT USAGE ON SCHEMA neon_auth TO service_role, auth_role;
+REVOKE ALL ON SCHEMA neon_auth FROM app_user;
+REVOKE ALL ON ALL TABLES IN SCHEMA neon_auth FROM app_user;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA neon_auth FROM app_user;
 
 -- service_role: same tight set on neon_auth (used only by clearOrgMembershipArtifacts)
 GRANT SELECT, REFERENCES ON neon_auth."member" TO service_role;

@@ -65,7 +65,14 @@ CREATE ROLE auth_role WITH
 -- -----------------------------------------------------------------------------
 
 GRANT USAGE ON SCHEMA public TO app_user, service_role;
-GRANT USAGE ON SCHEMA neon_auth TO app_user, service_role, auth_role;
+-- Option B: app_user is REVOKED from neon_auth entirely. All reads under
+-- app_user go through SECURITY DEFINER functions in
+-- docker/rls-functions.sql; the public.current_user_* family is the only
+-- audited surface app_user can touch in neon_auth.
+GRANT USAGE ON SCHEMA neon_auth TO service_role, auth_role;
+REVOKE ALL ON SCHEMA neon_auth FROM app_user;
+REVOKE ALL ON ALL TABLES IN SCHEMA neon_auth FROM app_user;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA neon_auth FROM app_user;
 
 -- service_role only: lets `drizzle-kit migrate` create new tables when migrating
 -- via DATABASE_SERVICE_ROLE_URL. app_user must NEVER have CREATE on public.
@@ -80,11 +87,8 @@ GRANT CREATE ON SCHEMA public TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
     TO app_user, service_role;
 
--- neon_auth: TIGHT grants for app_user (no SELECT on sensitive tables)
-GRANT SELECT, REFERENCES ON neon_auth."member" TO app_user;
-GRANT SELECT, REFERENCES ON neon_auth.organization TO app_user;
-GRANT SELECT, REFERENCES ON neon_auth."user" TO app_user;
-GRANT SELECT, REFERENCES ON neon_auth.invitation TO app_user;
+-- neon_auth: app_user has NO direct grants. service_role retains SELECT
+-- on the read-set used by `clearOrgMembershipArtifacts`.
 
 -- service_role: tight neon_auth SELECT + DML on session/oauth* for clearOrgMembershipArtifacts
 GRANT SELECT, REFERENCES ON neon_auth."member" TO service_role;
@@ -167,31 +171,44 @@ CREATE INDEX IF NOT EXISTS member_org_user_idx
 
 
 -- -----------------------------------------------------------------------------
--- 8. VERIFY app_user has NO grants on sensitive auth tables
+-- 8. VERIFY app_user has NO grants on ANY neon_auth table (Option B lockdown)
 -- -----------------------------------------------------------------------------
--- Expected: empty result (zero rows)
+-- Expected: empty result (zero rows). Under Option B app_user is REVOKED
+-- from every neon_auth table — all reads route through SECURITY DEFINER
+-- functions in docker/rls-functions.sql.
 SELECT grantee, table_name, privilege_type
 FROM information_schema.table_privileges
 WHERE grantee = 'app_user'
-  AND table_schema = 'neon_auth'
-  AND table_name IN (
-    'session','account','verification','oauthClient',
-    'oauthAccessToken','oauthRefreshToken','oauthConsent','jwks'
-  );
+  AND table_schema = 'neon_auth';
 
 
 -- -----------------------------------------------------------------------------
--- 9. SECURITY DEFINER functions (invite-code join flow)
+-- 9. SECURITY DEFINER functions
 -- -----------------------------------------------------------------------------
 -- Apply by running docker/rls-functions.sql as neondb_owner via the Neon SQL
 -- editor or psql. The function bodies are reviewed alongside
 -- docker/rls-functions.sql; this section is a pointer (not a duplicate) so
 -- the prod runbook stays the single source of truth for what runs on Neon.
 --
--- Functions installed:
+-- Functions installed (invite-code flow):
 --   public.lookup_team_invite_code(text)
 --   public.reserve_team_invite_code_slot(text)
 --   public.release_team_invite_code_slot(uuid)
+--
+-- Functions installed (Option B — neon_auth lockdown, grants to app_user):
+--   public.current_user_org_ids()              -- uuid[]; RLS policy hot path
+--   public.current_user_org_role(uuid)         -- text role or NULL
+--   public.current_user_orgs()                 -- caller's org summary
+--   public.current_user_has_any_membership()   -- bool, drives /onboarding
+--   public.current_user_visible_member(uuid)   -- single member, cross-team scoped
+--   public.team_member_roles_visible(uuid)     -- last-owner guard data
+--   public.team_members_visible(uuid)          -- team roster
+--   public.team_invitations_visible(uuid)      -- admin-gated invitations
+--   public.lookup_user_names_in_shared_orgs(uuid[]) -- batched name lookup
+--
+-- Functions installed (admin/system, service_role only):
+--   public.list_org_project_ids(uuid)
+--   public.find_org_member_user_ids_as_admin(uuid)
 --
 -- EXECUTE granted to app_user only.
 -- -----------------------------------------------------------------------------
@@ -288,10 +305,25 @@ SELECT 1 FROM public.projects LIMIT 1;
 -- Expected: ERROR: permission denied for table projects
 RESET ROLE;
 
--- (e) confirm app_user has tight neon_auth grants (only member/organization/user/invitation)
+-- (e) Option B: confirm app_user is REVOKED from every neon_auth table.
+--     Reads under app_user only succeed via the SECURITY DEFINER
+--     public.current_user_* and public.team_*_visible functions.
 SET ROLE app_user;
+SELECT 1 FROM neon_auth."member" LIMIT 1;
+-- Expected: ERROR: permission denied for table member
+SELECT 1 FROM neon_auth."user" LIMIT 1;
+-- Expected: ERROR: permission denied for table user
 SELECT 1 FROM neon_auth."session" LIMIT 1;
 -- Expected: ERROR: permission denied for table session
 SELECT 1 FROM neon_auth.jwks LIMIT 1;
 -- Expected: ERROR: permission denied for table jwks
+RESET ROLE;
+
+-- (f) confirm app_user CAN call the SECURITY DEFINER lookups
+--     (the function bodies run as their owner, which retains SELECT).
+SET ROLE app_user;
+SELECT public.current_user_has_any_membership();
+-- Expected: false (no GUC set; no caller identity → zero memberships)
+SELECT public.current_user_org_ids();
+-- Expected: {} (empty uuid array)
 RESET ROLE;

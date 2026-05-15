@@ -147,23 +147,16 @@ export const authDb = new Proxy({} as AuthDb, {
 });
 
 /**
- * Lazily initialized BYPASSRLS Drizzle client. Used by exactly TWO
- * documented bypass sites:
- *   - `lib/data/account.ts:clearOrgMembershipArtifacts` — cross-schema
- *     cleanup (neon_auth.session/oauth* + public.task_assignees) for a user
- *     just removed from an org.
- *   - `lib/data/project.ts:listOrgProjectIdsAsAdmin` — wraps the
- *     SECURITY DEFINER `public.list_org_project_ids(uuid)`. Used by
- *     `lib/realtime/access.ts:revokeOrgAccess` which runs after the
- *     member row is already gone, so a member-scoped lookup would
- *     return zero rows.
+ * Lazily initialized BYPASSRLS Drizzle client. Reserved for the documented
+ * bypass sites — adding a new one requires auditing whether a SECURITY
+ * DEFINER function in `docker/rls-functions.sql` can replace it.
  *
- * The three invite-code helpers (reserveInviteCodeSlot, releaseInviteCodeSlot,
- * diagnoseTeamInviteCode) previously used this client; they have moved to
- * SECURITY DEFINER SQL functions exposed to app_user. Do not add new bypass
- * sites without auditing whether a SECURITY DEFINER function can replace them.
- *
- * Same lazy-init + globalThis caching semantics as {@link appDb}.
+ * Current sites:
+ *   - `lib/data/account.ts:clearOrgMembershipArtifacts`
+ *   - `lib/data/project.ts:listOrgProjectIdsAsAdmin`
+ *   - `lib/data/membership.ts:findOrgMemberUserIdsAsAdmin`
+ *   - `lib/data/oauth-session.ts` (app_user has no grants on the
+ *     oauth* tables; rows are not tenant-scoped so RLS does not apply).
  */
 export const serviceRoleDb = new Proxy({} as AppDb, {
   get(_target, prop, receiver) {

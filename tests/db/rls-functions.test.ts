@@ -43,19 +43,45 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
   }
 
-  test("lookup_team_invite_code returns metadata when run as app_user without GUC", async () => {
+  test("lookup_team_invite_code returns the four diagnostic fields when run as app_user without GUC", async () => {
     const fx = await seedUserOrgProject("lookup-1");
-    await seedCode({ orgId: fx.organizationId, code: "LOOKUP1" });
+    await seedCode({
+      orgId: fx.organizationId,
+      code: "LOOKUP1",
+      maxUses: 5,
+      useCount: 2,
+    });
     const c = appUserConnect();
     try {
       const rows = await c<Array<{
-        id: string;
-        organization_id: string;
-        default_role: string;
-      }>>`SELECT id, organization_id, default_role FROM public.lookup_team_invite_code(${"LOOKUP1"})`;
+        revoked_at: Date | null;
+        expires_at: Date | null;
+        max_uses: number | null;
+        use_count: number;
+      }>>`SELECT revoked_at, expires_at, max_uses, use_count FROM public.lookup_team_invite_code(${"LOOKUP1"})`;
       expect(rows.length).toBe(1);
-      expect(rows[0].organization_id).toBe(fx.organizationId);
-      expect(rows[0].default_role).toBe("member");
+      expect(rows[0].revoked_at).toBeNull();
+      expect(rows[0].max_uses).toBe(5);
+      expect(rows[0].use_count).toBe(2);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("lookup_team_invite_code does NOT return id / organization_id / default_role", async () => {
+    const fx = await seedUserOrgProject("lookup-shape");
+    await seedCode({ orgId: fx.organizationId, code: "LOOKUPSHAPE" });
+    const c = appUserConnect();
+    try {
+      await expect(
+        c`SELECT id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      ).rejects.toThrow(/column "id" does not exist/i);
+      await expect(
+        c`SELECT organization_id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      ).rejects.toThrow(/column "organization_id" does not exist/i);
+      await expect(
+        c`SELECT default_role FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      ).rejects.toThrow(/column "default_role" does not exist/i);
     } finally {
       await c.end({ timeout: 5 });
     }

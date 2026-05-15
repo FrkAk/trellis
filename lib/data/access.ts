@@ -1,24 +1,32 @@
 import "server-only";
-import { and, eq, getTableColumns } from "drizzle-orm";
-import { projects, tasks, type Project, type Task } from "@/lib/db/schema";
-import { member, organization } from "@/lib/db/auth-schema";
+import { eq, sql } from "drizzle-orm";
+import {
+  projects,
+  tasks,
+  type Project,
+  type Task,
+} from "@/lib/db/schema";
+import { executeRaw } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import type { ProjectListOrganization } from "@/lib/data/views";
 
-/** Resolved project access — what the membership JOIN returns when a caller can read a project. */
+/** Resolved project access — what the membership check returns when a caller can read a project. */
 export type ProjectAccessRow = {
   /** The authorized project row. */
   project: Project;
   /** Caller's `member.role` string from the same JOIN. */
   memberRole: string;
-  /** Owning team — projected from the same JOIN to save a round-trip. */
+  /** Owning team — projected from the same lookup to save a round-trip. */
   organization: ProjectListOrganization;
 };
 
 /**
- * Single-query membership-gated project lookup. Inner-joins
- * `projects × member × organization` and projects all three so callers
- * don't need a follow-up org fetch.
+ * Membership-gated project lookup. Combines the RLS-scoped `projects`
+ * SELECT with a single-row lookup against `public.current_user_orgs()`
+ * for the team chip + caller's role. RLS guarantees the project is only
+ * visible if the caller is a member of its org; the org-row map then
+ * provides the role and display fields without touching `neon_auth.*`
+ * directly (app_user has no grants there under Option B).
  *
  * @param userId - Verified user id.
  * @param projectId - UUID of the project.
@@ -29,33 +37,39 @@ export async function findProjectAccess(
   projectId: string,
 ): Promise<ProjectAccessRow | null> {
   return withUserContext(userId, async (tx) => {
-    const [row] = await tx
-      .select({
-        project: getTableColumns(projects),
-        memberRole: member.role,
-        organization: {
-          id: organization.id,
-          name: organization.name,
-          slug: organization.slug,
-        },
-      })
+    const [projectRow] = await tx
+      .select()
       .from(projects)
-      .innerJoin(organization, eq(organization.id, projects.organizationId))
-      .innerJoin(
-        member,
-        and(
-          eq(member.organizationId, projects.organizationId),
-          eq(member.userId, userId),
-        ),
-      )
       .where(eq(projects.id, projectId))
       .limit(1);
-    return row ?? null;
+    if (!projectRow) return null;
+    const [org] = await executeRaw<{
+      org_id: string;
+      name: string;
+      slug: string;
+      member_role: string;
+    }>(
+      tx,
+      sql`SELECT org_id, name, slug, member_role FROM public.current_user_orgs() WHERE org_id = ${projectRow.organizationId}::uuid LIMIT 1`,
+    );
+    if (!org) return null;
+    return {
+      project: projectRow,
+      memberRole: org.member_role,
+      organization: {
+        id: org.org_id,
+        name: org.name,
+        slug: org.slug,
+      },
+    };
   });
 }
 
 /**
- * Single-query membership-gated task lookup via the project chain.
+ * Single-query membership-gated task lookup. Returns the task row when
+ * RLS allows it (i.e. the caller is a member of the task's project's
+ * org); RLS does the membership gate so this helper does not need any
+ * JOIN through `neon_auth.*`.
  *
  * @param userId - Verified user id.
  * @param taskId - UUID of the task.
@@ -67,7 +81,7 @@ export async function findTaskAccess(
 ): Promise<Task | null> {
   return withUserContext(userId, async (tx) => {
     const [row] = await tx
-      .select(getTableColumns(tasks))
+      .select()
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .limit(1);

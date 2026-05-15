@@ -289,8 +289,10 @@ export async function updateMemberRoleAction(input: {
   memberId: string;
   role: "member" | "admin" | "owner";
 }): Promise<TeamActionResult> {
+  let userId: string;
   try {
-    await requireSession();
+    const session = await requireSession();
+    userId = session.user.id;
   } catch {
     return teamFail("unauthorized");
   }
@@ -299,12 +301,13 @@ export async function updateMemberRoleAction(input: {
 
   if (!(await isOrgAdmin(parsed.data.organizationId))) return teamFail("forbidden");
 
-  const preRead = await findMemberById(parsed.data.memberId);
+  const preRead = await findMemberById(userId, parsed.data.memberId);
   if (!preRead) return teamFail("not_found");
   if (preRead.organizationId !== parsed.data.organizationId) return teamFail("forbidden");
 
   const reqHeaders = await headers();
   const outcome = await demoteMemberWithGuard(
+    userId,
     {
       organizationId: parsed.data.organizationId,
       memberId: parsed.data.memberId,
@@ -557,8 +560,10 @@ export type TeamDeletePreview = {
 export async function previewTeamDeleteAction(input: {
   organizationId: string;
 }): Promise<TeamActionResult<TeamDeletePreview>> {
+  let userId: string;
   try {
-    await requireSession();
+    const session = await requireSession();
+    userId = session.user.id;
   } catch {
     return teamFail("unauthorized");
   }
@@ -568,7 +573,7 @@ export async function previewTeamDeleteAction(input: {
   if (!(await isOrgOwner(parsed.data.organizationId))) return teamFail("forbidden");
 
   try {
-    const data = await previewTeamDelete(parsed.data.organizationId);
+    const data = await previewTeamDelete(userId, parsed.data.organizationId);
     return { ok: true, data };
   } catch (err) {
     console.error("previewTeamDeleteAction failed", err);

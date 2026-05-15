@@ -19,7 +19,6 @@ import {
   assigneeUserIdsExpr,
   hasCriteriaExpr,
 } from "@/lib/data/task";
-import { member, organization } from "@/lib/db/auth-schema";
 import { acquireOrgIdentifierLock } from "@/lib/db/raw/acquire-org-identifier-lock";
 import { aggregateProjectTags } from "@/lib/db/raw/aggregate-project-tags";
 import { getProjectListMaxUpdatedAtRaw } from "@/lib/db/raw/get-project-list-max-updated-at";
@@ -336,16 +335,7 @@ export async function listAccessibleProjectIds(
   ctx: AuthContext,
 ): Promise<string[]> {
   return withUserContext(ctx.userId, async (tx) => {
-    const rows = await tx
-      .select({ id: projects.id })
-      .from(projects)
-      .innerJoin(
-        member,
-        and(
-          eq(member.organizationId, projects.organizationId),
-          eq(member.userId, ctx.userId),
-        ),
-      );
+    const rows = await tx.select({ id: projects.id }).from(projects);
     return rows.map((r) => r.id);
   });
 }
@@ -550,20 +540,20 @@ export async function listUserTeams(
   ctx: AuthContext,
 ): Promise<UserTeamEntry[]> {
   return withUserContext(ctx.userId, async (tx) => {
-    const memberships = await tx
-      .select({
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
-        role: member.role,
-      })
-      .from(member)
-      .innerJoin(organization, eq(organization.id, member.organizationId))
-      .where(eq(member.userId, ctx.userId))
-      .orderBy(asc(member.createdAt));
+    const orgRows = await executeRaw<{
+      org_id: string;
+      name: string;
+      slug: string;
+      member_role: string;
+    }>(
+      tx,
+      sql`SELECT org_id, name, slug, member_role FROM public.current_user_orgs()`,
+    );
 
-    if (memberships.length === 0) return [];
+    if (orgRows.length === 0) return [];
 
+    // Per-org project counts (RLS on `projects` already scopes to the
+    // caller's accessible orgs, but the inArray narrows the index scan).
     const counts = await tx
       .select({
         organizationId: projects.organizationId,
@@ -573,19 +563,19 @@ export async function listUserTeams(
       .where(
         inArray(
           projects.organizationId,
-          memberships.map((m) => m.id),
+          orgRows.map((r) => r.org_id),
         ),
       )
       .groupBy(projects.organizationId);
 
     const countByOrg = new Map(counts.map((c) => [c.organizationId, c.total]));
 
-    return memberships.map((m) => ({
-      id: m.id,
-      name: m.name,
-      slug: m.slug,
-      role: m.role,
-      projectCount: countByOrg.get(m.id) ?? 0,
+    return orgRows.map((r) => ({
+      id: r.org_id,
+      name: r.name,
+      slug: r.slug,
+      role: r.member_role,
+      projectCount: countByOrg.get(r.org_id) ?? 0,
     }));
   });
 }
@@ -627,43 +617,47 @@ export async function listProjectsSlim(
     : sql`TRUE`;
 
   return withUserContext(ctx.userId, async (tx) => {
-    const rawRows = await tx
-      .select({
-        project: getTableColumns(projects),
-        organization: {
-          id: organization.id,
-          name: organization.name,
-          slug: organization.slug,
-        },
-        memberRole: member.role,
-      })
-      .from(projects)
-      .innerJoin(
-        member,
-        and(
-          eq(member.organizationId, projects.organizationId),
-          eq(member.userId, ctx.userId),
-        ),
-      )
-      .innerJoin(organization, eq(organization.id, projects.organizationId))
-      .where(cursorClause)
-      .orderBy(desc(projects.updatedAt), desc(projects.id))
-      .limit(limit + 1);
+    const [orgRows, trimmedAll] = await Promise.all([
+      executeRaw<{
+        org_id: string;
+        name: string;
+        slug: string;
+        member_role: string;
+      }>(
+        tx,
+        sql`SELECT org_id, name, slug, member_role FROM public.current_user_orgs()`,
+      ),
+      tx
+        .select(getTableColumns(projects))
+        .from(projects)
+        .where(cursorClause)
+        .orderBy(desc(projects.updatedAt), desc(projects.id))
+        .limit(limit + 1),
+    ]);
 
-    const hasMore = rawRows.length > limit;
-    const trimmed = hasMore ? rawRows.slice(0, limit) : rawRows;
+    const orgsById = new Map(
+      orgRows.map((r) => ({
+        id: r.org_id,
+        name: r.name,
+        slug: r.slug,
+        memberRole: r.member_role,
+      })).map((o) => [o.id, o]),
+    );
+
+    const hasMore = trimmedAll.length > limit;
+    const trimmed = hasMore ? trimmedAll.slice(0, limit) : trimmedAll;
     const last = trimmed[trimmed.length - 1];
     const nextCursor =
       hasMore && last
         ? encodeCursor({
-            updatedAt: new Date(last.project.updatedAt),
-            id: last.project.id,
+            updatedAt: new Date(last.updatedAt),
+            id: last.id,
           })
         : null;
 
     if (trimmed.length === 0) return { rows: [], nextCursor: null };
 
-    const projectIds = trimmed.map((p) => p.project.id);
+    const projectIds = trimmed.map((p) => p.id);
     const counts = await tx
       .select({
         projectId: tasks.projectId,
@@ -689,27 +683,31 @@ export async function listProjectsSlim(
       statsByProject.set(c.projectId, stats);
     }
 
-    const rows: ProjectListEntry[] = trimmed.map(
-      ({ project, organization: org, memberRole }) => {
-        const taskStats = statsByProject.get(project.id) ?? {
-          total: 0,
-          done: 0,
-          inProgress: 0,
-          cancelled: 0,
-        };
-        const denominator = taskStats.total - taskStats.cancelled;
-        return {
-          ...project,
-          organization: org,
-          memberRole,
-          taskStats,
-          progress:
-            denominator > 0
-              ? Math.round((taskStats.done / denominator) * 100)
-              : 0,
-        };
-      },
-    );
+    const rows: ProjectListEntry[] = trimmed.map((project) => {
+      const org = orgsById.get(project.organizationId);
+      if (!org) {
+        throw new Error(
+          `listProjectsSlim: project ${project.id} has no matching org in current_user_orgs()`,
+        );
+      }
+      const taskStats = statsByProject.get(project.id) ?? {
+        total: 0,
+        done: 0,
+        inProgress: 0,
+        cancelled: 0,
+      };
+      const denominator = taskStats.total - taskStats.cancelled;
+      return {
+        ...project,
+        organization: { id: org.id, name: org.name, slug: org.slug },
+        memberRole: org.memberRole,
+        taskStats,
+        progress:
+          denominator > 0
+            ? Math.round((taskStats.done / denominator) * 100)
+            : 0,
+      };
+    });
 
     return { rows, nextCursor };
   });
@@ -734,34 +732,43 @@ export async function listProjectsForMcp(
   ctx: AuthContext,
 ): Promise<ProjectListEntryMcp[]> {
   return withUserContext(ctx.userId, async (tx) => {
-    const rawRows = await tx
-      .select({
-        id: projects.id,
-        organizationId: projects.organizationId,
-        title: projects.title,
-        identifier: projects.identifier,
-        status: projects.status,
-        organization: {
-          id: organization.id,
-          name: organization.name,
-          slug: organization.slug,
+    const [orgRows, projectRows] = await Promise.all([
+      executeRaw<{
+        org_id: string;
+        name: string;
+        slug: string;
+        member_role: string;
+      }>(
+        tx,
+        sql`SELECT org_id, name, slug, member_role FROM public.current_user_orgs()`,
+      ),
+      tx
+        .select({
+          id: projects.id,
+          organizationId: projects.organizationId,
+          title: projects.title,
+          identifier: projects.identifier,
+          status: projects.status,
+        })
+        .from(projects)
+        .orderBy(desc(projects.updatedAt), desc(projects.id)),
+    ]);
+
+    if (projectRows.length === 0) return [];
+
+    const orgsById = new Map(
+      orgRows.map((r) => [
+        r.org_id,
+        {
+          id: r.org_id,
+          name: r.name,
+          slug: r.slug,
+          memberRole: r.member_role,
         },
-        memberRole: member.role,
-      })
-      .from(projects)
-      .innerJoin(
-        member,
-        and(
-          eq(member.organizationId, projects.organizationId),
-          eq(member.userId, ctx.userId),
-        ),
-      )
-      .innerJoin(organization, eq(organization.id, projects.organizationId))
-      .orderBy(desc(projects.updatedAt), desc(projects.id));
+      ]),
+    );
 
-    if (rawRows.length === 0) return [];
-
-    const projectIds = rawRows.map((r) => r.id);
+    const projectIds = projectRows.map((r) => r.id);
     const counts = await tx
       .select({
         projectId: tasks.projectId,
@@ -787,7 +794,13 @@ export async function listProjectsForMcp(
       statsByProject.set(c.projectId, stats);
     }
 
-    return rawRows.map((row) => {
+    return projectRows.map((row) => {
+      const org = orgsById.get(row.organizationId);
+      if (!org) {
+        throw new Error(
+          `listProjectsForMcp: project ${row.id} has no matching org in current_user_orgs()`,
+        );
+      }
       const taskStats = statsByProject.get(row.id) ?? {
         total: 0,
         done: 0,
@@ -801,8 +814,8 @@ export async function listProjectsForMcp(
         title: row.title,
         identifier: row.identifier,
         status: row.status,
-        organization: row.organization,
-        memberRole: row.memberRole,
+        organization: { id: org.id, name: org.name, slug: org.slug },
+        memberRole: org.memberRole,
         taskStats,
         progress:
           denominator > 0
@@ -896,37 +909,28 @@ async function pickAvailableIdentifier(
  */
 async function resolveTargetOrgIdInTx(
   tx: Tx,
-  ctx: AuthContext,
+  _ctx: AuthContext,
   requested: string | undefined,
 ): Promise<string> {
+  const memberships = await executeRaw<{ org_id: string; name: string }>(
+    tx,
+    sql`SELECT org_id, name FROM public.current_user_orgs()`,
+  );
+
   if (requested !== undefined) {
     if (!isUuid(requested)) {
       throw new ForbiddenError("Forbidden", "team", requested);
     }
-    const [row] = await tx
-      .select({ id: member.id })
-      .from(member)
-      .where(
-        and(
-          eq(member.userId, ctx.userId),
-          eq(member.organizationId, requested),
-        ),
-      )
-      .limit(1);
-    if (!row) throw new ForbiddenError("Forbidden", "team", requested);
+    if (!memberships.some((m) => m.org_id === requested)) {
+      throw new ForbiddenError("Forbidden", "team", requested);
+    }
     return requested;
   }
 
-  const memberships = await tx
-    .select({ id: organization.id, name: organization.name })
-    .from(member)
-    .innerJoin(organization, eq(organization.id, member.organizationId))
-    .where(eq(member.userId, ctx.userId));
-
   if (memberships.length === 0) throw new NoTeamMembershipError();
-  if (memberships.length === 1) return memberships[0].id;
+  if (memberships.length === 1) return memberships[0].org_id;
   const teams: TeamOption[] = memberships.map((m) => ({
-    id: m.id,
+    id: m.org_id,
     name: m.name,
   }));
   throw new MultiTeamAmbiguityError(teams);

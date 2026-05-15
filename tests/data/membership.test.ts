@@ -70,11 +70,12 @@ describe("demoteMemberWithGuard", () => {
 
     let demoteCalled = false;
     const outcome = await demoteMemberWithGuard(
+      f.userId,
       {
         organizationId: f.organizationId,
         memberId: secondMemberId,
         role: "member",
-        roleIncludesOwner: (r) => r.includes("owner"),
+        roleIncludesOwner: (r: string) => r.includes("owner"),
       },
       async () => {
         demoteCalled = true;
@@ -89,11 +90,12 @@ describe("demoteMemberWithGuard", () => {
     const f = await seedUserOrgProject("demote-notfound");
     let demoteCalled = false;
     const outcome = await demoteMemberWithGuard(
+      f.userId,
       {
         organizationId: f.organizationId,
         memberId: "00000000-0000-0000-0000-000000000000",
         role: "member",
-        roleIncludesOwner: (r) => r.includes("owner"),
+        roleIncludesOwner: (r: string) => r.includes("owner"),
       },
       async () => {
         demoteCalled = true;
@@ -124,11 +126,12 @@ describe("demoteMemberWithGuard", () => {
 
     let demoteCalled = false;
     const outcome = await demoteMemberWithGuard(
+      a.userId,
       {
         organizationId: a.organizationId,
         memberId: bMemberId,
         role: "member",
-        roleIncludesOwner: (r) => r.includes("owner"),
+        roleIncludesOwner: (r: string) => r.includes("owner"),
       },
       async () => {
         demoteCalled = true;
@@ -157,11 +160,12 @@ describe("demoteMemberWithGuard", () => {
 
     let demoteCalled = false;
     const outcome = await demoteMemberWithGuard(
+      f.userId,
       {
         organizationId: f.organizationId,
         memberId,
         role: "member",
-        roleIncludesOwner: (r) => r.includes("owner"),
+        roleIncludesOwner: (r: string) => r.includes("owner"),
       },
       async () => {
         demoteCalled = true;
@@ -216,20 +220,22 @@ describe("demoteMemberWithGuard", () => {
 
     const [outcome1, outcome2] = await Promise.all([
       demoteMemberWithGuard(
+        f.userId,
         {
           organizationId: f.organizationId,
           memberId: firstMemberId,
           role: "member",
-          roleIncludesOwner: (r) => r.includes("owner"),
+          roleIncludesOwner: (r: string) => r.includes("owner"),
         },
         () => performDemote(firstMemberId),
       ),
       demoteMemberWithGuard(
+        f.userId,
         {
           organizationId: f.organizationId,
           memberId: secondMemberId,
           role: "member",
-          roleIncludesOwner: (r) => r.includes("owner"),
+          roleIncludesOwner: (r: string) => r.includes("owner"),
         },
         () => performDemote(secondMemberId),
       ),

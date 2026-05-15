@@ -45,11 +45,17 @@ async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
     ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
       GRANT USAGE, SELECT ON SEQUENCES TO app_user;
 
-    GRANT USAGE ON SCHEMA neon_auth TO app_user, service_role, auth_role;
-    GRANT SELECT, REFERENCES ON neon_auth."member" TO app_user, service_role;
-    GRANT SELECT, REFERENCES ON neon_auth.organization TO app_user, service_role;
-    GRANT SELECT, REFERENCES ON neon_auth."user" TO app_user, service_role;
-    GRANT SELECT, REFERENCES ON neon_auth.invitation TO app_user, service_role;
+    -- Option B: app_user has NO direct access to neon_auth.*. All reads
+    -- under app_user go through SECURITY DEFINER functions in
+    -- docker/rls-functions.sql.
+    GRANT USAGE ON SCHEMA neon_auth TO service_role, auth_role;
+    REVOKE ALL ON SCHEMA neon_auth FROM app_user;
+    REVOKE ALL ON ALL TABLES IN SCHEMA neon_auth FROM app_user;
+    REVOKE ALL ON ALL SEQUENCES IN SCHEMA neon_auth FROM app_user;
+    GRANT SELECT, REFERENCES ON neon_auth."member" TO service_role;
+    GRANT SELECT, REFERENCES ON neon_auth.organization TO service_role;
+    GRANT SELECT, REFERENCES ON neon_auth."user" TO service_role;
+    GRANT SELECT, REFERENCES ON neon_auth.invitation TO service_role;
     GRANT SELECT, UPDATE ON neon_auth."session" TO service_role;
     GRANT SELECT, DELETE ON neon_auth."oauthAccessToken" TO service_role;
     GRANT SELECT, DELETE ON neon_auth."oauthRefreshToken" TO service_role;
@@ -154,8 +160,8 @@ export async function applyMigrations(url: string): Promise<void> {
 
   const sqlPolicies = postgres(url, { max: 1 });
   try {
-    await applyRlsPolicies(sqlPolicies);
     await applyRlsFunctions(sqlPolicies);
+    await applyRlsPolicies(sqlPolicies);
   } finally {
     await sqlPolicies.end({ timeout: 5 });
   }

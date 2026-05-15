@@ -48,8 +48,10 @@ const listInvitationsSchema = z.object({
 export async function listPendingInvitationsAction(input: {
   organizationId: string;
 }): Promise<TeamActionResult<InvitationView[]>> {
+  let userId: string;
   try {
-    await requireSession();
+    const session = await requireSession();
+    userId = session.user.id;
   } catch {
     return teamFail('unauthorized');
   }
@@ -84,7 +86,7 @@ export async function listPendingInvitationsAction(input: {
   if (pending.length === 0) return { ok: true, data: [] };
 
   const inviterIds = Array.from(new Set(pending.map((row) => row.inviterId)));
-  const nameById = await lookupUserNames(inviterIds);
+  const nameById = await lookupUserNames(userId, inviterIds);
 
   const data = pending
     .map((row) =>
