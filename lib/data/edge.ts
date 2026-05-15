@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, eq, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { withUserContext } from "@/lib/db/rls";
 import {
   projects,
   tasks,
@@ -291,19 +292,23 @@ export async function createEdge(
     }
   }
 
-  const [edge] = await db.insert(taskEdges).values(data).returning();
+  const edge = await withUserContext(ctx.userId, async (tx) => {
+    const [created] = await tx.insert(taskEdges).values(data).returning();
 
-  const historyEntry = makeHistoryEntry({
-    type: "edge_added",
-    label: `Edge: ${data.edgeType}`,
-    description: `${data.edgeType} edge created.`,
-    actor: "ai",
+    const historyEntry = makeHistoryEntry({
+      type: "edge_added",
+      label: `Edge: ${data.edgeType}`,
+      description: `${data.edgeType} edge created.`,
+      actor: "ai",
+    });
+
+    await Promise.all([
+      appendTaskHistory(data.sourceTaskId, historyEntry, { tx }),
+      appendTaskHistory(data.targetTaskId, historyEntry, { tx }),
+    ]);
+
+    return created;
   });
-
-  await Promise.all([
-    appendTaskHistory(data.sourceTaskId, historyEntry),
-    appendTaskHistory(data.targetTaskId, historyEntry),
-  ]);
 
   emitEdgeMutation(sourceTask.projectId, data.sourceTaskId, data.targetTaskId);
   return {
@@ -401,25 +406,29 @@ export async function updateEdge(
   if (updates.edgeType !== undefined) setClause.edgeType = updates.edgeType;
   if (updates.note !== undefined) setClause.note = updates.note;
 
-  const [updated] = await db
-    .update(taskEdges)
-    .set(setClause)
-    .where(eq(taskEdges.id, edgeId))
-    .returning();
+  const updated = await withUserContext(ctx.userId, async (tx) => {
+    const [row] = await tx
+      .update(taskEdges)
+      .set(setClause)
+      .where(eq(taskEdges.id, edgeId))
+      .returning();
 
-  const historyEntry = makeHistoryEntry({
-    type: "edge_updated",
-    label: `Edge updated: ${updated.edgeType}`,
-    description: `Edge updated${updates.edgeType ? ` to ${updates.edgeType}` : ""}${
-      updates.note !== undefined ? " with new note" : ""
-    }.`,
-    actor: "ai",
+    const historyEntry = makeHistoryEntry({
+      type: "edge_updated",
+      label: `Edge updated: ${row.edgeType}`,
+      description: `Edge updated${updates.edgeType ? ` to ${updates.edgeType}` : ""}${
+        updates.note !== undefined ? " with new note" : ""
+      }.`,
+      actor: "ai",
+    });
+
+    await Promise.all([
+      appendTaskHistory(existing.sourceTaskId, historyEntry, { tx }),
+      appendTaskHistory(existing.targetTaskId, historyEntry, { tx }),
+    ]);
+
+    return row;
   });
-
-  await Promise.all([
-    appendTaskHistory(existing.sourceTaskId, historyEntry),
-    appendTaskHistory(existing.targetTaskId, historyEntry),
-  ]);
 
   emitEdgeMutation(projectId, existing.sourceTaskId, existing.targetTaskId);
   return {
@@ -439,18 +448,21 @@ export async function updateEdge(
 export async function removeEdge(ctx: AuthContext, edgeId: string) {
   const { edge, projectId } = await loadAuthorizedEdge(edgeId, ctx);
 
-  await db.delete(taskEdges).where(eq(taskEdges.id, edgeId));
+  await withUserContext(ctx.userId, async (tx) => {
+    await tx.delete(taskEdges).where(eq(taskEdges.id, edgeId));
 
-  const historyEntry = makeHistoryEntry({
-    type: "edge_removed",
-    label: `Edge removed: ${edge.edgeType}`,
-    description: `${edge.edgeType} edge removed.`,
-    actor: "user",
+    const historyEntry = makeHistoryEntry({
+      type: "edge_removed",
+      label: `Edge removed: ${edge.edgeType}`,
+      description: `${edge.edgeType} edge removed.`,
+      actor: "user",
+    });
+
+    await Promise.all([
+      appendTaskHistory(edge.sourceTaskId, historyEntry, { tx }),
+      appendTaskHistory(edge.targetTaskId, historyEntry, { tx }),
+    ]);
   });
 
-  await Promise.all([
-    appendTaskHistory(edge.sourceTaskId, historyEntry),
-    appendTaskHistory(edge.targetTaskId, historyEntry),
-  ]);
   emitEdgeMutation(projectId, edge.sourceTaskId, edge.targetTaskId);
 }

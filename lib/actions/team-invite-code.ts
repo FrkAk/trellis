@@ -170,7 +170,7 @@ export async function getOrCreateTeamInviteCodeAction(input: {
   if (!authResult.ok) return authResult;
   const { userId } = authResult;
 
-  const existing = await findTeamInviteCode(orgId);
+  const existing = await findTeamInviteCode(orgId, userId);
   if (existing) return { ok: true, data: toMetadata(existing) };
 
   try {
@@ -182,7 +182,7 @@ export async function getOrCreateTeamInviteCodeAction(input: {
     return { ok: true, data: toMetadata(created) };
   } catch (err) {
     if ((err as { code?: string } | null)?.code === "23505") {
-      const row = await findTeamInviteCode(orgId);
+      const row = await findTeamInviteCode(orgId, userId);
       if (row) return { ok: true, data: toMetadata(row) };
     }
     console.error("getOrCreateTeamInviteCodeAction failed", err);
@@ -222,6 +222,7 @@ export async function regenerateTeamInviteCodeAction(input: {
   const updated = await rotateTeamInviteCode({
     organizationId: orgId,
     newCode: generateInviteCode(),
+    adminUserId: userId,
   });
   if (updated) return { ok: true, data: toMetadata(updated) };
 
@@ -240,6 +241,7 @@ export async function regenerateTeamInviteCodeAction(input: {
       const retried = await rotateTeamInviteCode({
         organizationId: orgId,
         newCode: generateInviteCode(),
+        adminUserId: userId,
       });
       if (retried) return { ok: true, data: toMetadata(retried) };
     }
@@ -276,8 +278,9 @@ export async function revokeTeamInviteCodeAction(input: {
 
   const authResult = await resolveAdminContext(orgId);
   if (!authResult.ok) return authResult;
+  const { userId } = authResult;
 
-  const updated = await revokeTeamInviteCode(orgId);
+  const updated = await revokeTeamInviteCode(orgId, userId);
   if (!updated) {
     return { ok: false, code: "not_found", message: NOT_FOUND_MSG };
   }

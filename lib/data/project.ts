@@ -1000,7 +1000,9 @@ export async function deleteProject(ctx: AuthContext, projectId: string) {
   const { project } = await assertProjectAccess(projectId, ctx, {
     project: ["delete"],
   });
-  await db.delete(projects).where(eq(projects.id, projectId));
+  await withUserContext(ctx.userId, async (tx) => {
+    await tx.delete(projects).where(eq(projects.id, projectId));
+  });
   await emitProjectDeleted(projectId, project.organizationId);
 }
 

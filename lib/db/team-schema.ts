@@ -24,12 +24,16 @@ import { organization, user } from "@/lib/db/auth-schema";
  * A team-wide code can't ride that flow without forging email, so we use
  * `auth.api.addMember` against this separate table instead.
  *
- * RLS is enabled with a 1-hop membership predicate. The three invite-code
- * helpers in `lib/data/team-invite-code.ts` use `serviceRoleDb` (BYPASSRLS)
- * because the joining user has no `neon_auth.member` row at the moment of
- * lookup; the remaining helpers (`findTeamInviteCode`, `createTeamInviteCode`,
- * `rotateTeamInviteCode`, `revokeTeamInviteCode`) operate on rows the caller
- * already owns and stay on the RLS-enforced `db` client.
+ * RLS is enabled with a 1-hop membership predicate. The three join-path
+ * helpers in `lib/data/team-invite-code.ts` (`reserveInviteCodeSlot`,
+ * `releaseInviteCodeSlot`, `diagnoseTeamInviteCode`) use `serviceRoleDb`
+ * (BYPASSRLS) because the joining user has no `neon_auth.member` row at
+ * the moment of lookup. The four admin helpers (`findTeamInviteCode`,
+ * `createTeamInviteCode`, `rotateTeamInviteCode`, `revokeTeamInviteCode`)
+ * run under `withUserContext(adminUserId, ...)`; the action layer
+ * (`lib/actions/team-invite-code.ts`) enforces admin membership of the
+ * target org via {@link isOrgAdmin} before invoking them, so the admin's
+ * GUC satisfies the policy USING/WITH CHECK predicates.
  */
 export const teamInviteCodes = pgTable(
   "team_invite_code",

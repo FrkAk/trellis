@@ -75,20 +75,37 @@ function makeHistoryEntry(
 
 /**
  * Append a history entry to a task's history array.
+ *
+ * Runs under RLS: callers must supply either an active transaction handle
+ * (`opts.tx`, when the append participates in a larger same-transaction
+ * mutation) or a `userId` to drive a fresh `withUserContext` frame. The
+ * discriminated union prevents a bare call from silently default-denying
+ * under `app_user`.
+ *
  * @param taskId - UUID of the task.
  * @param entry - The history entry to append.
+ * @param opts - Either `{ tx }` (run inside the supplied transaction) or
+ *   `{ userId }` (open a fresh `withUserContext` frame).
  */
 export async function appendTaskHistory(
   taskId: string,
   entry: HistoryEntry,
+  opts: { tx: Tx } | { userId: string },
 ): Promise<void> {
-  await db
-    .update(tasks)
-    .set({
-      history: sql`${tasks.history} || ${JSON.stringify([entry])}::jsonb`,
-      updatedAt: new Date(),
-    })
-    .where(eq(tasks.id, taskId));
+  const run = async (handle: Tx) => {
+    await handle
+      .update(tasks)
+      .set({
+        history: sql`${tasks.history} || ${JSON.stringify([entry])}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, taskId));
+  };
+  if ("tx" in opts) {
+    await run(opts.tx);
+    return;
+  }
+  await withUserContext(opts.userId, run);
 }
 
 /**

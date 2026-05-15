@@ -1,7 +1,8 @@
 import "server-only";
 
 import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
-import { db, serviceRoleDb } from "@/lib/db";
+import { serviceRoleDb } from "@/lib/db";
+import { withUserContext } from "@/lib/db/rls";
 import { teamInviteCodes } from "@/lib/db/team-schema";
 
 /** Full invite-code row, inferred from the schema. */
@@ -10,18 +11,28 @@ export type InviteCodeRow = typeof teamInviteCodes.$inferSelect;
 /**
  * Look up the existing invite-code row for a team.
  *
+ * Runs under the supplied admin's `app.user_id` GUC so the row passes the
+ * RLS policy's membership predicate. The action layer
+ * (`lib/actions/team-invite-code.ts`) verifies the caller is an org admin
+ * via {@link isOrgAdmin} before invoking this helper, which guarantees the
+ * admin is a member of the target org.
+ *
  * @param organizationId - UUID of the team.
+ * @param adminUserId - UUID of the org admin performing the lookup.
  * @returns The row, or null when the team has no code yet.
  */
 export async function findTeamInviteCode(
   organizationId: string,
+  adminUserId: string,
 ): Promise<InviteCodeRow | null> {
-  const [row] = await db
-    .select()
-    .from(teamInviteCodes)
-    .where(eq(teamInviteCodes.organizationId, organizationId))
-    .limit(1);
-  return row ?? null;
+  return withUserContext(adminUserId, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(teamInviteCodes)
+      .where(eq(teamInviteCodes.organizationId, organizationId))
+      .limit(1);
+    return row ?? null;
+  });
 }
 
 /** Inputs for creating a fresh invite code row. */
@@ -36,27 +47,34 @@ export type CreateInviteCodeInput = {
  * Surfaces the underlying driver error (notably `23505` on the org_id
  * UNIQUE) so the caller can run its retry-as-lookup compensation.
  *
+ * Runs under `createdBy`'s GUC — the action layer enforces that `createdBy`
+ * is an admin of `organizationId`, which satisfies the policy WITH CHECK
+ * clause's membership predicate.
+ *
  * @param input - Team UUID, generated code, and creator user id.
  * @returns The inserted row.
  */
 export async function createTeamInviteCode(
   input: CreateInviteCodeInput,
 ): Promise<InviteCodeRow> {
-  const [row] = await db
-    .insert(teamInviteCodes)
-    .values({
-      organizationId: input.organizationId,
-      code: input.code,
-      createdBy: input.createdBy,
-    })
-    .returning();
-  return row;
+  return withUserContext(input.createdBy, async (tx) => {
+    const [row] = await tx
+      .insert(teamInviteCodes)
+      .values({
+        organizationId: input.organizationId,
+        code: input.code,
+        createdBy: input.createdBy,
+      })
+      .returning();
+    return row;
+  });
 }
 
 /** Inputs for rotating a team's invite code. */
 export type RotateInviteCodeInput = {
   organizationId: string;
   newCode: string;
+  adminUserId: string;
 };
 
 /**
@@ -64,40 +82,52 @@ export type RotateInviteCodeInput = {
  * `revoked_at`. Old codes stop working immediately because lookups are by
  * `code` (UNIQUE).
  *
- * @param input - Team UUID and freshly generated code.
+ * Runs under `adminUserId`'s GUC; the action layer enforces admin
+ * membership of `organizationId` before this helper runs.
+ *
+ * @param input - Team UUID, freshly generated code, and admin user id.
  * @returns The updated row, or null when the team has no row to update.
  */
 export async function rotateTeamInviteCode(
   input: RotateInviteCodeInput,
 ): Promise<InviteCodeRow | null> {
-  const [row] = await db
-    .update(teamInviteCodes)
-    .set({
-      code: input.newCode,
-      useCount: 0,
-      revokedAt: null,
-      updatedAt: sql`NOW()`,
-    })
-    .where(eq(teamInviteCodes.organizationId, input.organizationId))
-    .returning();
-  return row ?? null;
+  return withUserContext(input.adminUserId, async (tx) => {
+    const [row] = await tx
+      .update(teamInviteCodes)
+      .set({
+        code: input.newCode,
+        useCount: 0,
+        revokedAt: null,
+        updatedAt: sql`NOW()`,
+      })
+      .where(eq(teamInviteCodes.organizationId, input.organizationId))
+      .returning();
+    return row ?? null;
+  });
 }
 
 /**
  * Mark the team's invite code as revoked. Subsequent join attempts fail.
  *
+ * Runs under `adminUserId`'s GUC; the action layer enforces admin
+ * membership of `organizationId` before this helper runs.
+ *
  * @param organizationId - UUID of the team.
+ * @param adminUserId - UUID of the org admin performing the revoke.
  * @returns The updated row, or null when the team has no row to revoke.
  */
 export async function revokeTeamInviteCode(
   organizationId: string,
+  adminUserId: string,
 ): Promise<InviteCodeRow | null> {
-  const [row] = await db
-    .update(teamInviteCodes)
-    .set({ revokedAt: sql`NOW()`, updatedAt: sql`NOW()` })
-    .where(eq(teamInviteCodes.organizationId, organizationId))
-    .returning();
-  return row ?? null;
+  return withUserContext(adminUserId, async (tx) => {
+    const [row] = await tx
+      .update(teamInviteCodes)
+      .set({ revokedAt: sql`NOW()`, updatedAt: sql`NOW()` })
+      .where(eq(teamInviteCodes.organizationId, organizationId))
+      .returning();
+    return row ?? null;
+  });
 }
 
 /** Reservation handle returned by {@link reserveInviteCodeSlot}. */
