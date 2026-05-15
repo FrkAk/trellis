@@ -10,6 +10,7 @@ services:
       # service_role with caller-generated passwords (see .env.local.example).
       APP_USER_PASSWORD: ${APP_USER_PASSWORD:?missing APP_USER_PASSWORD; generate via `openssl rand -base64 24` and add to .env.local}
       SERVICE_ROLE_PASSWORD: ${SERVICE_ROLE_PASSWORD:?missing SERVICE_ROLE_PASSWORD; generate via `openssl rand -base64 24` and add to .env.local}
+      AUTH_ROLE_PASSWORD: ${AUTH_ROLE_PASSWORD:?missing AUTH_ROLE_PASSWORD; generate via `openssl rand -base64 24` and add to .env.local}
     ports:
       - "5432:5432"
     volumes:

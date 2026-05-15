@@ -16,6 +16,9 @@ import postgres from "postgres";
  */
 async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
   await sql.unsafe(`
+    -- KEEP IN SYNC WITH:
+    --   docker/init-rls.sh (self-host provisioning)
+    --   docs/neon-prod-provisioning.sql (Neon prod runbook)
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
@@ -23,6 +26,9 @@ async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
       END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
         EXECUTE 'CREATE ROLE service_role LOGIN BYPASSRLS PASSWORD ''service_role''';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'auth_role') THEN
+        EXECUTE 'CREATE ROLE auth_role LOGIN PASSWORD ''auth_role''';
       END IF;
     END $$;
 
@@ -39,10 +45,19 @@ async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
     ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
       GRANT USAGE, SELECT ON SEQUENCES TO app_user;
 
-    GRANT USAGE ON SCHEMA neon_auth TO app_user, service_role;
-    GRANT SELECT, REFERENCES ON ALL TABLES IN SCHEMA neon_auth TO app_user, service_role;
+    GRANT USAGE ON SCHEMA neon_auth TO app_user, service_role, auth_role;
+    GRANT SELECT, REFERENCES ON neon_auth."member" TO app_user, service_role;
+    GRANT SELECT, REFERENCES ON neon_auth.organization TO app_user, service_role;
+    GRANT SELECT, REFERENCES ON neon_auth."user" TO app_user, service_role;
+    GRANT SELECT, REFERENCES ON neon_auth.invitation TO app_user, service_role;
+    GRANT SELECT, UPDATE ON neon_auth."session" TO service_role;
+    GRANT SELECT, DELETE ON neon_auth."oauthAccessToken" TO service_role;
+    GRANT SELECT, DELETE ON neon_auth."oauthRefreshToken" TO service_role;
+    GRANT SELECT, DELETE ON neon_auth."oauthConsent" TO service_role;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA neon_auth TO auth_role;
+    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA neon_auth TO auth_role;
     ALTER DEFAULT PRIVILEGES IN SCHEMA neon_auth
-      GRANT SELECT, REFERENCES ON TABLES TO app_user, service_role;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO auth_role;
   `);
 }
 
@@ -76,6 +91,24 @@ async function applyRlsPolicies(sql: ReturnType<typeof postgres>): Promise<void>
   for (const stmt of statements) {
     await sql.unsafe(stmt);
   }
+}
+
+/**
+ * Apply the SECURITY DEFINER helper functions from `docker/rls-functions.sql`.
+ * Run after `applyRlsPolicies` so the functions exist alongside the policies
+ * they complement. Idempotent (`CREATE OR REPLACE FUNCTION`).
+ *
+ * @param sql - Active postgres client (uses superuser).
+ */
+async function applyRlsFunctions(sql: ReturnType<typeof postgres>): Promise<void> {
+  const content = readFileSync(
+    join(process.cwd(), "docker", "rls-functions.sql"),
+    "utf8",
+  );
+  // The function bodies contain `$$ ... $$` dollar-quoted blocks; naïve
+  // semicolon-splitting would break them. Apply as a single batch since
+  // CREATE OR REPLACE FUNCTION is idempotent.
+  await sql.unsafe(content);
 }
 
 /**
@@ -122,6 +155,7 @@ export async function applyMigrations(url: string): Promise<void> {
   const sqlPolicies = postgres(url, { max: 1 });
   try {
     await applyRlsPolicies(sqlPolicies);
+    await applyRlsFunctions(sqlPolicies);
   } finally {
     await sqlPolicies.end({ timeout: 5 });
   }

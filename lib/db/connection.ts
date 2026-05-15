@@ -49,7 +49,13 @@ function buildAppDb(): AppDb {
  * @returns Drizzle instance bound to the neon_auth schema.
  */
 function buildAuthDb(): AuthDb {
-  const url = process.env.DATABASE_URL!;
+  const url = process.env.DATABASE_AUTH_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_AUTH_URL is required — Better Auth must connect via auth_role " +
+        "(DML on neon_auth.*, no public-schema access).",
+    );
+  }
   if (isNeon()) {
     const pool = new NeonPool({ connectionString: url });
     return drizzleNeon(pool, { schema: authSchema }) as unknown as AuthDb;
@@ -110,19 +116,19 @@ export const authDb = new Proxy({} as AuthDb, {
 });
 
 /**
- * Lazily initialized BYPASSRLS Drizzle client. Used by the four documented
- * RLS bypass sites in the data ring:
- *   - `lib/data/team-invite-code.ts:reserveInviteCodeSlot` — joining user has
- *     no `neon_auth.member` row yet, so `withUserContext` would default-deny.
- *   - `lib/data/team-invite-code.ts:releaseInviteCodeSlot` — saga compensation
- *     for the reservation; bypass must match reserve.
- *   - `lib/data/team-invite-code.ts:diagnoseTeamInviteCode` — ops triage
- *     follows the same lookup path; consistent bypass surface.
- *   - `lib/data/account.ts:clearOrgMembershipArtifacts` — cleans up artifacts
- *     for a user JUST REMOVED from an org; the membership predicate would
- *     return zero rows for `task_assignees` DELETE.
+ * Lazily initialized BYPASSRLS Drizzle client. Used by exactly ONE
+ * documented bypass site:
+ *   - `lib/data/account.ts:clearOrgMembershipArtifacts` — cross-schema
+ *     cleanup (neon_auth.session/oauth* + public.task_assignees) for a user
+ *     just removed from an org. The membership predicate of the public RLS
+ *     policies returns zero rows for the removed user, so this cleanup
+ *     cannot run under withUserContext.
  *
- * Any future bypass site MUST be added to this list and documented inline.
+ * The three invite-code helpers (reserveInviteCodeSlot, releaseInviteCodeSlot,
+ * diagnoseTeamInviteCode) previously used this client; they have moved to
+ * SECURITY DEFINER SQL functions exposed to app_user (see
+ * docker/rls-functions.sql). Do not add new bypass sites without auditing
+ * whether a SECURITY DEFINER function can replace them.
  *
  * Same lazy-init + globalThis caching semantics as {@link appDb}.
  */

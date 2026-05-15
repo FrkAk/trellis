@@ -1,4 +1,11 @@
-import { test, expect } from "bun:test";
+import {
+  test,
+  expect,
+  describe,
+  it,
+  beforeEach,
+  afterEach,
+} from "bun:test";
 import postgres from "postgres";
 import { getConnectionString } from "@/tests/setup/container";
 
@@ -18,4 +25,31 @@ test("container is reachable and migrations applied", async () => {
   } finally {
     await sql.end({ timeout: 5 });
   }
+});
+
+describe("connection.ts auth client", () => {
+  let originalAuthUrl: string | undefined;
+  let originalCache: unknown;
+
+  beforeEach(() => {
+    originalAuthUrl = process.env.DATABASE_AUTH_URL;
+    originalCache = (globalThis as { __mymirAuthDb?: unknown }).__mymirAuthDb;
+    delete process.env.DATABASE_AUTH_URL;
+    (globalThis as { __mymirAuthDb?: unknown }).__mymirAuthDb = undefined;
+  });
+
+  afterEach(() => {
+    if (originalAuthUrl !== undefined) {
+      process.env.DATABASE_AUTH_URL = originalAuthUrl;
+    } else {
+      delete process.env.DATABASE_AUTH_URL;
+    }
+    (globalThis as { __mymirAuthDb?: unknown }).__mymirAuthDb =
+      originalCache as never;
+  });
+
+  it("throws when DATABASE_AUTH_URL is unset", async () => {
+    const { authDb } = await import("@/lib/db/connection");
+    expect(() => authDb.select).toThrow(/DATABASE_AUTH_URL is required/);
+  });
 });

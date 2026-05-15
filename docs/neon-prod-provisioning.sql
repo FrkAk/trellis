@@ -8,6 +8,10 @@
 -- because they require SUPERUSER (only cloud_admin is). Use Neon console's
 -- role-management panel for those. Everything else runs fine as neondb_owner
 -- via the Neon SQL editor or via this app's Neon MCP / psql connection.
+--
+-- KEEP IN SYNC WITH:
+--   docker/init-rls.sh (self-host provisioning)
+--   tests/setup/migrate.ts (testcontainer provisioning)
 -- =============================================================================
 
 
@@ -44,13 +48,24 @@ CREATE ROLE service_role WITH
     BYPASSRLS
     PASSWORD '<set-via-neon-console>';
 
+-- [UI-ONLY on Neon] Better Auth runtime role, DML on neon_auth.* only
+CREATE ROLE auth_role WITH
+    LOGIN
+    INHERIT
+    NOSUPERUSER
+    NOCREATEDB
+    NOCREATEROLE
+    NOREPLICATION
+    NOBYPASSRLS
+    PASSWORD '<set-via-neon-console>';
+
 
 -- -----------------------------------------------------------------------------
 -- 2. SCHEMA-LEVEL GRANTS (runs as neondb_owner -- no special perms needed)
 -- -----------------------------------------------------------------------------
 
 GRANT USAGE ON SCHEMA public TO app_user, service_role;
-GRANT USAGE ON SCHEMA neon_auth TO app_user, service_role;
+GRANT USAGE ON SCHEMA neon_auth TO app_user, service_role, auth_role;
 
 -- service_role only: lets `drizzle-kit migrate` create new tables when migrating
 -- via DATABASE_SERVICE_ROLE_URL. app_user must NEVER have CREATE on public.
@@ -65,13 +80,27 @@ GRANT CREATE ON SCHEMA public TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
     TO app_user, service_role;
 
--- neon_auth: SELECT only.
--- Both roles need SELECT on neon_auth.member for RLS policy evaluation
--- (the EXISTS subquery in policy USING clauses joins through member).
--- service_role also reads neon_auth tables for clearOrgMembershipArtifacts.
--- Writes to neon_auth.* are owned by Better Auth's separate authDb client.
-GRANT SELECT ON ALL TABLES IN SCHEMA neon_auth
-    TO app_user, service_role;
+-- neon_auth: TIGHT grants for app_user (no SELECT on sensitive tables)
+GRANT SELECT, REFERENCES ON neon_auth."member" TO app_user;
+GRANT SELECT, REFERENCES ON neon_auth.organization TO app_user;
+GRANT SELECT, REFERENCES ON neon_auth."user" TO app_user;
+GRANT SELECT, REFERENCES ON neon_auth.invitation TO app_user;
+
+-- service_role: tight neon_auth SELECT + DML on session/oauth* for clearOrgMembershipArtifacts
+GRANT SELECT, REFERENCES ON neon_auth."member" TO service_role;
+GRANT SELECT, REFERENCES ON neon_auth.organization TO service_role;
+GRANT SELECT, REFERENCES ON neon_auth."user" TO service_role;
+GRANT SELECT, REFERENCES ON neon_auth.invitation TO service_role;
+GRANT SELECT, UPDATE ON neon_auth."session" TO service_role;
+GRANT SELECT, DELETE ON neon_auth."oauthAccessToken" TO service_role;
+GRANT SELECT, DELETE ON neon_auth."oauthRefreshToken" TO service_role;
+GRANT SELECT, DELETE ON neon_auth."oauthConsent" TO service_role;
+
+-- auth_role: full DML on every neon_auth table
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA neon_auth TO auth_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA neon_auth TO auth_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA neon_auth
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO auth_role;
 
 
 -- -----------------------------------------------------------------------------
@@ -103,27 +132,17 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 
 
 -- -----------------------------------------------------------------------------
--- 6. CROSS-SCHEMA REFERENCES + drizzle-kit migrate prerequisites
+-- 6. drizzle-kit migrate prerequisites
 -- -----------------------------------------------------------------------------
--- These were added after the initial provisioning when the implementer
--- discovered drizzle-kit's runtime requirements during MYMR-151 implementation:
---   (a) Catalog introspection on cross-schema foreign keys
---       (e.g. public.projects.organization_id -> neon_auth.organization) fails
---       with "permission denied for table organization" without REFERENCES
---       privilege on neon_auth.*. SELECT alone is insufficient for FK resolution.
---   (b) `drizzle-kit migrate` issues `CREATE SCHEMA IF NOT EXISTS drizzle`
---       unconditionally to provision its own migrations-tracking schema. This
---       requires CREATE on the database itself (not just on schema public).
---       Pre-creating the drizzle schema + granting service_role on it avoids
---       the per-migration permission check.
+-- Added after the initial provisioning when the implementer discovered
+-- drizzle-kit's runtime requirements during MYMR-151 implementation:
+--   `drizzle-kit migrate` issues `CREATE SCHEMA IF NOT EXISTS drizzle`
+--   unconditionally to provision its own migrations-tracking schema. This
+--   requires CREATE on the database itself (not just on schema public).
+--   Pre-creating the drizzle schema + granting service_role on it avoids
+--   the per-migration permission check.
 -- -----------------------------------------------------------------------------
 
--- (a) REFERENCES on cross-schema target tables
-GRANT REFERENCES ON ALL TABLES IN SCHEMA neon_auth TO app_user, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA neon_auth
-    GRANT REFERENCES ON TABLES TO app_user, service_role;
-
--- (b) drizzle-kit migrate's tracking schema
 GRANT CREATE ON DATABASE neondb TO service_role;
 CREATE SCHEMA IF NOT EXISTS drizzle;
 GRANT USAGE, CREATE ON SCHEMA drizzle TO service_role;
@@ -145,6 +164,39 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA drizzle
 
 CREATE INDEX IF NOT EXISTS member_org_user_idx
     ON neon_auth."member" ("organizationId", "userId");
+
+
+-- -----------------------------------------------------------------------------
+-- 8. VERIFY app_user has NO grants on sensitive auth tables
+-- -----------------------------------------------------------------------------
+-- Expected: empty result (zero rows)
+SELECT grantee, table_name, privilege_type
+FROM information_schema.table_privileges
+WHERE grantee = 'app_user'
+  AND table_schema = 'neon_auth'
+  AND table_name IN (
+    'session','account','verification','oauthClient',
+    'oauthAccessToken','oauthRefreshToken','oauthConsent','jwks'
+  );
+
+
+-- -----------------------------------------------------------------------------
+-- 9. SECURITY DEFINER functions (invite-code join flow)
+-- -----------------------------------------------------------------------------
+-- Apply by running docker/rls-functions.sql as neondb_owner via the Neon SQL
+-- editor or psql. The function bodies are reviewed alongside
+-- docker/rls-functions.sql; this section is a pointer (not a duplicate) so
+-- the prod runbook stays the single source of truth for what runs on Neon.
+--
+-- Functions installed:
+--   public.lookup_team_invite_code(text)
+--   public.reserve_team_invite_code_slot(text)
+--   public.release_team_invite_code_slot(uuid)
+--
+-- EXECUTE granted to app_user only.
+-- -----------------------------------------------------------------------------
+
+-- [Apply docker/rls-functions.sql as neondb_owner]
 
 
 -- =============================================================================
@@ -175,12 +227,16 @@ WHERE grantee IN ('app_user', 'service_role')
 GROUP BY grantee, table_name
 ORDER BY table_name, grantee;
 
--- Confirm neon_auth grants (expected: SELECT only)
+-- Confirm neon_auth grants per role
+-- Expected:
+--   app_user: SELECT + REFERENCES on member/organization/user/invitation only (8 rows: 4 tables × 2 privs)
+--   service_role: same as app_user, PLUS SELECT/UPDATE on session, SELECT/DELETE on oauth* tables
+--   auth_role: SELECT/INSERT/UPDATE/DELETE on every neon_auth table
 SELECT grantee, table_schema, table_name, privilege_type
 FROM information_schema.table_privileges
-WHERE grantee IN ('app_user', 'service_role')
+WHERE grantee IN ('app_user', 'service_role', 'auth_role')
   AND table_schema = 'neon_auth'
-ORDER BY grantee, table_name;
+ORDER BY grantee, table_name, privilege_type;
 
 -- Confirm composite index exists (expected: one row)
 SELECT indexname, indexdef
@@ -188,3 +244,44 @@ FROM pg_indexes
 WHERE schemaname = 'neon_auth'
   AND tablename = 'member'
   AND indexname = 'member_org_user_idx';
+
+
+-- -----------------------------------------------------------------------------
+-- 10. SMOKE TEST after prod flip
+-- -----------------------------------------------------------------------------
+-- Run these queries from the Neon SQL editor connected as neondb_owner AFTER
+-- flipping DATABASE_URL to point at app_user. Expected results below each
+-- query show what each role can and cannot see.
+-- -----------------------------------------------------------------------------
+
+-- (a) confirm a SELECT from neon_auth.account as app_user is denied
+SET ROLE app_user;
+SELECT 1 FROM neon_auth.account LIMIT 1;
+-- Expected: ERROR: permission denied for table account
+RESET ROLE;
+
+-- (b) confirm an unscoped SELECT from public.projects under app_user with
+--     no GUC set returns zero rows (default-deny via RLS)
+SET ROLE app_user;
+SELECT count(*) FROM public.projects;  -- expected: 0
+RESET ROLE;
+
+-- (c) confirm SECURITY DEFINER function is reachable from app_user
+SET ROLE app_user;
+SELECT * FROM public.lookup_team_invite_code('<nonexistent-code>');
+-- Expected: zero rows, no error (function executes; just no match)
+RESET ROLE;
+
+-- (d) confirm auth_role has no grants on public
+SET ROLE auth_role;
+SELECT 1 FROM public.projects LIMIT 1;
+-- Expected: ERROR: permission denied for table projects
+RESET ROLE;
+
+-- (e) confirm app_user has tight neon_auth grants (only member/organization/user/invitation)
+SET ROLE app_user;
+SELECT 1 FROM neon_auth."session" LIMIT 1;
+-- Expected: ERROR: permission denied for table session
+SELECT 1 FROM neon_auth.jwks LIMIT 1;
+-- Expected: ERROR: permission denied for table jwks
+RESET ROLE;

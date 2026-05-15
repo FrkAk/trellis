@@ -14,11 +14,22 @@ export async function setup() {
   if (globalThis.__mymirTestSetupRan) return;
   const url = await startContainer();
   process.env.DATABASE_URL = url;
-  // The 4 documented bypass call sites pull from `DATABASE_SERVICE_ROLE_URL`.
-  // The test container starts as the superuser, which is BYPASSRLS by
-  // default, so the same connection string satisfies the bypass contract.
-  process.env.DATABASE_SERVICE_ROLE_URL = url;
+  const baseUrl = process.env.DATABASE_URL!;
+  process.env.DATABASE_AUTH_URL = baseUrl.replace(
+    /^(postgres(?:ql)?):\/\/[^:]+:[^@]+@/,
+    "$1://auth_role:auth_role@",
+  );
+  process.env.DATABASE_SERVICE_ROLE_URL = baseUrl.replace(
+    /^(postgres(?:ql)?):\/\/[^:]+:[^@]+@/,
+    "$1://service_role:service_role@",
+  );
   await applyMigrations(url);
+  if (process.env.MYMIR_TEST_AS_APP_USER === "1") {
+    process.env.DATABASE_URL = baseUrl.replace(
+      /^(postgres(?:ql)?):\/\/[^:]+:[^@]+@/,
+      "$1://app_user:app_user@",
+    );
+  }
   globalThis.__mymirTestSetupRan = true;
 }
 
