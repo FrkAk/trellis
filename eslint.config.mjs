@@ -22,7 +22,13 @@ const eslintConfig = [
   ...tsConfig,
   {
     files: ["**/*.{ts,tsx}"],
-    ignores: ["lib/db/**", "tests/**"],
+    ignores: [
+      "lib/db/**",
+      "tests/**",
+      "lib/data/membership.ts",
+      "lib/data/oauth-session.ts",
+      "lib/data/account.ts",
+    ],
     plugins: { import: importPlugin },
     rules: {
       "no-restricted-syntax": [
@@ -31,6 +37,18 @@ const eslintConfig = [
           selector: "CallExpression[callee.property.name='execute']",
           message:
             "Direct `.execute()` calls are forbidden. Add a named function in lib/db/raw/ and call it via executeRaw / executeRawDiscard.",
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='db'][callee.property.name='transaction']",
+          message:
+            "Bare db.transaction() opens a raw Postgres transaction without setting the app.user_id GUC. Use withUserContext(userId, async tx => ...) from @/lib/db/rls instead. If this is a documented exempt site, add the file to the ignores list in eslint.config.mjs.",
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='serviceRoleDb'][callee.property.name='transaction']",
+          message:
+            "serviceRoleDb.transaction() is BYPASSRLS. The only allowed site is lib/data/account.ts:clearOrgMembershipArtifacts. If you need a new bypass site, audit whether a SECURITY DEFINER function in docker/rls-functions.sql can replace it.",
         },
       ],
       "no-restricted-imports": [

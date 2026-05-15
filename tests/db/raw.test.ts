@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { normalizeExecuteResult, executeRaw } from "@/lib/db/raw";
 import { aggregateProjectTags } from "@/lib/db/raw/aggregate-project-tags";
 import { db } from "@/lib/db";
+import { withUserContext } from "@/lib/db/rls";
 import { getConnectionString } from "@/tests/setup/container";
 import { truncateAll } from "@/tests/setup/schema";
 import { seedUserOrgProject } from "@/tests/setup/seed";
@@ -65,7 +66,9 @@ describe("executeRaw integration (postgres-js driver)", () => {
       await sqlc.end({ timeout: 5 });
     }
 
-    const rows = await aggregateProjectTags(db, f.projectId);
+    const rows = await withUserContext(f.userId, (tx) =>
+      aggregateProjectTags(tx, f.projectId),
+    );
 
     expect(rows).toEqual([
       { tag: "alpha", count: 2 },

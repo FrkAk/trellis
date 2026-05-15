@@ -19,6 +19,21 @@ import { buildAgentContext } from "@/lib/context/_core/agent";
 import { buildWorkingContext } from "@/lib/context/_core/working";
 import { buildSummaryContext } from "@/lib/context/_core/summary";
 import { buildReviewContext } from "@/lib/context/_core/review";
+import { withUserContext } from "@/lib/db/rls";
+
+/**
+ * Read links for a task as a specific user. Mirrors the production call
+ * pattern: `fetchLinksUnchecked` is invoked inside a `withUserContext`
+ * frame so RLS scoping is exercised exactly as in prod.
+ */
+function linksAs(taskId: string, userId: string) {
+  return withUserContext(userId, (tx) => fetchLinksUnchecked(taskId, tx));
+}
+
+// Cross-team enforcement tests rely on RLS firing - under the BYPASSRLS
+// superuser pool used by the default test:db lane, the security boundary
+// isn't reachable. Skip unless MYMIR_TEST_AS_APP_USER=1 (the test:rls lane).
+const rlsOnly = test.skipIf(process.env.MYMIR_TEST_AS_APP_USER !== "1");
 
 afterEach(async () => {
   await truncateAll();
@@ -28,7 +43,7 @@ afterEach(async () => {
 // Security: cross-team isolation and input validation
 // ---------------------------------------------------------------------------
 
-test("addTaskLink raises ForbiddenError for callers outside the task's team", async () => {
+rlsOnly("addTaskLink raises ForbiddenError for callers outside the task's team", async () => {
   const owner = await seedUserOrgProject("links-add-x1");
   const stranger = await seedUserOrgProject("links-add-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -40,7 +55,7 @@ test("addTaskLink raises ForbiddenError for callers outside the task's team", as
   ).rejects.toBeInstanceOf(ForbiddenError);
 });
 
-test("removeTaskLink raises ForbiddenError for callers outside the task's team", async () => {
+rlsOnly("removeTaskLink raises ForbiddenError for callers outside the task's team", async () => {
   const owner = await seedUserOrgProject("links-rm-x1");
   const stranger = await seedUserOrgProject("links-rm-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -52,7 +67,7 @@ test("removeTaskLink raises ForbiddenError for callers outside the task's team",
     ForbiddenError,
   );
 
-  const remaining = await fetchLinksUnchecked(task.id);
+  const remaining = await linksAs(task.id, owner.userId);
   expect(remaining.length).toBe(1);
 });
 
@@ -77,7 +92,7 @@ test("addTaskLink rejects malformed URLs as ForbiddenError (input validation)", 
     ForbiddenError,
   );
 
-  expect((await fetchLinksUnchecked(task.id)).length).toBe(0);
+  expect((await linksAs(task.id, f.userId)).length).toBe(0);
 });
 
 test("addTaskLink rejects non-http(s) protocols (XSS-in-href guard)", async () => {
@@ -95,7 +110,7 @@ test("addTaskLink rejects non-http(s) protocols (XSS-in-href guard)", async () =
     addTaskLink(ctx, task.id, "file:///etc/passwd"),
   ).rejects.toBeInstanceOf(ForbiddenError);
 
-  expect((await fetchLinksUnchecked(task.id)).length).toBe(0);
+  expect((await linksAs(task.id, f.userId)).length).toBe(0);
 });
 
 test("updateTask with malformed or unsafe prUrl raises ForbiddenError before persisting", async () => {
@@ -110,7 +125,7 @@ test("updateTask with malformed or unsafe prUrl raises ForbiddenError before per
     updateTask(ctx, task.id, { prUrl: "javascript:alert(1)" }),
   ).rejects.toBeInstanceOf(ForbiddenError);
 
-  expect((await fetchLinksUnchecked(task.id)).length).toBe(0);
+  expect((await linksAs(task.id, f.userId)).length).toBe(0);
 });
 
 // ---------------------------------------------------------------------------
@@ -123,7 +138,7 @@ test("addTaskLink normalizes scheme-less input and stores the canonical URL", as
   const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
 
   await addTaskLink(ctx, task.id, "github.com/anthropic/claude/pull/42");
-  const rows = await fetchLinksUnchecked(task.id);
+  const rows = await linksAs(task.id, f.userId);
 
   expect(rows.length).toBe(1);
   expect(rows[0].url).toBe("https://github.com/anthropic/claude/pull/42");
@@ -139,7 +154,7 @@ test("addTaskLink dedupes scheme-less + canonical inputs of the same URL", async
   const second = await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/1");
 
   expect(second.id).toBe(first.id);
-  expect((await fetchLinksUnchecked(task.id)).length).toBe(1);
+  expect((await linksAs(task.id, f.userId)).length).toBe(1);
 });
 
 test("updateTaskLink rewrites the URL in place and preserves id and createdAt", async () => {
@@ -156,7 +171,7 @@ test("updateTaskLink rewrites the URL in place and preserves id and createdAt", 
   expect(updated.kind).toBe("issue");
 });
 
-test("updateTaskLink raises ForbiddenError for callers outside the task's team", async () => {
+rlsOnly("updateTaskLink raises ForbiddenError for callers outside the task's team", async () => {
   const owner = await seedUserOrgProject("links-edit-x1");
   const stranger = await seedUserOrgProject("links-edit-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -168,7 +183,7 @@ test("updateTaskLink raises ForbiddenError for callers outside the task's team",
     updateTaskLink(strangerCtx, link.id, "https://github.com/o/r/pull/2"),
   ).rejects.toBeInstanceOf(ForbiddenError);
 
-  const rows = await fetchLinksUnchecked(task.id);
+  const rows = await linksAs(task.id, owner.userId);
   expect(rows[0].url).toBe("https://github.com/o/r/pull/1");
 });
 
@@ -185,7 +200,7 @@ test("updateTaskLink rejects a malformed URL and leaves the row untouched", asyn
     ForbiddenError,
   );
 
-  const rows = await fetchLinksUnchecked(task.id);
+  const rows = await linksAs(task.id, f.userId);
   expect(rows[0].url).toBe("https://github.com/o/r/pull/1");
 });
 
@@ -200,7 +215,7 @@ test("updateTaskLink raises ForbiddenError when the new URL collides with anothe
     updateTaskLink(ctx, second.id, "https://github.com/o/r/pull/1"),
   ).rejects.toBeInstanceOf(ForbiddenError);
 
-  const rows = await fetchLinksUnchecked(task.id);
+  const rows = await linksAs(task.id, f.userId);
   expect(rows.length).toBe(2);
   const urls = rows.map((r) => r.url).sort();
   expect(urls).toEqual([
@@ -230,7 +245,7 @@ test("addTaskLink is idempotent: re-adding the same URL returns the existing row
   const second = await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/1");
 
   expect(second.id).toBe(first.id);
-  const rows = await fetchLinksUnchecked(task.id);
+  const rows = await linksAs(task.id, f.userId);
   expect(rows.length).toBe(1);
 });
 
@@ -244,8 +259,8 @@ test("unique(taskId, url) allows the same URL across different tasks", async () 
   await addTaskLink(ctx, a.id, sharedUrl);
   await addTaskLink(ctx, b.id, sharedUrl);
 
-  expect((await fetchLinksUnchecked(a.id)).length).toBe(1);
-  expect((await fetchLinksUnchecked(b.id)).length).toBe(1);
+  expect((await linksAs(a.id, f.userId)).length).toBe(1);
+  expect((await linksAs(b.id, f.userId)).length).toBe(1);
 });
 
 test("updateTask prUrl=null deletes only the pull_request row, preserves other kinds", async () => {
@@ -256,11 +271,11 @@ test("updateTask prUrl=null deletes only the pull_request row, preserves other k
   await updateTask(ctx, task.id, { prUrl: "https://github.com/o/r/pull/1" });
   await addTaskLink(ctx, task.id, "https://github.com/o/r/issues/2");
   await addTaskLink(ctx, task.id, "https://www.notion.so/Some-doc-abc");
-  expect((await fetchLinksUnchecked(task.id)).length).toBe(3);
+  expect((await linksAs(task.id, f.userId)).length).toBe(3);
 
   await updateTask(ctx, task.id, { prUrl: null });
 
-  const remaining = await fetchLinksUnchecked(task.id);
+  const remaining = await linksAs(task.id, f.userId);
   const kinds = remaining.map((l) => l.kind).sort();
   expect(kinds).toEqual(["doc", "issue"]);
 });
@@ -274,7 +289,7 @@ test("updateTask with the same prUrl twice is idempotent (handles composer retry
   await updateTask(ctx, task.id, { prUrl: pr });
   await updateTask(ctx, task.id, { prUrl: pr });
 
-  const rows = await fetchLinksUnchecked(task.id);
+  const rows = await linksAs(task.id, f.userId);
   expect(rows.length).toBe(1);
   expect(rows[0].kind).toBe("pull_request");
   expect(rows[0].url).toBe(pr);
@@ -315,7 +330,7 @@ test("fetchLinksUnchecked returns links ordered by createdAt ascending", async (
   await new Promise((r) => setTimeout(r, 15));
   await addTaskLink(ctx, task.id, "https://www.notion.so/Some-doc-abc");
 
-  const rows = await fetchLinksUnchecked(task.id);
+  const rows = await linksAs(task.id, f.userId);
   expect(rows.map((r) => r.kind)).toEqual(["pull_request", "issue", "doc"]);
 });
 
@@ -323,7 +338,7 @@ test("fetchLinksUnchecked returns links ordered by createdAt ascending", async (
 // Context builders: links must follow the same cross-team gate as the task
 // ---------------------------------------------------------------------------
 
-test("buildAgentContext denies cross-team callers, blocking any link leak", async () => {
+rlsOnly("buildAgentContext denies cross-team callers, blocking any link leak", async () => {
   const owner = await seedUserOrgProject("ctx-agent-x1");
   const stranger = await seedUserOrgProject("ctx-agent-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -336,7 +351,7 @@ test("buildAgentContext denies cross-team callers, blocking any link leak", asyn
   );
 });
 
-test("buildWorkingContext denies cross-team callers, blocking any link leak", async () => {
+rlsOnly("buildWorkingContext denies cross-team callers, blocking any link leak", async () => {
   const owner = await seedUserOrgProject("ctx-working-x1");
   const stranger = await seedUserOrgProject("ctx-working-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -349,7 +364,7 @@ test("buildWorkingContext denies cross-team callers, blocking any link leak", as
   ).rejects.toBeInstanceOf(ForbiddenError);
 });
 
-test("buildSummaryContext denies cross-team callers, blocking any link leak", async () => {
+rlsOnly("buildSummaryContext denies cross-team callers, blocking any link leak", async () => {
   const owner = await seedUserOrgProject("ctx-summary-x1");
   const stranger = await seedUserOrgProject("ctx-summary-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -362,7 +377,7 @@ test("buildSummaryContext denies cross-team callers, blocking any link leak", as
   ).rejects.toBeInstanceOf(ForbiddenError);
 });
 
-test("buildReviewContext denies cross-team callers, blocking any link leak", async () => {
+rlsOnly("buildReviewContext denies cross-team callers, blocking any link leak", async () => {
   const owner = await seedUserOrgProject("ctx-review-x1");
   const stranger = await seedUserOrgProject("ctx-review-x2");
   const ownerCtx = makeAuthContext(owner.userId);
@@ -429,7 +444,7 @@ test("link read paths never fetch the stored URL (SSRF guard)", async () => {
   }) as typeof globalThis.fetch;
 
   try {
-    await fetchLinksUnchecked(task.id);
+    await linksAs(task.id, f.userId);
     await getTaskFull(ctx, task.id);
   } finally {
     globalThis.fetch = originalFetch;
