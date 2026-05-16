@@ -489,33 +489,38 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.org_member_user_ids_visible(uuid, uuid[]) FROM public;
 GRANT EXECUTE ON FUNCTION public.org_member_user_ids_visible(uuid, uuid[]) TO app_user;
 
--- Returns the invitation's organization_id only when the caller is a
--- member of that org. NULL on miss or cross-org probe — anti-enumeration.
--- Used by the cancel-invite action to scope its admin check.
-CREATE OR REPLACE FUNCTION public.lookup_invitation_org_id(p_invitation_id uuid)
-RETURNS uuid
+-- Returns whether the caller is a member of the invitation's org AND the
+-- supplied expected_org_id matches the invitation's own organizationId.
+-- The function never discloses the organizationId value — it answers a
+-- yes/no question against a (invitation_id, org_id) pair the caller must
+-- already hold. An attacker who knows only the invitation UUID learns
+-- nothing; they must also know (and be a member of) the correct org.
+-- Used by cancelInvitationAction to scope its admin check.
+DROP FUNCTION IF EXISTS public.lookup_invitation_org_id(uuid);
+
+CREATE OR REPLACE FUNCTION public.is_caller_in_invitation_org(
+  p_invitation_id uuid,
+  p_expected_org_id uuid
+) RETURNS boolean
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
-DECLARE
-  v_org_id uuid;
 BEGIN
-  SELECT i."organizationId" INTO v_org_id
-  FROM neon_auth.invitation i
-  WHERE i.id = p_invitation_id
-    AND EXISTS (
-      SELECT 1
-      FROM neon_auth."member" caller
-      WHERE caller."organizationId" = i."organizationId"
-        AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
-    );
-  RETURN v_org_id;
+  RETURN EXISTS (
+    SELECT 1
+    FROM neon_auth.invitation i
+    INNER JOIN neon_auth."member" caller
+      ON caller."organizationId" = i."organizationId"
+    WHERE i.id = p_invitation_id
+      AND i."organizationId" = p_expected_org_id
+      AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
+  );
 END;
 $$;
-REVOKE EXECUTE ON FUNCTION public.lookup_invitation_org_id(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.lookup_invitation_org_id(uuid) TO app_user;
+REVOKE EXECUTE ON FUNCTION public.is_caller_in_invitation_org(uuid, uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.is_caller_in_invitation_org(uuid, uuid) TO app_user;
 
 -- ---------------------------------------------------------------------------
 -- Immutability triggers — block cross-team moves at the DB level.

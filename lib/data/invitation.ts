@@ -5,27 +5,30 @@ import { executeRaw } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 
 /**
- * Fetch the organization id for an invitation, routed through the
- * `lookup_invitation_org_id` SECURITY DEFINER function so `app_user` can
- * resolve `neon_auth.invitation` rows under the Option-B lockdown. The
- * SDF returns the org id only when the caller is already a member of
- * that org — cross-org probes resolve to null (anti-enumeration).
+ * Boolean predicate: caller is a member of the invitation's org AND
+ * the supplied `expectedOrgId` matches the invitation's own
+ * `organizationId`. Routed through `is_caller_in_invitation_org` so
+ * `app_user` can resolve `neon_auth.invitation` under the Option-B
+ * lockdown without disclosing the invitation→org linkage (H2 fix).
  *
- * @param userId - Authenticated caller's user id.
+ * @param userId - Authenticated caller's user id (UUID).
  * @param invitationId - UUID of the invitation.
- * @returns The organization id, or null when the invitation does not
- *   exist or the caller is not a member of its org.
+ * @param expectedOrgId - UUID the caller already believes owns the
+ *   invitation. Anti-enumeration: the SDF refuses to confirm anything
+ *   unless this matches the row's actual organizationId.
+ * @returns True iff both predicates hold; false otherwise.
  */
-export async function findInvitationOrgId(
+export async function isCallerInInvitationOrg(
   userId: string,
   invitationId: string,
-): Promise<string | null> {
-  if (!isUuid(invitationId)) return null;
+  expectedOrgId: string,
+): Promise<boolean> {
+  if (!isUuid(invitationId) || !isUuid(expectedOrgId)) return false;
   return withUserContext(userId, async (tx) => {
-    const rows = await executeRaw<{ org_id: string | null }>(
+    const rows = await executeRaw<{ ok: boolean }>(
       tx,
-      sql`SELECT public.lookup_invitation_org_id(${invitationId}::uuid) AS org_id`,
+      sql`SELECT public.is_caller_in_invitation_org(${invitationId}::uuid, ${expectedOrgId}::uuid) AS ok`,
     );
-    return rows[0]?.org_id ?? null;
+    return rows[0]?.ok === true;
   });
 }

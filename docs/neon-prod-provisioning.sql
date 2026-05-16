@@ -147,6 +147,7 @@ WHERE grantee = 'app_user'
 --   public.team_members_visible(uuid)          -- team roster
 --   public.team_invitations_visible(uuid)      -- admin-gated invitations
 --   public.lookup_user_names_in_shared_orgs(uuid[]) -- batched name lookup
+--   public.is_caller_in_invitation_org(uuid, uuid)  -- boolean predicate, no value disclosed
 --
 -- Functions installed (admin/system, service_role only):
 --   public.list_org_project_ids(uuid)
@@ -166,6 +167,10 @@ WHERE grantee = 'app_user'
 -- [PROD UPDATE 2026-05-15] Added list_org_project_ids(uuid) SECURITY DEFINER
 -- function for revokeOrgAccess. Apply by re-running docker/rls-functions.sql
 -- against the Neon prod database.
+
+-- [PROD UPDATE 2026-05-16] Replaced lookup_invitation_org_id(uuid)→uuid with
+-- is_caller_in_invitation_org(uuid, uuid)→boolean (H2 fix). Apply by
+-- re-running docker/rls-functions.sql against the Neon prod database.
 
 
 -- =============================================================================

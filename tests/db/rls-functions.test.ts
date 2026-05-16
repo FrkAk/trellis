@@ -5,6 +5,7 @@ import {
   seedUserOrgProject,
   serviceRoleConnect,
 } from "@/tests/setup/seed";
+import { superuserPool } from "@/tests/setup/global";
 import { expectQueryRejects } from "@/tests/setup/expect-query";
 
 afterEach(async () => {
@@ -481,5 +482,68 @@ describe("CVE-2018-1058 hardening — search_path", () => {
       SELECT has_database_privilege('app_user', current_database(), 'TEMPORARY') AS has_temp
     `;
     expect(row.has_temp).toBe(false);
+  });
+});
+
+describe("is_caller_in_invitation_org SECURITY DEFINER", () => {
+  async function seedInvitation(orgId: string, email: string): Promise<{ id: string }> {
+    const su = superuserPool();
+    const [row] = await su<{ id: string }[]>`
+      INSERT INTO neon_auth."invitation"
+        ("organizationId", "email", "role", "status", "expiresAt", "inviterId")
+      VALUES (
+        ${orgId}, ${email}, 'member', 'pending',
+        ${new Date(Date.now() + 7 * 86400_000)},
+        (SELECT "userId" FROM neon_auth."member" WHERE "organizationId" = ${orgId} LIMIT 1)
+      )
+      RETURNING id
+    `;
+    return row;
+  }
+
+  async function callPredicate(
+    callerUserId: string,
+    invitationId: string,
+    expectedOrgId: string,
+  ): Promise<boolean> {
+    const c = appUserConnect();
+    return await c.begin(async (tx) => {
+      await tx`SELECT set_config('app.user_id', ${callerUserId}, true)`;
+      const [row] = await tx<Array<{ ok: boolean }>>`
+        SELECT public.is_caller_in_invitation_org(${invitationId}::uuid, ${expectedOrgId}::uuid) AS ok
+      `;
+      return row.ok;
+    });
+  }
+
+  test("returns true when caller is in invitation's org and expected matches", async () => {
+    const fx = await seedUserOrgProject("inv-hit");
+    const inv = await seedInvitation(fx.organizationId, "hit@test.local");
+    expect(await callPredicate(fx.userId, inv.id, fx.organizationId)).toBe(true);
+  });
+
+  test("returns false when expected org does not match the invitation's org (binding)", async () => {
+    const fxA = await seedUserOrgProject("inv-bind-a");
+    const fxB = await seedUserOrgProject("inv-bind-b");
+    const su = superuserPool();
+    await su`
+      INSERT INTO neon_auth."member" ("organizationId", "userId", "role", "createdAt")
+      VALUES (${fxB.organizationId}, ${fxA.userId}, 'member', now())
+    `;
+    const inv = await seedInvitation(fxA.organizationId, "bind@test.local");
+    expect(await callPredicate(fxA.userId, inv.id, fxB.organizationId)).toBe(false);
+  });
+
+  test("returns false when caller is not a member of the invitation's org", async () => {
+    const fxA = await seedUserOrgProject("inv-cross-a");
+    const fxB = await seedUserOrgProject("inv-cross-b");
+    const inv = await seedInvitation(fxA.organizationId, "cross@test.local");
+    expect(await callPredicate(fxB.userId, inv.id, fxA.organizationId)).toBe(false);
+  });
+
+  test("returns false on a nonexistent invitation id", async () => {
+    const fx = await seedUserOrgProject("inv-bogus");
+    const bogus = "00000000-0000-0000-0000-000000000000";
+    expect(await callPredicate(fx.userId, bogus, fx.organizationId)).toBe(false);
   });
 });

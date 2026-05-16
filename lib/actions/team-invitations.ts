@@ -16,11 +16,12 @@ import {
   type BetterAuthInvitationRow,
   type InvitationView,
 } from '@/lib/actions/team-invitations-map';
-import { findInvitationOrgId } from '@/lib/data/invitation';
+import { isCallerInInvitationOrg } from '@/lib/data/invitation';
 import { lookupUserNames } from '@/lib/data/membership';
 
 const cancelSchema = z.object({
   invitationId: z.uuid(),
+  organizationId: z.uuid(),
 });
 
 const listInvitationsSchema = z.object({
@@ -102,18 +103,19 @@ export async function listPendingInvitationsAction(input: {
  * (admin+owner) at the endpoint and scopes by the invitation's own
  * organization, so cross-team cancels are rejected.
  *
- * Defense-in-depth: we resolve the invitation's `organizationId` from
- * the DB and run `isOrgAdmin(invitationOrgId)` so the upstream check is
- * scoped to the invitation's own team. A non-existent invitation
- * surfaces a typed `not_found` (preserving the "already cancelled in
- * another tab" UX); BA reveals the same existence signal, so this
- * lookup adds no new info disclosure.
+ * Defense-in-depth: the caller passes the `organizationId` they already
+ * believe owns the invitation; we route through
+ * `isCallerInInvitationOrg` which returns a boolean predicate without
+ * disclosing the invitation→org linkage, then run
+ * `isOrgAdmin(organizationId)` against the same id. A mismatched or
+ * non-existent invitation surfaces a typed `not_found`.
  *
- * @param input - `{ invitationId }` to cancel.
+ * @param input - `{ invitationId, organizationId }` to cancel.
  * @returns Discriminated result.
  */
 export async function cancelInvitationAction(input: {
   invitationId: string;
+  organizationId: string;
 }): Promise<TeamActionResult> {
   let userId: string;
   try {
@@ -126,9 +128,14 @@ export async function cancelInvitationAction(input: {
   const parsed = parseOrFail(cancelSchema, input);
   if (!parsed.ok) return parsed;
 
-  const orgId = await findInvitationOrgId(userId, parsed.data.invitationId);
-  if (!orgId) return teamFail('not_found');
-  if (!(await isOrgAdmin(orgId))) return teamFail('forbidden');
+  const inOrg = await isCallerInInvitationOrg(
+    userId,
+    parsed.data.invitationId,
+    parsed.data.organizationId,
+  );
+  if (!inOrg) return teamFail('not_found');
+
+  if (!(await isOrgAdmin(parsed.data.organizationId))) return teamFail('forbidden');
 
   try {
     await auth.api.cancelInvitation({
