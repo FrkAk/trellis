@@ -13,13 +13,23 @@ import { executeRawDiscard } from "@/lib/db/raw";
  */
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// RFC 4122 UUID, any version, case-insensitive. set_config will accept
-// arbitrary strings, but our RLS predicates cast to uuid; rejecting non-UUID
-// shape here turns a Postgres "invalid input syntax for type uuid" 500 into
-// a clean TypeError. Unicode whitespace (U+00A0, U+2003, etc.), control
-// chars, empty strings, and non-UUID payloads all fail this regex.
+// Pre-validate UUID shape so a Postgres `invalid input syntax for type uuid`
+// 500 surfaces as a typed error at the helper boundary. Unicode whitespace,
+// control chars, empty strings, and non-UUID payloads all fail.
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Thrown when `withUserContext` receives a non-UUID `userId`. Named so the
+ * action layer can map it to `invalid_input` instead of the generic
+ * `unknown` failure code.
+ */
+export class InvalidUserIdError extends Error {
+  constructor(message = "withUserContext: userId must be a valid UUID string") {
+    super(message);
+    this.name = "InvalidUserIdError";
+  }
+}
 
 /**
  * Run `fn` inside a Drizzle transaction with `app.user_id` set to the supplied
@@ -36,17 +46,15 @@ const UUID_RE =
  *   Must be a valid RFC 4122 UUID string.
  * @param fn - Async callback that performs the protected work.
  * @returns Whatever `fn` returns.
- * @throws {TypeError} When `userId` is not a valid UUID string. Surfaces
- *   misuse loudly instead of silently degrading to default-deny.
+ * @throws {InvalidUserIdError} When `userId` is not a valid UUID string.
+ *   Surfaces misuse loudly instead of silently degrading to default-deny.
  */
 export async function withUserContext<T>(
   userId: string,
   fn: (tx: Tx) => Promise<T>,
 ): Promise<T> {
   if (typeof userId !== "string" || !UUID_RE.test(userId)) {
-    throw new TypeError(
-      "withUserContext: userId must be a valid UUID string",
-    );
+    throw new InvalidUserIdError();
   }
   return db.transaction(async (tx) => {
     await executeRawDiscard(

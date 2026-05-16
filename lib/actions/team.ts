@@ -331,7 +331,16 @@ export async function updateMemberRoleAction(input: {
   }
   if (!isAdmin) return teamFail("forbidden");
 
-  const preRead = await findMemberById(userId, parsed.data.memberId);
+  let preRead: Awaited<ReturnType<typeof findMemberById>>;
+  try {
+    preRead = await findMemberById(userId, parsed.data.memberId);
+  } catch (err) {
+    console.error("updateMemberRoleAction: findMemberById failed", {
+      memberId: parsed.data.memberId,
+      err,
+    });
+    return teamFail("unknown");
+  }
   if (!preRead) return teamFail("not_found");
   if (preRead.organizationId !== parsed.data.organizationId) return teamFail("forbidden");
 
@@ -407,17 +416,25 @@ export async function leaveTeamAction(input: {
   // access revocation is paired here because BA's `leaveOrganization`
   // does NOT fire `afterRemoveMember` — without this call, broker subs
   // and the home-grid project list stay stale until SSE reconnects.
-  try {
-    await Promise.all([
-      clearOrgMembershipArtifacts(userId, parsed.data.organizationId),
-      revokeOrgAccess(userId, parsed.data.organizationId),
-    ]);
-  } catch (err) {
-    console.error("leaveTeamAction cleanup failed", {
-      err,
-      userId,
-      orgId: parsed.data.organizationId,
-    });
+  //
+  // `Promise.allSettled` so a failure in one side (e.g. clearOrgMembershipArtifacts
+  // aborting on a DB blip) still lets the other (broker revocation) commit, and
+  // each failure is logged with its own attribution so ops can replay manually.
+  const cleanupResults = await Promise.allSettled([
+    clearOrgMembershipArtifacts(userId, parsed.data.organizationId),
+    revokeOrgAccess(userId, parsed.data.organizationId),
+  ]);
+  const labels = ["clearOrgMembershipArtifacts", "revokeOrgAccess"] as const;
+  for (let i = 0; i < cleanupResults.length; i++) {
+    const result = cleanupResults[i];
+    if (result.status === "rejected") {
+      console.error("leaveTeamAction cleanup partial failure", {
+        step: labels[i],
+        userId,
+        orgId: parsed.data.organizationId,
+        err: result.reason,
+      });
+    }
   }
   return { ok: true };
 }

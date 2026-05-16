@@ -380,6 +380,14 @@ export async function demoteMemberWithGuard(
       await demote();
       return { kind: "ok" };
     } catch (err) {
+      // Only Better Auth API errors carry a `body.code` shape. Anything
+      // else (TypeError, network error, programming bug) should surface
+      // by throwing so the transaction rolls back and the action layer
+      // logs the underlying cause instead of returning `unknown`.
+      const isBetterAuthError =
+        (err as { body?: { code?: string } } | null)?.body?.code !==
+        undefined;
+      if (!isBetterAuthError) throw err;
       return { kind: "callback_error", err };
     }
   });

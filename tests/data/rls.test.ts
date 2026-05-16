@@ -6,7 +6,7 @@ import {
   serviceRoleConnect,
 } from "@/tests/setup/seed";
 import { superuserPool } from "@/tests/setup/global";
-import { withUserContext } from "@/lib/db/rls";
+import { InvalidUserIdError, withUserContext } from "@/lib/db/rls";
 import { expectQueryRejects } from "@/tests/setup/expect-query";
 
 afterEach(async () => {
@@ -77,7 +77,7 @@ describe("RLS — defense-in-depth on team isolation", () => {
 
   test("withUserContext rejects empty userId at the helper boundary", async () => {
     await expect(withUserContext("", async () => 1)).rejects.toThrow(
-      TypeError,
+      InvalidUserIdError,
     );
   });
 

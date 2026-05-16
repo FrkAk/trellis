@@ -97,7 +97,19 @@ export async function listPendingInvitationsAction(input: {
   if (pending.length === 0) return { ok: true, data: [] };
 
   const inviterIds = Array.from(new Set(pending.map((row) => row.inviterId)));
-  const nameById = await lookupUserNames(userId, inviterIds);
+  let nameById: Map<string, string>;
+  try {
+    nameById = await lookupUserNames(userId, inviterIds);
+  } catch (err) {
+    // The view already falls back to 'Unknown' for missing names, so a
+    // transient name-lookup failure should degrade gracefully rather than
+    // collapse the whole list.
+    console.error('listPendingInvitationsAction: lookupUserNames failed', {
+      organizationId: parsed.data.organizationId,
+      err,
+    });
+    nameById = new Map();
+  }
 
   const data = pending
     .map((row) =>
@@ -138,11 +150,21 @@ export async function cancelInvitationAction(input: {
   const parsed = parseOrFail(cancelSchema, input);
   if (!parsed.ok) return parsed;
 
-  const inOrg = await isCallerInInvitationOrg(
-    userId,
-    parsed.data.invitationId,
-    parsed.data.organizationId,
-  );
+  let inOrg: boolean;
+  try {
+    inOrg = await isCallerInInvitationOrg(
+      userId,
+      parsed.data.invitationId,
+      parsed.data.organizationId,
+    );
+  } catch (err) {
+    console.error('cancelInvitationAction: isCallerInInvitationOrg failed', {
+      invitationId: parsed.data.invitationId,
+      organizationId: parsed.data.organizationId,
+      err,
+    });
+    return teamFail('unknown');
+  }
   if (!inOrg) return teamFail('not_found');
 
   let isAdmin: boolean;

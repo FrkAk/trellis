@@ -184,8 +184,20 @@ export async function getOrCreateTeamInviteCodeAction(input: {
   if (!authResult.ok) return authResult;
   const { userId } = authResult;
 
-  const existing = await findTeamInviteCode(orgId, userId);
-  if (existing) return { ok: true, data: toMetadata(existing) };
+  try {
+    const existing = await findTeamInviteCode(orgId, userId);
+    if (existing) return { ok: true, data: toMetadata(existing) };
+  } catch (err) {
+    console.error("getOrCreateTeamInviteCodeAction findTeamInviteCode failed", {
+      orgId,
+      err,
+    });
+    return {
+      ok: false,
+      code: "unknown",
+      message: TEAM_ACTION_MESSAGES.unknown,
+    };
+  }
 
   try {
     const created = await createTeamInviteCode({
@@ -196,8 +208,15 @@ export async function getOrCreateTeamInviteCodeAction(input: {
     return { ok: true, data: toMetadata(created) };
   } catch (err) {
     if ((err as { code?: string } | null)?.code === "23505") {
-      const row = await findTeamInviteCode(orgId, userId);
-      if (row) return { ok: true, data: toMetadata(row) };
+      try {
+        const row = await findTeamInviteCode(orgId, userId);
+        if (row) return { ok: true, data: toMetadata(row) };
+      } catch (lookupErr) {
+        console.error(
+          "getOrCreateTeamInviteCodeAction post-conflict lookup failed",
+          { orgId, err: lookupErr },
+        );
+      }
     }
     console.error("getOrCreateTeamInviteCodeAction failed", err);
     return {
@@ -233,12 +252,24 @@ export async function regenerateTeamInviteCodeAction(input: {
   if (!authResult.ok) return authResult;
   const { userId } = authResult;
 
-  const updated = await rotateTeamInviteCode({
-    organizationId: orgId,
-    newCode: generateInviteCode(),
-    adminUserId: userId,
-  });
-  if (updated) return { ok: true, data: toMetadata(updated) };
+  try {
+    const updated = await rotateTeamInviteCode({
+      organizationId: orgId,
+      newCode: generateInviteCode(),
+      adminUserId: userId,
+    });
+    if (updated) return { ok: true, data: toMetadata(updated) };
+  } catch (err) {
+    console.error("regenerateTeamInviteCodeAction rotateTeamInviteCode failed", {
+      orgId,
+      err,
+    });
+    return {
+      ok: false,
+      code: "unknown",
+      message: TEAM_ACTION_MESSAGES.unknown,
+    };
+  }
 
   try {
     const created = await createTeamInviteCode({
@@ -252,12 +283,19 @@ export async function regenerateTeamInviteCodeAction(input: {
     // first-rotate just landed a row. Retry as UPDATE with a freshly
     // generated code so a (vanishingly rare) code collision can't loop.
     if ((err as { code?: string } | null)?.code === "23505") {
-      const retried = await rotateTeamInviteCode({
-        organizationId: orgId,
-        newCode: generateInviteCode(),
-        adminUserId: userId,
-      });
-      if (retried) return { ok: true, data: toMetadata(retried) };
+      try {
+        const retried = await rotateTeamInviteCode({
+          organizationId: orgId,
+          newCode: generateInviteCode(),
+          adminUserId: userId,
+        });
+        if (retried) return { ok: true, data: toMetadata(retried) };
+      } catch (retryErr) {
+        console.error("regenerateTeamInviteCodeAction retry rotate failed", {
+          orgId,
+          err: retryErr,
+        });
+      }
     }
     console.error("regenerateTeamInviteCodeAction failed", err);
     return {
@@ -294,7 +332,17 @@ export async function revokeTeamInviteCodeAction(input: {
   if (!authResult.ok) return authResult;
   const { userId } = authResult;
 
-  const updated = await revokeTeamInviteCode(orgId, userId);
+  let updated: InviteCodeRow | null;
+  try {
+    updated = await revokeTeamInviteCode(orgId, userId);
+  } catch (err) {
+    console.error("revokeTeamInviteCodeAction failed", { orgId, err });
+    return {
+      ok: false,
+      code: "unknown",
+      message: TEAM_ACTION_MESSAGES.unknown,
+    };
+  }
   if (!updated) {
     return { ok: false, code: "not_found", message: NOT_FOUND_MSG };
   }
@@ -385,7 +433,7 @@ export async function joinTeamByCodeAction(input: {
       headers: reqHeaders,
     });
   } catch (err) {
-    await releaseInviteCodeSlot(userId, reserved.id, false);
+    await safeReleaseSlot(userId, reserved.id, false);
 
     const mapped = mapBetterAuthError(err);
     if (mapped === "already_member") {
@@ -413,6 +461,35 @@ export async function joinTeamByCodeAction(input: {
     };
   }
 
-  await releaseInviteCodeSlot(userId, reserved.id, true);
+  // Membership committed at this point. A throw from release must NOT surface
+  // as a 500 to a now-joined user; the pre-sweep in reserve_team_invite_code_slot
+  // reclaims any orphaned reservation on the next reserve.
+  await safeReleaseSlot(userId, reserved.id, true);
   return { ok: true, data: { organizationId: reserved.orgId } };
+}
+
+/**
+ * Run `releaseInviteCodeSlot` swallowing transient failures so the caller
+ * surfaces the addMember outcome rather than the bookkeeping outcome.
+ * Logs every failure for ops; the slot is reclaimable by the pre-sweep in
+ * `reserve_team_invite_code_slot`.
+ *
+ * @param userId - Caller user id (binding check inside the SDF).
+ * @param reservationId - Row id returned by `reserveInviteCodeSlot`.
+ * @param succeeded - `true` when the membership committed, `false` otherwise.
+ */
+async function safeReleaseSlot(
+  userId: string,
+  reservationId: string,
+  succeeded: boolean,
+): Promise<void> {
+  try {
+    await releaseInviteCodeSlot(userId, reservationId, succeeded);
+  } catch (err) {
+    console.error("joinTeamByCodeAction releaseInviteCodeSlot failed", {
+      reservationId,
+      succeeded,
+      err,
+    });
+  }
 }
