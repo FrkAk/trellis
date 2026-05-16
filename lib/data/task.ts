@@ -954,7 +954,7 @@ export async function searchTasks(
           WHEN LOWER(${tasks.title}) LIKE ${"%" + lower + "%"} THEN 2
           ELSE 3
         END`
-      : sql<number>`0`;
+      : null;
 
   const { project, trimmed, stateMap } = await withUserContext(ctx.userId, async (tx) => {
     const { project } = await assertProjectAccessTx(tx, projectId);
@@ -981,6 +981,9 @@ export async function searchTasks(
       );
     }
 
+    // Inlining a literal `0` in ORDER BY is parsed as a positional column
+    // reference, not a constant — Postgres rejects it with 42P10.
+    const orderByCols = rankExpr ? [rankExpr, asc(tasks.order)] : [asc(tasks.order)];
     const trimmedRows = await tx
       .select({
         id: tasks.id,
@@ -998,7 +1001,7 @@ export async function searchTasks(
       })
       .from(tasks)
       .where(and(...clauses))
-      .orderBy(rankExpr, asc(tasks.order))
+      .orderBy(...orderByCols)
       .limit(20);
     const states = await deriveTaskStatesSlim(
       projectId,

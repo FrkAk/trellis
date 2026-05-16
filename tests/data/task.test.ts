@@ -2,7 +2,7 @@ import { test, expect, afterEach } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
 import { superuserPool } from "@/tests/setup/global";
 import { seedUserOrgProject } from "@/tests/setup/seed";
-import { createTask, deleteTask, updateTask, searchTasksPaged, getTaskSlim, getTaskFull } from "@/lib/data/task";
+import { createTask, deleteTask, updateTask, searchTasks, searchTasksPaged, getTaskSlim, getTaskFull } from "@/lib/data/task";
 import { getProjectMaxUpdatedAt } from "@/lib/data/project";
 import { makeAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";
@@ -232,6 +232,25 @@ test("searchTasksPaged paginates by (order, id) cursor", async () => {
   const ids2 = new Set(page2.rows.map((r) => r.id));
   for (const id of ids2) expect(ids1.has(id)).toBe(false);
   expect(ids1.size + ids2.size).toBe(6);
+});
+
+test("searchTasks tags-only filter omits relevance rank to avoid ORDER BY 0", async () => {
+  const f = await seedUserOrgProject("searchtagsonly");
+  const ctx = makeAuthContext(f.userId);
+
+  const sqlc = superuserPool();
+  try {
+    await sqlc`
+      INSERT INTO tasks ("project_id", "title", "sequence_number", "order", "tags")
+      VALUES (${f.projectId}, 'X', 1, 1, '["feature"]'::jsonb)
+    `;
+  } finally {
+    await sqlc.end({ timeout: 5 });
+  }
+
+  const rows = await searchTasks(ctx, f.projectId, undefined, ["feature"]);
+  expect(rows.length).toBe(1);
+  expect(rows[0].tags).toEqual(["feature"]);
 });
 
 test("getTaskSlim returns the slim shape", async () => {
