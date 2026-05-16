@@ -210,11 +210,11 @@ Mymir uses three Postgres roles plus Row-Level Security so a compromise of the a
 
 **`auth_role`** — Better Auth's connection, via `DATABASE_AUTH_URL`. Full DML on `neon_auth.*`, no grants on `public.*`. A compromise of `auth_role` cannot read or write app data.
 
-**`service_role`** (BYPASSRLS) — migrations (`drizzle-kit push`) and exactly ONE documented runtime bypass site (`lib/data/account.ts:clearOrgMembershipArtifacts`, which has to clean up across both `neon_auth.*` and `public.task_assignees` for a user just removed from an org). Wired via `DATABASE_SERVICE_ROLE_URL`. The three invite-code helpers (lookup / reserve / release) that PR 79 originally routed through this role have moved to `SECURITY DEFINER` SQL functions exposed to `app_user`, so the JS data ring never holds a BYPASSRLS connection for that flow.
+**`service_role`** (BYPASSRLS) — migrations (`drizzle-kit push`) and a small set of documented runtime bypass sites enumerated on `lib/db/connection.ts` (cross-schema artifact cleanup, admin-only project/membership lookups for BA `afterRemoveMember` / `beforeDeleteOrganization` hooks, and non-tenant-scoped OAuth artifact reads). Wired via `DATABASE_SERVICE_ROLE_URL`. The data ring never opens a BYPASSRLS connection for the team-invite-code flow — those moved to `SECURITY DEFINER` SQL functions exposed to `app_user`.
 
 **The blast radius** of a successful SQL injection or logic bug under `app_user` is bounded by:
-- The 8 policies in `docker/rls-policies.sql` (joins `neon_auth.member` on the GUC).
-- The 3 `SECURITY DEFINER` function bodies in `docker/rls-functions.sql` (each is short, audit-able, and bounded to incrementing a single counter or returning code metadata).
+- The policies in `docker/rls-policies.sql` (joins `neon_auth.member` on the GUC).
+- The `SECURITY DEFINER` function bodies in `docker/rls-functions.sql` (each pins `search_path` ending in `pg_temp`, is `EXECUTE`-restricted to `app_user` or `service_role`, and re-asserts org scope inside its body).
 - No access to any auth secret (password hashes, OAuth tokens, JWT keys, session tokens).
 
 ESLint forbids bare `db.transaction(...)` outside `lib/db/rls.ts` and the two documented exempt files, so future code can't accidentally open a raw transaction that skips the GUC.

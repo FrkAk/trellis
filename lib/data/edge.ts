@@ -198,10 +198,10 @@ export async function getTaskEdgesDetailed(
  * ids so the OR-on-id-list is safely scoped.
  *
  * @param taskIds - Task ids to filter the endpoints on.
- * @param conn - Drizzle client or transaction handle. Defaults to the bare
- *   `db` pool client; callers running under a `withUserContext` transaction
- *   should pass the active `tx` so the read participates in the same
- *   RLS-scoped frame.
+ * @param conn - Drizzle client or transaction handle from an active
+ *   `withUserContext` frame; the GUC on this handle scopes the read to
+ *   the caller's org. Helpers in this file never default-construct a
+ *   handle — pass the `tx` you opened.
  * @returns Full edge rows.
  */
 export async function fetchEdgesForTaskIds(
@@ -225,10 +225,10 @@ export async function fetchEdgesForTaskIds(
  * id set. Used by graph algorithms.
  *
  * @param sourceTaskIds - Task ids to filter the source side on.
- * @param conn - Drizzle client or transaction handle. Defaults to the bare
- *   `db` pool client; callers running under a `withUserContext` transaction
- *   should pass the active `tx` so the read participates in the same
- *   RLS-scoped frame.
+ * @param conn - Drizzle client or transaction handle from an active
+ *   `withUserContext` frame; the GUC on this handle scopes the read to
+ *   the caller's org. Helpers in this file never default-construct a
+ *   handle — pass the `tx` you opened.
  * @returns Edge endpoints (source/target only — no metadata).
  */
 export async function listDependsOnEdges(

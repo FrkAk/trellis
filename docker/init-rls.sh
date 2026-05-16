@@ -9,8 +9,11 @@
 #     NOT used by the app at runtime.
 #   * service_role — BYPASSRLS + CREATE on schema public, used by:
 #       - `drizzle-kit push` migration runner (via DATABASE_SERVICE_ROLE_URL)
-#       - the 4 documented bypass call sites (reserve/release/diagnose
-#         invite-code, clearOrgMembershipArtifacts)
+#       - the documented runtime bypass call sites — see
+#         `lib/db/connection.ts` for the canonical inventory. The
+#         team-invite-code helpers (lookup/reserve/release) do NOT use
+#         service_role; they run via SECURITY DEFINER functions exposed
+#         to app_user.
 #   * app_user — NO BYPASSRLS, the runtime role for the Next.js app
 #     (via DATABASE_URL). RLS policies fire on every query.
 #

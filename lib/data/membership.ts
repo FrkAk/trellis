@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { serviceRoleDb } from "@/lib/db";
 import { executeRaw, uuidArray } from "@/lib/db/raw";
 import { withUserContext, type Tx } from "@/lib/db/rls";
 import { decodeCursor, encodeCursor, type Cursor } from "@/lib/data/cursor";
@@ -226,7 +226,6 @@ export async function listMemberRolesTx(
 export async function findOrgMemberUserIdsAsAdmin(
   orgId: string,
 ): Promise<string[]> {
-  const { serviceRoleDb } = await import("@/lib/db");
   const rows = await executeRaw<{ user_id: string }>(
     serviceRoleDb,
     sql`SELECT user_id FROM public.find_org_member_user_ids_as_admin(${orgId}::uuid)`,
@@ -404,7 +403,3 @@ export async function previewTeamDelete(
     previewTeamCascade(tx, organizationId),
   );
 }
-
-// Re-export db so the eslint allowlist passes; no helper in this file uses it
-// directly anymore. Keeping the import path stable for downstream callers.
-void db;

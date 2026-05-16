@@ -367,9 +367,9 @@ export async function getProjectSlim(
  * assemblers — caller has already asserted access on the parent task.
  *
  * @param projectId - UUID of the project.
- * @param conn - Optional drizzle client or transaction. Defaults to the
- *   pool client; callers running under a `withUserContext` transaction
- *   should pass `tx` so the RLS GUC is honored.
+ * @param conn - Drizzle client or transaction handle from an active
+ *   `withUserContext` frame; the GUC on this handle scopes the read to
+ *   the caller's org. Pass the `tx` you opened.
  * @returns The identifier string, or null when the project is missing.
  */
 export async function getProjectIdentifier(
@@ -397,9 +397,9 @@ export type ProjectHeader = {
  * task.
  *
  * @param projectId - UUID of the project.
- * @param conn - Optional drizzle client or transaction. Defaults to the
- *   pool client; callers running under a `withUserContext` transaction
- *   should pass `tx` so the RLS GUC is honored.
+ * @param conn - Drizzle client or transaction handle from an active
+ *   `withUserContext` frame; the GUC on this handle scopes the read to
+ *   the caller's org. Pass the `tx` you opened.
  * @returns The header, or null when the project is missing.
  */
 export async function getProjectHeader(

@@ -8,8 +8,8 @@ import { withUserContext } from "@/lib/db/rls";
  * Boolean predicate: caller is a member of the invitation's org AND
  * the supplied `expectedOrgId` matches the invitation's own
  * `organizationId`. Routed through `is_caller_in_invitation_org` so
- * `app_user` can resolve `neon_auth.invitation` under the Option-B
- * lockdown without disclosing the invitation→org linkage (H2 fix).
+ * `app_user` can resolve `neon_auth.invitation` without disclosing the
+ * invitation→org linkage to non-members.
  *
  * @param userId - Authenticated caller's user id (UUID).
  * @param invitationId - UUID of the invitation.

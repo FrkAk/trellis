@@ -34,12 +34,13 @@ import type {
 // policies are managed entirely as hand-written SQL and the schema only
 // declares the RLS enable bit.
 //
-// All policies share the same shape: one permissive `FOR ALL TO public`
-// policy per table, predicating membership through `neon_auth.member` keyed
-// on `NULLIF(current_setting('app.user_id', TRUE), '')::uuid`. The
-// missing-GUC path resolves to NULL so the EXISTS subquery evaluates false
-// (default-deny). `service_role` (BYPASSRLS) sidesteps policies entirely;
-// `app_user` evaluates them on every query.
+// Policies bind `TO app_user` and predicate membership through
+// `public.current_user_org_ids()` (which reads `app.user_id` from the GUC).
+// The missing-GUC path resolves to NULL so the membership lookup evaluates
+// to an empty array (default-deny). `service_role` (BYPASSRLS) sidesteps
+// policies entirely; `app_user` evaluates them on every query.
+// `team_invite_code` is the one exception — a split SELECT-for-members /
+// WRITE-for-admins pair guards admin-only mutations.
 
 // ---------------------------------------------------------------------------
 // Projects

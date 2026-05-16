@@ -25,10 +25,10 @@ type Ancestor = { id: string; type: "project"; title: string };
 /**
  * Get the parent project for a task. Internal — caller asserted access.
  * @param taskId - UUID of the task.
- * @param conn - Drizzle client or transaction handle. Defaults to the bare
- *   `db` pool client; callers running under a `withUserContext` transaction
- *   should pass the active `tx` so the read participates in the same
- *   RLS-scoped frame.
+ * @param conn - Drizzle client or transaction handle from an active
+ *   `withUserContext` frame; the GUC on this handle scopes the read to
+ *   the caller's org. Helpers in this file never default-construct a
+ *   handle — pass the `tx` you opened.
  * @returns Array with the project ancestor, or empty if not found.
  */
 export async function getAncestors(
@@ -71,10 +71,10 @@ type DependencyNode = {
  * @param taskId - UUID of the starting task.
  * @param projectId - UUID of the project the starting task belongs to.
  * @param maxDepth - Maximum traversal depth (default 10).
- * @param conn - Drizzle client or transaction handle. Defaults to the bare
- *   `db` pool client; callers running under a `withUserContext` transaction
- *   should pass the active `tx` so the read participates in the same
- *   RLS-scoped frame.
+ * @param conn - Drizzle client or transaction handle from an active
+ *   `withUserContext` frame; the GUC on this handle scopes the read to
+ *   the caller's org. Helpers in this file never default-construct a
+ *   handle — pass the `tx` you opened.
  * @returns Array of dependency tasks with depth.
  */
 export async function getDependencyChain(
@@ -100,10 +100,10 @@ type ConnectedTask = {
 /**
  * Fetch all tasks connected by exactly one edge hop. Internal helper.
  * @param taskId - UUID of the task.
- * @param conn - Drizzle client or transaction handle. Defaults to the bare
- *   `db` pool client; callers running under a `withUserContext` transaction
- *   should pass the active `tx` so the read participates in the same
- *   RLS-scoped frame.
+ * @param conn - Drizzle client or transaction handle from an active
+ *   `withUserContext` frame; the GUC on this handle scopes the read to
+ *   the caller's org. Helpers in this file never default-construct a
+ *   handle — pass the `tx` you opened.
  * @returns Array of connected tasks with edge info.
  */
 export async function getConnectedTasks(

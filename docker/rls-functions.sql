@@ -53,9 +53,9 @@ GRANT EXECUTE ON FUNCTION public.lookup_team_invite_code(text) TO app_user;
 -- Atomically reserve a slot on a valid, non-revoked, non-expired,
 -- non-exhausted code. Records `reserved_by = p_user_id` so the matching
 -- `release_team_invite_code_slot` call can confirm it's the same caller
--- before mutating the slot (H1 binding check). Returns the row
--- identifiers on success, empty set on failure (anti-enumeration —
--- caller cannot distinguish failure reasons).
+-- before mutating the slot. Returns the row identifiers on success,
+-- empty set on failure (anti-enumeration — caller cannot distinguish
+-- failure reasons).
 --
 -- Pre-sweep: an unreleased reservation older than its `reserved_until`
 -- gets its slot reclaimed (use_count decremented, reserved_until +

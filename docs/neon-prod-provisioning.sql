@@ -80,8 +80,7 @@ CREATE ROLE auth_role WITH
 -- -----------------------------------------------------------------------------
 -- 3. drizzle-kit migrate prerequisites
 -- -----------------------------------------------------------------------------
--- Added after the initial provisioning when the implementer discovered
--- drizzle-kit's runtime requirements during MYMR-151 implementation:
+-- drizzle-kit's runtime requirements:
 --   `drizzle-kit migrate` issues `CREATE SCHEMA IF NOT EXISTS drizzle`
 --   unconditionally to provision its own migrations-tracking schema. This
 --   requires CREATE on the database itself (not just on schema public).
@@ -169,7 +168,8 @@ WHERE grantee = 'app_user'
 -- against the Neon prod database.
 
 -- [PROD UPDATE 2026-05-16] Replaced lookup_invitation_org_id(uuid)→uuid with
--- is_caller_in_invitation_org(uuid, uuid)→boolean (H2 fix). Apply by
+-- is_caller_in_invitation_org(uuid, uuid)→boolean (predicate-only API that
+-- closes the invitation→org linkage disclosure to non-members). Apply by
 -- re-running docker/rls-functions.sql against the Neon prod database.
 
 -- [PROD UPDATE 2026-05-16] Added section 8 (REVOKE TEMPORARY ON DATABASE

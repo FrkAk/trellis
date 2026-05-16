@@ -29,11 +29,13 @@ declare global {
 
 const isNeon = (): boolean => process.env.MYMIR_DB_DRIVER === "neon";
 
-// Pool size budget: Cloudflare Workers spawn ~10 concurrent isolates per
-// deploy under typical load; each gets its own three pools (app_user,
-// auth_role, service_role). Neon Launch tier caps per-branch connections
-// at ~100. Budget: 100 ÷ 3 roles ÷ ~10 isolates ≈ 3 conns/role/isolate.
-// Bump max if the deploy target has more isolates or a higher Neon tier.
+// Pool size budget: the Next.js `output: "standalone"` server runs as a
+// single Node process, but the three pools (app_user, auth_role,
+// service_role) coexist plus dev/test parallelism. Neon Launch tier caps
+// per-branch connections at ~100. `max: 3` keeps total open connections
+// well under the cap while leaving headroom for migration runs and the
+// testcontainer setup. Bump if the deploy target adds replicas or runs on
+// a higher Neon tier.
 
 /**
  * Build the application Drizzle client for the active driver.
@@ -123,7 +125,7 @@ function buildServiceRoleDb(): AppDb {
  * - `neon` → `drizzle-orm/neon-serverless` + WebSocket `Pool`
  * - unset / anything else → `drizzle-orm/postgres-js` + `postgres` TCP
  *
- * Cached on `globalThis` so warm Workers isolates reuse the connection
+ * Cached on `globalThis` so a warm Node process reuses the connection
  * across requests instead of paying the WebSocket handshake each time.
  */
 export const appDb = new Proxy({} as AppDb, {

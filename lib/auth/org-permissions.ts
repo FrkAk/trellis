@@ -13,8 +13,8 @@ import { auth } from "@/lib/auth";
  *
  * Probes `invitation:create` — both `owner` and `admin` hold this by
  * default; plain `member` does not. Compatible with the custom roles
- * configured via the organization plugin's `roles` option (MYMR-69) since
- * those preserve `invitation:create` in the admin/owner statements.
+ * configured via the organization plugin's `roles` option since those
+ * preserve `invitation:create` in the admin/owner statements.
  *
  * Non-members of the supplied team surface as `false` — BA throws
  * `USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION` which is caught here. So
