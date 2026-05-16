@@ -59,17 +59,16 @@ DROP POLICY IF EXISTS "task_links_member_access" ON "task_links";
 CREATE POLICY "task_links_member_access" ON "task_links" AS PERMISSIVE FOR ALL TO app_user
   USING (task_id IN (SELECT id FROM public.tasks));
 
--- team_invite_code — split: SELECT for all members of the org, writes
--- (INSERT/UPDATE/DELETE) restricted to admin/owner roles. Defense-in-depth
--- so a bypass of the action-layer isOrgAdmin check (new endpoint, SQLi
--- landing) cannot mint or rotate codes from a regular member's session.
+-- team_invite_code — admin/owner only on every command, including SELECT.
+-- A regular org member never needs the raw `code` column; the action-layer
+-- gate (getOrCreateTeamInviteCodeAction → isOrgAdmin) returns 403 to
+-- non-admins. RLS layer enforces the same gate as defense-in-depth so a
+-- bypass of the action-layer check (new endpoint, SQLi landing) cannot
+-- exfiltrate the code from a regular member's session. Redemption SDFs are
+-- SECURITY DEFINER and sidestep the policy, so the join flow still works.
 DROP POLICY IF EXISTS "team_invite_code_member_access" ON "team_invite_code";
 DROP POLICY IF EXISTS "team_invite_code_member_select" ON "team_invite_code";
 DROP POLICY IF EXISTS "team_invite_code_admin_write" ON "team_invite_code";
-
-CREATE POLICY "team_invite_code_member_select" ON "team_invite_code"
-  AS PERMISSIVE FOR SELECT TO app_user
-  USING (organization_id IN (SELECT unnest(public.current_user_org_ids())));
 
 CREATE POLICY "team_invite_code_admin_write" ON "team_invite_code"
   AS PERMISSIVE FOR ALL TO app_user
