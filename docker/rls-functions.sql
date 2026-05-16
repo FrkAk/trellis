@@ -48,6 +48,14 @@ GRANT EXECUTE ON FUNCTION public.lookup_team_invite_code(text) TO app_user;
 -- Atomically reserve a slot on a valid, non-revoked, non-expired,
 -- non-exhausted code. Returns the row identifiers on success, empty set on
 -- failure (anti-enumeration — caller cannot distinguish failure reasons).
+--
+-- Pre-sweep: an unreleased reservation older than its `reserved_until`
+-- gets its slot reclaimed before the new attempt is evaluated. This
+-- handles the crash-between-reserve-and-release case (OOM, SIGTERM). The
+-- sweep is scoped to the row being attempted, so unrelated codes are not
+-- touched. Concurrent reservations on the same code: the later one's TTL
+-- overwrites; if the earlier saga crashes during the overlap, its slot
+-- stays stranded until the next reserve attempt — accepted v1 limitation.
 CREATE OR REPLACE FUNCTION public.reserve_team_invite_code_slot(p_code text)
 RETURNS TABLE (id uuid, organization_id uuid, default_role text)
 LANGUAGE plpgsql
@@ -55,9 +63,18 @@ SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
 BEGIN
+  UPDATE public.team_invite_code AS t
+     SET use_count = GREATEST(t.use_count - 1, 0),
+         reserved_until = NULL,
+         updated_at = NOW()
+   WHERE t.code = p_code
+     AND t.reserved_until IS NOT NULL
+     AND t.reserved_until < NOW();
+
   RETURN QUERY
   UPDATE public.team_invite_code AS t
      SET use_count = t.use_count + 1,
+         reserved_until = NOW() + interval '15 minutes',
          updated_at = NOW()
    WHERE t.code = p_code
      AND t.revoked_at IS NULL
@@ -69,9 +86,11 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text) FROM public;
 GRANT EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text) TO app_user;
 
--- No-op once the caller is a member of the slot's org, so an already-
--- joined member cannot loop releases to inflate the join count past
--- max_uses.
+-- Dual role: rollback when the addMember step failed (no membership row yet
+-- → decrement use_count) AND finalize when it succeeded (membership row
+-- exists → keep use_count, clear `reserved_until` so the next reserve does
+-- not sweep this slot back). The saga calls this exactly once after the
+-- addMember attempt, on both success and failure paths.
 CREATE OR REPLACE FUNCTION public.release_team_invite_code_slot(p_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -80,15 +99,17 @@ SET search_path = public, pg_catalog
 AS $$
 BEGIN
   UPDATE public.team_invite_code AS t
-     SET use_count = GREATEST(t.use_count - 1, 0),
+     SET use_count = CASE
+           WHEN EXISTS (
+             SELECT 1 FROM neon_auth."member" m
+             WHERE m."organizationId" = t.organization_id
+               AND m."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
+           ) THEN t.use_count
+           ELSE GREATEST(t.use_count - 1, 0)
+         END,
+         reserved_until = NULL,
          updated_at = NOW()
-   WHERE t.id = p_id
-     AND NOT EXISTS (
-       SELECT 1
-       FROM neon_auth."member" m
-       WHERE m."organizationId" = t.organization_id
-         AND m."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
-     );
+   WHERE t.id = p_id;
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid) FROM public;

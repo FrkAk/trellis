@@ -55,6 +55,7 @@ export const teamInviteCodes = pgTable(
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     maxUses: integer("max_uses"),
     useCount: integer("use_count").notNull().default(0),
+    reservedUntil: timestamp("reserved_until", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => user.id, {
       onDelete: "set null",
     }),

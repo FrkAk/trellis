@@ -399,5 +399,10 @@ export async function joinTeamByCodeAction(input: {
     };
   }
 
+  // Success path also calls release: the SDF detects the new membership
+  // row and finalizes the slot (clears reserved_until, keeps use_count).
+  // Without this the next reserve attempt's sweep would roll back this
+  // saga 15 minutes later.
+  await releaseInviteCodeSlot(reserved.id);
   return { ok: true, data: { organizationId: reserved.orgId } };
 }

@@ -170,8 +170,16 @@ export async function reserveInviteCodeSlot(
 }
 
 /**
- * Decrement a reserved slot when the downstream membership add fails.
- * Saga compensation — never drops below zero.
+ * Finalize a reservation after the downstream membership add resolves.
+ *
+ * Dual semantic, evaluated server-side from the membership state:
+ * - Member row exists (success path): clears `reserved_until`, keeps
+ *   `use_count`. The slot is consumed.
+ * - No member row (failure path): decrements `use_count` and clears
+ *   `reserved_until`. The slot is freed for the next attempt.
+ *
+ * Caller invokes this exactly once per reservation, on both success and
+ * failure paths of the addMember call.
  *
  * @param id - UUID of the invite-code row whose slot was reserved.
  */

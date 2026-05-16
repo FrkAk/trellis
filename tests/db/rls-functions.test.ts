@@ -204,6 +204,103 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
   });
 
+  test("reserve_team_invite_code_slot sets reserved_until ~15 minutes ahead", async () => {
+    const fx = await seedUserOrgProject("ttl-1");
+    await seedCode({ orgId: fx.organizationId, code: "TTL1", useCount: 0 });
+    const c = appUserConnect();
+    try {
+      await c`SELECT * FROM public.reserve_team_invite_code_slot(${"TTL1"})`;
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+    const sr = serviceRoleConnect();
+    try {
+      const [row] = await sr<Array<{ reserved_until: Date | null }>>`
+        SELECT reserved_until FROM team_invite_code WHERE code = ${"TTL1"}
+      `;
+      expect(row.reserved_until).not.toBeNull();
+      const aheadMs = (row.reserved_until as Date).getTime() - Date.now();
+      expect(aheadMs).toBeGreaterThan(14 * 60_000);
+      expect(aheadMs).toBeLessThan(16 * 60_000);
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+  });
+
+  test("reserve sweeps a stale (crashed) reservation before a new attempt — maxUses=1 case", async () => {
+    const fx = await seedUserOrgProject("ttl-sweep");
+    const seeded = await seedCode({
+      orgId: fx.organizationId,
+      code: "SWEEP1",
+      maxUses: 1,
+      useCount: 1,
+    });
+    const sr = serviceRoleConnect();
+    try {
+      await sr`UPDATE team_invite_code SET reserved_until = NOW() - interval '1 minute' WHERE id = ${seeded.id}`;
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    let reservedRows: Array<{ id: string }> = [];
+    try {
+      reservedRows = await c<Array<{ id: string }>>`
+        SELECT id FROM public.reserve_team_invite_code_slot(${"SWEEP1"})
+      `;
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+    expect(reservedRows.length).toBe(1);
+
+    const sr2 = serviceRoleConnect();
+    try {
+      const [row] = await sr2<Array<{ use_count: number; reserved_until: Date | null }>>`
+        SELECT use_count, reserved_until FROM team_invite_code WHERE id = ${seeded.id}
+      `;
+      expect(row.use_count).toBe(1);
+      expect(row.reserved_until).not.toBeNull();
+    } finally {
+      await sr2.end({ timeout: 5 });
+    }
+  });
+
+  test("release finalizes (clears reserved_until without decrementing) when caller is already a member", async () => {
+    const fx = await seedUserOrgProject("finalize-1");
+    const seeded = await seedCode({
+      orgId: fx.organizationId,
+      code: "FINAL1",
+      useCount: 1,
+    });
+    const sr = serviceRoleConnect();
+    try {
+      await sr`UPDATE team_invite_code SET reserved_until = NOW() + interval '15 minutes' WHERE id = ${seeded.id}`;
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    try {
+      await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        await tx`SELECT public.release_team_invite_code_slot(${seeded.id}::uuid)`;
+      });
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+
+    const sr2 = serviceRoleConnect();
+    try {
+      const [row] = await sr2<Array<{ use_count: number; reserved_until: Date | null }>>`
+        SELECT use_count, reserved_until FROM team_invite_code WHERE id = ${seeded.id}
+      `;
+      expect(row.use_count).toBe(1);
+      expect(row.reserved_until).toBeNull();
+    } finally {
+      await sr2.end({ timeout: 5 });
+    }
+  });
+
   test("EXECUTE is granted to app_user only (no PUBLIC, no service_role)", async () => {
     // Tighter and faster than spinning up a throwaway role: query the
     // catalog directly. has_function_privilege returns false for any role
