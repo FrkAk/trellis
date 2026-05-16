@@ -13,6 +13,11 @@
 -- self-host bootstrap (docker/init-rls.sh) and the testcontainer
 -- (tests/setup/migrate.ts) consume the same file, so updates land in one
 -- place and parity holds across prod / self-host / test.
+--
+-- ORDERING INVARIANT: docker/rls-functions.sql MUST be applied before
+-- docker/rls-policies.sql on every re-application. Policies reference
+-- `public.current_user_org_ids()`; re-running policies without functions
+-- takes the app offline.
 -- =============================================================================
 
 
@@ -67,10 +72,16 @@ CREATE ROLE auth_role WITH
 -- Run docker/grants.sql as neondb_owner (Neon SQL editor, Neon MCP, or psql).
 -- That file is the single source of truth for:
 --   * public schema USAGE + CREATE
---   * public DML on all tables + sequences + default privileges
+--   * public DML on all *existing* tables + sequences (no default privileges)
 --   * neon_auth USAGE + REVOKE-from-app_user (Option B lockdown)
 --   * neon_auth tight grants for service_role
 --   * neon_auth full DML + default privileges for auth_role
+--
+-- New public tables require explicit `GRANT SELECT, INSERT, UPDATE, DELETE
+-- ON <table> TO app_user, service_role;` in their migration. Default
+-- privileges on schema public were intentionally removed — they would
+-- auto-grant DML before RLS is attached to a newly created table.
+--
 -- See sections 1, 3-7 below for context-specific steps not covered by
 -- grants.sql (role creation, DB-level grants, drizzle migrations schema,
 -- composite index, SECURITY DEFINER functions, smoke tests).
@@ -132,9 +143,11 @@ WHERE grantee = 'app_user'
 -- the prod runbook stays the single source of truth for what runs on Neon.
 --
 -- Functions installed (invite-code flow):
---   public.lookup_team_invite_code(text)
---   public.reserve_team_invite_code_slot(text)
---   public.release_team_invite_code_slot(uuid)
+--   public.lookup_team_invite_code(text)            -- service_role only (anti-enumeration)
+--   public.reserve_team_invite_code_slot(text, uuid)
+--   public.release_team_invite_code_slot(uuid, uuid, boolean)
+--     -- WHERE clause requires reserved_until IS NOT NULL so a replayed
+--     -- release call matches zero rows (idempotent, no use_count underflow)
 --
 -- Functions installed (Option B — neon_auth lockdown, grants to app_user):
 --   public.current_user_org_ids()              -- uuid[]; RLS policy hot path
@@ -151,8 +164,15 @@ WHERE grantee = 'app_user'
 -- Functions installed (admin/system, service_role only):
 --   public.list_org_project_ids(uuid)
 --   public.find_org_member_user_ids_as_admin(uuid)
+--   public.lookup_team_invite_code(text)
 --
--- EXECUTE granted to app_user only.
+-- Triggers installed:
+--   projects_organization_id_immutable      -- block cross-team project moves
+--   tasks_project_id_immutable              -- block cross-team task moves
+--   task_edges_same_project_immutable       -- BEFORE INSERT/UPDATE; rejects
+--     -- edges whose endpoints resolve to different (or NULL/invisible)
+--     -- project_ids. SECURITY DEFINER so it sees rows hidden from app_user
+--     -- by RLS, closing the dual-org / SQLi cross-tenant edge-wiring hole.
 -- -----------------------------------------------------------------------------
 
 -- [Apply docker/rls-functions.sql as neondb_owner]

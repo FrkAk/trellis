@@ -49,7 +49,7 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
   }
 
-  test("lookup_team_invite_code returns the four diagnostic fields when run as app_user without GUC", async () => {
+  test("lookup_team_invite_code returns the four diagnostic fields", async () => {
     const fx = await seedUserOrgProject("lookup-1");
     await seedCode({
       orgId: fx.organizationId,
@@ -57,37 +57,33 @@ describe("invite-code SECURITY DEFINER functions", () => {
       maxUses: 5,
       useCount: 2,
     });
-    const c = appUserConnect();
-    try {
-      const rows = await c<Array<{
-        revoked_at: Date | null;
-        expires_at: Date | null;
-        max_uses: number | null;
-        use_count: number;
-      }>>`SELECT revoked_at, expires_at, max_uses, use_count FROM public.lookup_team_invite_code(${"LOOKUP1"})`;
-      expect(rows.length).toBe(1);
-      expect(rows[0].revoked_at).toBeNull();
-      expect(rows[0].max_uses).toBe(5);
-      expect(rows[0].use_count).toBe(2);
-    } finally {
-      await c.end({ timeout: 5 });
-    }
+    const sr = superuserPool();
+    const rows = await sr<Array<{
+      revoked_at: Date | null;
+      expires_at: Date | null;
+      max_uses: number | null;
+      use_count: number;
+    }>>`SELECT revoked_at, expires_at, max_uses, use_count FROM public.lookup_team_invite_code(${"LOOKUP1"})`;
+    expect(rows.length).toBe(1);
+    expect(rows[0].revoked_at).toBeNull();
+    expect(rows[0].max_uses).toBe(5);
+    expect(rows[0].use_count).toBe(2);
   });
 
   test("lookup_team_invite_code does NOT return id / organization_id / default_role", async () => {
     const fx = await seedUserOrgProject("lookup-shape");
     await seedCode({ orgId: fx.organizationId, code: "LOOKUPSHAPE" });
-    const c = appUserConnect();
+    const sr = superuserPool();
     await expectQueryRejects(
-      c`SELECT id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      sr`SELECT id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
       /column "id" does not exist/i,
     );
     await expectQueryRejects(
-      c`SELECT organization_id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      sr`SELECT organization_id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
       /column "organization_id" does not exist/i,
     );
     await expectQueryRejects(
-      c`SELECT default_role FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      sr`SELECT default_role FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
       /column "default_role" does not exist/i,
     );
   });
@@ -398,10 +394,14 @@ describe("invite-code SECURITY DEFINER functions", () => {
     // that wasn't granted EXECUTE. We assert: app_user has it; PUBLIC and
     // service_role do not. (service_role keeps DML on the table but is not
     // expected to call these functions — it can bypass RLS directly.)
+    //
+    // `lookup_team_invite_code` is intentionally NOT in this list: it was
+    // moved to a service_role-only grant so app_user cannot enumerate
+    // invite-code validity at scale. Its grant matrix is asserted under
+    // the dedicated TC5 block below.
     const sr = serviceRoleConnect();
     try {
       const fns = [
-        "public.lookup_team_invite_code(text)",
         "public.reserve_team_invite_code_slot(text, uuid)",
         "public.release_team_invite_code_slot(uuid, uuid, boolean)",
       ];
@@ -615,6 +615,324 @@ describe("SECURITY DEFINER catalog invariants", () => {
         row.app_user || row.service_role,
         `${row.proname}: no role has EXECUTE — orphan definer?`,
       ).toBe(true);
+    }
+  });
+});
+
+/**
+ * Every `*_visible` SECURITY DEFINER below carries an inline
+ * `EXISTS (SELECT 1 FROM neon_auth."member" caller WHERE …)` guard on
+ * the caller's GUC-supplied user_id. If a future regression drops that
+ * guard, an app_user session in team B could read team A's data
+ * through the SDF — the brand types and the EXECUTE grant matrix would
+ * not catch it. Each test below seeds two disjoint teams and asserts
+ * team B's caller sees zero rows when invoking the SDF against team
+ * A's identifiers.
+ */
+describe("SECURITY DEFINER — cross-team caller-membership re-checks", () => {
+  test("team_members_visible — cross-team caller sees zero rows", async () => {
+    const teamA = await seedUserOrgProject("sdf-tmv-a");
+    const teamB = await seedUserOrgProject("sdf-tmv-b");
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        return await tx`SELECT * FROM public.team_members_visible(${teamA.organizationId}::uuid)`;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("task_assignees_visible — cross-team caller sees zero rows", async () => {
+    const teamA = await seedUserOrgProject("sdf-tav-a");
+    const teamB = await seedUserOrgProject("sdf-tav-b");
+    const su = superuserPool();
+    const [task] = await su<{ id: string }[]>`
+      INSERT INTO public.tasks (project_id, title, sequence_number)
+      VALUES (${teamA.projectId}, ${"TaskA"}, 1)
+      RETURNING id
+    `;
+    await su`
+      INSERT INTO public.task_assignees (task_id, user_id)
+      VALUES (${task.id}, ${teamA.userId})
+    `;
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        return await tx`SELECT * FROM public.task_assignees_visible(${task.id}::uuid)`;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("task_assignees_for_project_visible — cross-team caller sees zero rows", async () => {
+    const teamA = await seedUserOrgProject("sdf-tafpv-a");
+    const teamB = await seedUserOrgProject("sdf-tafpv-b");
+    const su = superuserPool();
+    const [task] = await su<{ id: string }[]>`
+      INSERT INTO public.tasks (project_id, title, sequence_number)
+      VALUES (${teamA.projectId}, ${"TaskA"}, 1)
+      RETURNING id
+    `;
+    await su`
+      INSERT INTO public.task_assignees (task_id, user_id)
+      VALUES (${task.id}, ${teamA.userId})
+    `;
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        return await tx`SELECT * FROM public.task_assignees_for_project_visible(${teamA.projectId}::uuid)`;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("team_member_roles_visible — cross-team caller sees zero rows", async () => {
+    const teamA = await seedUserOrgProject("sdf-tmrv-a");
+    const teamB = await seedUserOrgProject("sdf-tmrv-b");
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        return await tx`SELECT * FROM public.team_member_roles_visible(${teamA.organizationId}::uuid)`;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("org_member_user_ids_visible — cross-team caller sees zero rows", async () => {
+    const teamA = await seedUserOrgProject("sdf-omuiv-a");
+    const teamB = await seedUserOrgProject("sdf-omuiv-b");
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        return await tx`
+          SELECT * FROM public.org_member_user_ids_visible(
+            ${teamA.organizationId}::uuid,
+            ARRAY[${teamA.userId}::uuid]
+          )
+        `;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("team_invitations_visible — cross-team caller sees zero rows", async () => {
+    const teamA = await seedUserOrgProject("sdf-tiv-a");
+    const teamB = await seedUserOrgProject("sdf-tiv-b");
+    const su = superuserPool();
+    await su`
+      INSERT INTO neon_auth."invitation"
+        ("organizationId", "email", "role", "status", "expiresAt", "inviterId")
+      VALUES (
+        ${teamA.organizationId}, ${"cross@test.local"}, 'member', 'pending',
+        ${new Date(Date.now() + 7 * 86400_000)}, ${teamA.userId}
+      )
+    `;
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        return await tx`SELECT * FROM public.team_invitations_visible(${teamA.organizationId}::uuid)`;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("current_user_visible_member — cross-team caller sees zero rows", async () => {
+    const teamA = await seedUserOrgProject("sdf-cuvm-a");
+    const teamB = await seedUserOrgProject("sdf-cuvm-b");
+    const su = superuserPool();
+    const [member] = await su<{ id: string }[]>`
+      SELECT id FROM neon_auth."member"
+      WHERE "organizationId" = ${teamA.organizationId} AND "userId" = ${teamA.userId}
+    `;
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        return await tx`SELECT * FROM public.current_user_visible_member(${member.id}::uuid)`;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("lookup_user_names_in_shared_orgs — cross-team caller sees zero rows", async () => {
+    const teamA = await seedUserOrgProject("sdf-lunso-a");
+    const teamB = await seedUserOrgProject("sdf-lunso-b");
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        return await tx`
+          SELECT * FROM public.lookup_user_names_in_shared_orgs(
+            ARRAY[${teamA.userId}::uuid]
+          )
+        `;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+});
+
+/**
+ * `lookup_team_invite_code` is invoked via the BYPASSRLS pool in
+ * production (the grant was moved off `app_user` to limit
+ * invite-code-validity enumeration). These tests pin the return-row
+ * shape across the three failure states the JS caller distinguishes:
+ * revoked, expired, exhausted. The column-set assertion guards against
+ * a future migration accidentally widening the row to include
+ * `id`, `organization_id`, or `default_role`.
+ */
+describe("lookup_team_invite_code — column shape across failure states", () => {
+  async function seedInviteCode(
+    orgId: string,
+    code: string,
+    opts: {
+      maxUses?: number | null;
+      expiresAt?: Date | null;
+      revokedAt?: Date | null;
+      useCount?: number;
+    },
+  ): Promise<void> {
+    const su = superuserPool();
+    await su`
+      INSERT INTO team_invite_code (
+        organization_id, code, default_role, max_uses, expires_at, revoked_at, use_count
+      ) VALUES (
+        ${orgId}, ${code}, 'member',
+        ${opts.maxUses ?? null}, ${opts.expiresAt ?? null}, ${opts.revokedAt ?? null},
+        ${opts.useCount ?? 0}
+      )
+    `;
+  }
+
+  const EXPECTED_KEYS = ["expires_at", "max_uses", "revoked_at", "use_count"];
+
+  test("revoked code returns exactly the four diagnostic columns", async () => {
+    const fx = await seedUserOrgProject("ltic-revoked");
+    await seedInviteCode(fx.organizationId, "REVOKEDX", {
+      revokedAt: new Date(),
+    });
+    const sr = superuserPool();
+    const rows = await sr<Array<Record<string, unknown>>>`
+      SELECT * FROM public.lookup_team_invite_code(${"REVOKEDX"})
+    `;
+    expect(rows.length).toBe(1);
+    expect(Object.keys(rows[0]).sort()).toEqual(EXPECTED_KEYS);
+    expect(rows[0].revoked_at).not.toBeNull();
+  });
+
+  test("expired code returns exactly the four diagnostic columns", async () => {
+    const fx = await seedUserOrgProject("ltic-expired");
+    await seedInviteCode(fx.organizationId, "EXPIREDX", {
+      expiresAt: new Date(Date.now() - 86400_000),
+    });
+    const sr = superuserPool();
+    const rows = await sr<Array<Record<string, unknown>>>`
+      SELECT * FROM public.lookup_team_invite_code(${"EXPIREDX"})
+    `;
+    expect(rows.length).toBe(1);
+    expect(Object.keys(rows[0]).sort()).toEqual(EXPECTED_KEYS);
+    expect(rows[0].expires_at).not.toBeNull();
+  });
+
+  test("exhausted code returns exactly the four diagnostic columns", async () => {
+    const fx = await seedUserOrgProject("ltic-exhausted");
+    await seedInviteCode(fx.organizationId, "EXHAUSTEDX", {
+      maxUses: 1,
+      useCount: 1,
+    });
+    const sr = superuserPool();
+    const rows = await sr<Array<Record<string, unknown>>>`
+      SELECT * FROM public.lookup_team_invite_code(${"EXHAUSTEDX"})
+    `;
+    expect(rows.length).toBe(1);
+    expect(Object.keys(rows[0]).sort()).toEqual(EXPECTED_KEYS);
+    expect(rows[0].max_uses).toBe(1);
+    expect(rows[0].use_count).toBe(1);
+  });
+
+  test("EXECUTE granted to service_role only — app_user and PUBLIC denied", async () => {
+    const sr = superuserPool();
+    const [row] = await sr<
+      Array<{ app_user: boolean; public_role: boolean; service_role: boolean }>
+    >`
+      SELECT
+        has_function_privilege('app_user', 'public.lookup_team_invite_code(text)', 'EXECUTE') AS app_user,
+        has_function_privilege('public', 'public.lookup_team_invite_code(text)', 'EXECUTE') AS public_role,
+        has_function_privilege('service_role', 'public.lookup_team_invite_code(text)', 'EXECUTE') AS service_role
+    `;
+    expect(row.app_user).toBe(false);
+    expect(row.public_role).toBe(false);
+    expect(row.service_role).toBe(true);
+  });
+});
+
+/**
+ * `*_as_admin` SDFs are wired against `service_role` only — the
+ * production callers route through the BYPASSRLS pool. Pin both the
+ * runtime rejection (app_user direct call fails) and the catalog grant
+ * shape so a future `GRANT EXECUTE … TO app_user` regression is caught
+ * at the test gate, not at audit time.
+ */
+describe("AsAdmin functions — service_role only EXECUTE", () => {
+  test("find_org_member_user_ids_as_admin rejects direct app_user call", async () => {
+    const fx = await seedUserOrgProject("asadmin-fomuia");
+    const c = appUserConnect();
+    try {
+      await expectQueryRejects(
+        c`SELECT * FROM public.find_org_member_user_ids_as_admin(${fx.organizationId}::uuid)`,
+        /permission denied|must be owner/i,
+      );
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("list_org_project_ids rejects direct app_user call", async () => {
+    const fx = await seedUserOrgProject("asadmin-lopi");
+    const c = appUserConnect();
+    try {
+      await expectQueryRejects(
+        c`SELECT * FROM public.list_org_project_ids(${fx.organizationId}::uuid)`,
+        /permission denied|must be owner/i,
+      );
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("catalog reports app_user lacks EXECUTE on both AsAdmin functions", async () => {
+    const sr = superuserPool();
+    const fns = [
+      "public.find_org_member_user_ids_as_admin(uuid)",
+      "public.list_org_project_ids(uuid)",
+    ];
+    for (const fn of fns) {
+      const [row] = await sr<Array<{ has_priv: boolean }>>`
+        SELECT has_function_privilege('app_user', ${fn}, 'EXECUTE') AS has_priv
+      `;
+      expect(row.has_priv, `${fn}: app_user must NOT have EXECUTE`).toBe(false);
     }
   });
 });

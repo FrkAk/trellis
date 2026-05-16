@@ -69,6 +69,18 @@ const eslintConfig = [
           message:
             "serviceRoleDb.transaction() is BYPASSRLS. Allowed sites: lib/data/account.ts:clearOrgMembershipArtifacts and lib/data/oauth-session.ts. If you need a new bypass site, audit whether a SECURITY DEFINER function in docker/rls-functions.sql can replace it.",
         },
+        {
+          selector:
+            "CallExpression[callee.object.name='serviceRoleDb'][callee.property.name=/^(select|insert|update|delete)$/]",
+          message:
+            "serviceRoleDb.<verb> is BYPASSRLS. Allowed sites: lib/data/oauth-session.ts (oauth tables), lib/data/account.ts (clearOrgMembershipArtifacts), lib/data/membership.ts (admin lookups). Consider whether a SECURITY DEFINER function in docker/rls-functions.sql can replace this call site.",
+        },
+        {
+          selector:
+            "MemberExpression[object.name='db'][property.name='query']",
+          message:
+            "db.query.* is the Drizzle relational API and bypasses RLS the same way bare db.select does — under app_user with no GUC it default-denies silently. Use withUserContext(userId, async tx => tx.query.*) or, preferably, tx.select(...) from @/lib/db/rls.",
+        },
       ],
       "no-restricted-imports": [
         "error",

@@ -179,6 +179,137 @@ describe("team_invite_code RLS — admin-only writes", () => {
     expect(successes.length).toBe(1);
   });
 
+  test("RESTRICTIVE write floor holds even when a permissive INSERT policy is added", async () => {
+    // Pins docker/rls-policies.sql:83-88. The RESTRICTIVE
+    // `team_invite_code_insert_admin_only` AND's with the OR of permissive
+    // INSERT policies. Adding a permissive that says "true" cannot
+    // OR-relax the floor — the admin/owner predicate still has to hold.
+    const fx = await seedUserOrgProject("tc3-member");
+    const seed = superuserPool();
+    try {
+      await seed`UPDATE neon_auth."member" SET "role" = 'member'
+                 WHERE "userId" = ${fx.userId} AND "organizationId" = ${fx.organizationId}`;
+      await seed`CREATE POLICY temp_member_can_write ON team_invite_code
+                 AS PERMISSIVE FOR INSERT TO app_user WITH CHECK (true)`;
+    } finally {
+      await seed.end({ timeout: 5 });
+    }
+
+    try {
+      const c = appUserConnect();
+      await expectQueryRejects(
+        c.begin(async (tx) => {
+          await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+          await tx`INSERT INTO team_invite_code (organization_id, code, default_role)
+                   VALUES (${fx.organizationId}, 'TC3-BLOCKED', 'member')`;
+        }),
+        /row-level security|violates row-level security/i,
+      );
+    } finally {
+      const cleanup = superuserPool();
+      try {
+        await cleanup`DROP POLICY IF EXISTS temp_member_can_write ON team_invite_code`;
+      } finally {
+        await cleanup.end({ timeout: 5 });
+      }
+    }
+  });
+
+  test("release(succeeded=false) replay is a no-op — use_count not decremented twice", async () => {
+    // Pins the M1 idempotency guard: the SDF gates on
+    // `reserved_until IS NOT NULL`, so once the first release clears the
+    // reservation, the second matches zero rows. The JS wrapper logs but
+    // does not throw.
+    const owner = await seedUserOrgProject("ic-replay-fail-owner");
+    const joiner = await seedUserOrgProject("ic-replay-fail-joiner");
+
+    const seed = superuserPool();
+    try {
+      await seed`
+        INSERT INTO team_invite_code (organization_id, code, created_by, max_uses)
+        VALUES (${owner.organizationId}, 'REPLAY-FAIL', ${owner.userId}, 1)
+      `;
+    } finally {
+      await seed.end({ timeout: 5 });
+    }
+
+    const reserved = await reserveInviteCodeSlot(joiner.userId, "REPLAY-FAIL");
+    expect(reserved).not.toBeNull();
+    await releaseInviteCodeSlot(joiner.userId, reserved!.id, false);
+
+    const verify = superuserPool();
+    try {
+      const [afterFirst] = await verify<
+        Array<{
+          use_count: number;
+          reserved_by: string | null;
+          reserved_until: Date | null;
+        }>
+      >`SELECT use_count, reserved_by, reserved_until FROM team_invite_code
+        WHERE id = ${reserved!.id}`;
+      expect(afterFirst.use_count).toBe(0);
+      expect(afterFirst.reserved_by).toBeNull();
+      expect(afterFirst.reserved_until).toBeNull();
+
+      await releaseInviteCodeSlot(joiner.userId, reserved!.id, false);
+
+      const [afterReplay] = await verify<
+        Array<{
+          use_count: number;
+          reserved_by: string | null;
+          reserved_until: Date | null;
+        }>
+      >`SELECT use_count, reserved_by, reserved_until FROM team_invite_code
+        WHERE id = ${reserved!.id}`;
+      expect(afterReplay.use_count).toBe(0);
+      expect(afterReplay.reserved_by).toBeNull();
+      expect(afterReplay.reserved_until).toBeNull();
+    } finally {
+      await verify.end({ timeout: 5 });
+    }
+  });
+
+  test("release(succeeded=true) then release(succeeded=false) replay does not refund use_count", async () => {
+    // Sibling of the replay-fail case. If the first release committed the
+    // slot (succeeded=true keeps use_count, clears reservation), a stray
+    // second release(false) MUST NOT decrement use_count back — the slot
+    // is consumed.
+    const owner = await seedUserOrgProject("ic-replay-mix-owner");
+    const joiner = await seedUserOrgProject("ic-replay-mix-joiner");
+
+    const seed = superuserPool();
+    try {
+      await seed`
+        INSERT INTO team_invite_code (organization_id, code, created_by, max_uses)
+        VALUES (${owner.organizationId}, 'REPLAY-MIX', ${owner.userId}, 1)
+      `;
+    } finally {
+      await seed.end({ timeout: 5 });
+    }
+
+    const reserved = await reserveInviteCodeSlot(joiner.userId, "REPLAY-MIX");
+    expect(reserved).not.toBeNull();
+    await releaseInviteCodeSlot(joiner.userId, reserved!.id, true);
+    await releaseInviteCodeSlot(joiner.userId, reserved!.id, false);
+
+    const verify = superuserPool();
+    try {
+      const [row] = await verify<
+        Array<{
+          use_count: number;
+          reserved_by: string | null;
+          reserved_until: Date | null;
+        }>
+      >`SELECT use_count, reserved_by, reserved_until FROM team_invite_code
+        WHERE id = ${reserved!.id}`;
+      expect(row.use_count).toBe(1);
+      expect(row.reserved_by).toBeNull();
+      expect(row.reserved_until).toBeNull();
+    } finally {
+      await verify.end({ timeout: 5 });
+    }
+  });
+
   test("any member CAN SELECT team_invite_code rows for their org", async () => {
     const fx = await seedUserOrgProject("ic-select");
     const seed = superuserPool();

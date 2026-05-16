@@ -1,7 +1,7 @@
 import "server-only";
 
 import { eq, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, serviceRoleDb } from "@/lib/db";
 import type { AuthContext } from "@/lib/auth/context";
 import { executeRaw } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
@@ -223,6 +223,11 @@ export type InviteCodeDiagnosis =
  * surfaced to end users — anti-enumeration. Catches all errors so a
  * diagnostic miss never disrupts the calling action.
  *
+ * Routes through `serviceRoleDb`; the underlying `public.lookup_team_invite_code`
+ * SDF is EXECUTE-restricted to `service_role` so an `app_user` session cannot
+ * enumerate code validity at scale. The user-facing rate limit lives in the
+ * calling action layer.
+ *
  * @param code - Raw invite code string.
  * @returns Classification of why the code is invalid.
  */
@@ -236,7 +241,7 @@ export async function diagnoseTeamInviteCode(
       max_uses: number | null;
       use_count: number;
     }>(
-      db,
+      serviceRoleDb,
       sql`SELECT revoked_at, expires_at, max_uses, use_count FROM public.lookup_team_invite_code(${code})`,
     );
     const row = rows[0];

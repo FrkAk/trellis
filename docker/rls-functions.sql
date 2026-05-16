@@ -28,6 +28,11 @@
 -- Returns only the four diagnostic fields. Withholding id /
 -- organization_id / default_role prevents a guessed code from resolving
 -- to a real org on a diagnose miss.
+--
+-- Service-role only — the diagnostic is gated to the trusted pool so an
+-- `app_user` session (or SQL-injection sink against `app_user`) cannot
+-- enumerate code validity at scale. The JS caller routes through
+-- `serviceRoleDb`.
 CREATE OR REPLACE FUNCTION public.lookup_team_invite_code(p_code text)
 RETURNS TABLE (
   revoked_at timestamptz,
@@ -48,7 +53,8 @@ BEGIN
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.lookup_team_invite_code(text) FROM public;
-GRANT EXECUTE ON FUNCTION public.lookup_team_invite_code(text) TO app_user;
+REVOKE EXECUTE ON FUNCTION public.lookup_team_invite_code(text) FROM app_user;
+GRANT EXECUTE ON FUNCTION public.lookup_team_invite_code(text) TO service_role;
 
 -- Atomically reserve a slot on a valid, non-revoked, non-expired,
 -- non-exhausted code. Records `reserved_by = p_user_id` so the matching
@@ -117,6 +123,9 @@ GRANT EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text, uuid) TO ap
 --   p_succeeded = true  → keep use_count, clear reserved_until + reserved_by.
 --   p_succeeded = false → decrement use_count (floored at 0), clear both.
 --
+-- Idempotent — a second `release` call after either outcome matches zero
+-- rows because `reserved_until` is cleared. The first release wins.
+--
 -- Returns: true when an authorized row was updated, false otherwise.
 -- This SDF does NOT read `app.user_id`.
 DROP FUNCTION IF EXISTS public.release_team_invite_code_slot(uuid);
@@ -142,7 +151,8 @@ BEGIN
          reserved_by = NULL,
          updated_at = NOW()
    WHERE t.id = p_id
-     AND t.reserved_by = p_user_id;
+     AND t.reserved_by = p_user_id
+     AND t.reserved_until IS NOT NULL;
   GET DIAGNOSTICS v_matched = ROW_COUNT;
   RETURN v_matched = 1;
 END;
@@ -606,6 +616,53 @@ CREATE TRIGGER tasks_project_id_immutable
   BEFORE UPDATE OF project_id ON public.tasks
   FOR EACH ROW
   EXECUTE FUNCTION public.reject_tasks_project_id_change();
+
+-- Reject task_edges rows whose endpoints belong to different projects (or
+-- whose endpoints are missing/invisible under RLS).
+--
+-- Threat model: the existing RLS USING + WITH CHECK on task_edges verifies
+-- only that both endpoints are *visible* to the caller. A dual-org member
+-- (or service_role via SQL-injection) could therefore wire an edge whose
+-- source and target live in different projects — possibly in different
+-- orgs — exfiltrating cross-tenant task ids through edge metadata.
+--
+-- Caller-rights (NOT SECURITY DEFINER) so the trigger appears in pg_proc
+-- like the existing `reject_*_change` immutability triggers (no EXECUTE
+-- grant to manage, trigger function body is fully schema-qualified). The
+-- NULL-aware check matters: if a hostile role references an invisible task
+-- id under RLS, the subquery returns NULL, and `NULL IS DISTINCT FROM
+-- NULL` evaluates to FALSE — the explicit NULL check rejects that path.
+CREATE OR REPLACE FUNCTION public.reject_task_edges_cross_project()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v_source_project uuid;
+  v_target_project uuid;
+BEGIN
+  SELECT project_id INTO v_source_project
+  FROM public.tasks WHERE id = NEW.source_task_id;
+  SELECT project_id INTO v_target_project
+  FROM public.tasks WHERE id = NEW.target_task_id;
+
+  IF v_source_project IS NULL OR v_target_project IS NULL THEN
+    RAISE EXCEPTION 'task_edges: both endpoint tasks must exist'
+      USING ERRCODE = '23514';
+  END IF;
+  IF v_source_project IS DISTINCT FROM v_target_project THEN
+    RAISE EXCEPTION 'task_edges: source and target must share a project_id'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS task_edges_same_project_immutable ON public.task_edges;
+CREATE TRIGGER task_edges_same_project_immutable
+  BEFORE INSERT OR UPDATE OF source_task_id, target_task_id ON public.task_edges
+  FOR EACH ROW
+  EXECUTE FUNCTION public.reject_task_edges_cross_project();
 
 -- service_role only. The org-delete hook iterates members after the org
 -- row is queued for deletion, so a user-scoped lookup races the cascade.

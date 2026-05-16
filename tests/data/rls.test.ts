@@ -230,7 +230,7 @@ describe("RLS — defense-in-depth on team isolation", () => {
           VALUES (${taskAId}, ${taskBId}, 'depends_on')
         `;
       }),
-      /row-level security|violates row-level security/i,
+      /row-level security|violates row-level security|task_edges: both endpoint tasks must exist/i,
     );
   });
 
@@ -254,10 +254,20 @@ describe("RLS — defense-in-depth on team isolation", () => {
       `;
       taskAId = a.id;
       taskBId = b.id;
-      await sr`
-        INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
-        VALUES (${taskAId}, ${taskBId}, 'depends_on')
-      `;
+      const suTrig = superuserPool();
+      try {
+        await suTrig`ALTER TABLE task_edges DISABLE TRIGGER task_edges_same_project_immutable`;
+        try {
+          await sr`
+            INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+            VALUES (${taskAId}, ${taskBId}, 'depends_on')
+          `;
+        } finally {
+          await suTrig`ALTER TABLE task_edges ENABLE TRIGGER task_edges_same_project_immutable`;
+        }
+      } finally {
+        await suTrig.end({ timeout: 5 });
+      }
     } finally {
       await sr.end({ timeout: 5 });
     }
@@ -482,6 +492,85 @@ describe("RLS — defense-in-depth on team isolation", () => {
           SELECT id FROM task_links WHERE id = ${link.id}
         `;
         expect(rows.length).toBe(0);
+      });
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
+  test("M2 trigger rejects INSERT of a cross-project task_edge under app_user", async () => {
+    // Pins the BEFORE INSERT/UPDATE trigger `task_edges_same_project_immutable`
+    // (docker/rls-functions.sql:638-669) which enforces both endpoints share
+    // a project_id and raises ERRCODE 23514 (check_violation).
+    const teamA = await seedUserOrgProject("rls-m2-trig-a");
+    const teamB = await seedUserOrgProject("rls-m2-trig-b");
+
+    const su = superuserPool();
+    let taskAId: string;
+    let taskBId: string;
+    try {
+      await su`
+        INSERT INTO neon_auth."member" ("organizationId", "userId", "role", "createdAt")
+        VALUES (${teamB.organizationId}, ${teamA.userId}, 'member', now())
+      `;
+      const [a] = await su<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${teamA.projectId}, 'A', 1) RETURNING id
+      `;
+      const [b] = await su<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${teamB.projectId}, 'B', 1) RETURNING id
+      `;
+      taskAId = a.id;
+      taskBId = b.id;
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    await expectQueryRejects(
+      c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamA.userId}, true)`;
+        await tx`
+          INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+          VALUES (${taskAId}, ${taskBId}, 'depends_on')
+        `;
+      }),
+      /share a project_id|task_edges/i,
+    );
+  });
+
+  test("M2 trigger allows INSERT of a same-project task_edge", async () => {
+    const fx = await seedUserOrgProject("rls-m2-trig-ok");
+
+    const su = superuserPool();
+    let taskAId: string;
+    let taskBId: string;
+    try {
+      const [a] = await su<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fx.projectId}, 'A', 1) RETURNING id
+      `;
+      const [b] = await su<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fx.projectId}, 'B', 2) RETURNING id
+      `;
+      taskAId = a.id;
+      taskBId = b.id;
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    try {
+      await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        const rows = await tx<{ id: string }[]>`
+          INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+          VALUES (${taskAId}, ${taskBId}, 'depends_on')
+          RETURNING id
+        `;
+        expect(rows.length).toBe(1);
       });
     } finally {
       await c.end({ timeout: 5 });

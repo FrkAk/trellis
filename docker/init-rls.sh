@@ -53,6 +53,12 @@ BEGIN
   END IF;
 END \$\$;
 
+-- Reassert NOBYPASSRLS + NOSUPERUSER on every bootstrap so a manual
+-- ALTER ROLE flip (Neon console, ad-hoc psql) is reverted on the next
+-- run. service_role keeps BYPASSRLS by design.
+ALTER ROLE app_user NOBYPASSRLS NOSUPERUSER;
+ALTER ROLE auth_role NOBYPASSRLS NOSUPERUSER;
+
 -- Canonical schema/table/sequence grants live in docker/grants.sql so the
 -- self-host, testcontainer, and Neon prod runbook stay in lockstep.
 \i /opt/postgres-init/grants.sql

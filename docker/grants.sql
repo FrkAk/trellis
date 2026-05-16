@@ -24,18 +24,26 @@
 --   * docs/neon-prod-provisioning.sql section 8 (Neon prod runbook)
 
 -- public schema: app_user runs every query under RLS; service_role bypasses.
+--
+-- No `ALTER DEFAULT PRIVILEGES` on the public schema. Default privileges
+-- would auto-grant DML on any future table at CREATE TIME, BEFORE the
+-- migration has had a chance to `ALTER TABLE … ENABLE ROW LEVEL SECURITY`
+-- + attach policies. A new table would be reachable from app_user with no
+-- RLS protection for the window between CREATE TABLE and ENABLE RLS — a
+-- stealth data leak.
+--
+-- New public tables MUST receive explicit grants in their migration:
+--   GRANT SELECT, INSERT, UPDATE, DELETE ON <table> TO app_user, service_role;
+--   GRANT USAGE, SELECT ON <table>_id_seq TO app_user, service_role;  -- if applicable
+-- The `rls-coverage.test.ts` invariant catches a missing RLS attach. A
+-- missing grant is a LOUD failure (queries error on first hit), not a
+-- stealth failure, so the trade is asymmetric in our favor.
+--
+-- KEEP IN SYNC WITH docs/neon-prod-provisioning.sql.
 GRANT USAGE ON SCHEMA public TO app_user, service_role;
 GRANT CREATE ON SCHEMA public TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user, service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO app_user, service_role;
-ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
-ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO app_user;
 
 -- neon_auth: app_user reaches it only via SECURITY DEFINER functions in
 -- docker/rls-functions.sql. Explicit REVOKEs keep re-runs idempotent when

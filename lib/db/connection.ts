@@ -18,7 +18,7 @@ import * as authSchema from "./auth-schema";
  * differences inside `client.execute()` are normalized by `executeRaw` in
  * `./raw.ts`, so the cast is sound at runtime.
  */
-type AppDb = ReturnType<typeof drizzlePg<typeof appSchema>>;
+export type AppDb = ReturnType<typeof drizzlePg<typeof appSchema>>;
 type AuthDb = ReturnType<typeof drizzlePg<typeof authSchema>>;
 
 declare const appUserBrand: unique symbol;
@@ -180,12 +180,15 @@ export const authDb = new Proxy({} as AuthDb, {
  * bypass sites — adding a new one requires auditing whether a SECURITY
  * DEFINER function in `docker/rls-functions.sql` can replace it.
  *
- * Current sites:
+ * Current bypass sites (direct method access — require eslint.config.mjs ignores entry):
  *   - `lib/data/account.ts:clearOrgMembershipArtifacts`
- *   - `lib/data/project.ts:listOrgProjectIdsAsAdmin`
  *   - `lib/data/membership.ts:findOrgMemberUserIdsAsAdmin`
  *   - `lib/data/oauth-session.ts` (app_user has no grants on the
- *     oauth* tables; rows are not tenant-scoped so RLS does not apply).
+ *     oauth* tables; rows are not tenant-scoped so RLS does not apply;
+ *     uses both method access and `executeRaw`).
+ *
+ * Indirect bypass sites (`executeRaw(serviceRoleDb, ...)` — no ignores entry needed):
+ *   - `lib/data/project.ts:listOrgProjectIdsAsAdmin`
  */
 export const serviceRoleDb = new Proxy({} as ServiceRoleConn, {
   get(_target, prop, receiver) {

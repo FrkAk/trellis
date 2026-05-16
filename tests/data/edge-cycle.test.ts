@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
+import { superuserPool } from "@/tests/setup/global";
 import { seedUserOrgProject, serviceRoleConnect } from "@/tests/setup/seed";
 import { makeAuthContext } from "@/lib/auth/context";
-import { createEdge } from "@/lib/data/edge";
+import { createEdge, getTaskEdges } from "@/lib/data/edge";
 
 /**
  * Regression test for the cycle-detection bypass: under app_user, the
@@ -55,5 +56,67 @@ describe("createEdge cycle detection under app_user", () => {
         note: "",
       }),
     ).rejects.toThrow(/circular|cycle/i);
+  });
+
+  /**
+   * Pins RLS-filtered cycle-detection behavior. If a legacy cross-team
+   * edge exists (pre-M2-trigger), the cycle detector cannot see foreign
+   * tasks, so a cycle that crosses teams is invisible to app_user. This
+   * is correct behavior — caller has no access to the foreign tasks, so
+   * the cycle is unreachable from their view. The M2 trigger
+   * `task_edges_same_project_immutable` is temporarily disabled during
+   * setup so legacy-shape data can be inserted.
+   */
+  test("cycle detector ignores chain links that cross a foreign team", async () => {
+    const teamA = await seedUserOrgProject("cycle-cross-a");
+    const teamB = await seedUserOrgProject("cycle-cross-b");
+
+    const su = superuserPool();
+    let aId: string;
+    let bId: string;
+    let cId: string;
+    try {
+      await su`ALTER TABLE task_edges DISABLE TRIGGER task_edges_same_project_immutable`;
+      try {
+        const [a] = await su<{ id: string }[]>`
+          INSERT INTO tasks (project_id, title, sequence_number)
+          VALUES (${teamA.projectId}, 'A', 1) RETURNING id`;
+        const [b] = await su<{ id: string }[]>`
+          INSERT INTO tasks (project_id, title, sequence_number)
+          VALUES (${teamB.projectId}, 'B', 1) RETURNING id`;
+        const [c] = await su<{ id: string }[]>`
+          INSERT INTO tasks (project_id, title, sequence_number)
+          VALUES (${teamA.projectId}, 'C', 2) RETURNING id`;
+        aId = a.id;
+        bId = b.id;
+        cId = c.id;
+        await su`INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+                 VALUES (${aId}, ${bId}, 'depends_on')`;
+        await su`INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+                 VALUES (${bId}, ${cId}, 'depends_on')`;
+      } finally {
+        await su`ALTER TABLE task_edges ENABLE TRIGGER task_edges_same_project_immutable`;
+      }
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    const ctx = makeAuthContext(teamA.userId);
+    const created = await createEdge(ctx, {
+      sourceTaskId: cId,
+      targetTaskId: aId,
+      edgeType: "depends_on",
+      note: "",
+    });
+    expect(created.sourceTaskId).toBe(cId);
+    expect(created.targetTaskId).toBe(aId);
+
+    const visible = await getTaskEdges(ctx, aId);
+    const endpoints = new Set<string>();
+    for (const e of visible) {
+      endpoints.add(e.sourceTaskId);
+      endpoints.add(e.targetTaskId);
+    }
+    expect(endpoints.has(bId)).toBe(false);
   });
 });
