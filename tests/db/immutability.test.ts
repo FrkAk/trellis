@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
 import { serviceRoleConnect, seedUserOrgProject } from "@/tests/setup/seed";
+import { superuserPool } from "@/tests/setup/global";
 import { expectQueryRejects } from "@/tests/setup/expect-query";
 
 afterEach(async () => {
@@ -73,6 +74,130 @@ describe("immutability triggers — cross-team move prevented at DB level", () =
       expect(row.title).toBe("renamed");
     } finally {
       await sr.end({ timeout: 5 });
+    }
+  });
+});
+
+/**
+ * H3: `reject_task_edges_cross_project` is SECURITY DEFINER and collapses
+ * its three rejection branches into one uniform `(message, errcode)` pair.
+ * Pins the contract: a cross-project endpoint (visible OR invisible to the
+ * caller) and a missing endpoint must surface the same shape so the
+ * trigger cannot be used as a per-row task-existence oracle.
+ */
+describe("H3: reject_task_edges_cross_project — uniform failure shape", () => {
+  const UNIFORM_MESSAGE = /task_edges: invalid endpoint pair/;
+  const UNIFORM_ERRCODE = "23514";
+
+  async function captureInsertError(
+    sourceTaskId: string,
+    targetTaskId: string,
+  ): Promise<{ message: string; code: string | undefined }> {
+    const sr = serviceRoleConnect();
+    try {
+      await sr`
+        INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+        VALUES (${sourceTaskId}::uuid, ${targetTaskId}::uuid, 'depends_on')
+      `;
+      throw new Error("expected INSERT to reject");
+    } catch (err) {
+      const e = err as { message: string; code?: string };
+      return { message: e.message, code: e.code };
+    }
+  }
+
+  test("rejects with single uniform error when target is in another project (visible)", async () => {
+    const a = await seedUserOrgProject("h3-cross-a");
+    const b = await seedUserOrgProject("h3-cross-b");
+    const sr = serviceRoleConnect();
+    let sourceTaskId: string;
+    let targetTaskId: string;
+    try {
+      const [sourceTask] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${a.projectId}, 'src', 1) RETURNING id
+      `;
+      const [targetTask] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${b.projectId}, 'tgt', 1) RETURNING id
+      `;
+      sourceTaskId = sourceTask.id;
+      targetTaskId = targetTask.id;
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+
+    const captured = await captureInsertError(sourceTaskId, targetTaskId);
+    expect(captured.message).toMatch(UNIFORM_MESSAGE);
+    expect(captured.code).toBe(UNIFORM_ERRCODE);
+  });
+
+  test("rejects with same error when target task UUID does not exist", async () => {
+    const fx = await seedUserOrgProject("h3-missing-target");
+    const sr = serviceRoleConnect();
+    let sourceTaskId: string;
+    try {
+      const [sourceTask] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fx.projectId}, 'src', 1) RETURNING id
+      `;
+      sourceTaskId = sourceTask.id;
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+
+    const bogusTargetId = "00000000-0000-0000-0000-000000000000";
+    const captured = await captureInsertError(sourceTaskId, bogusTargetId);
+    expect(captured.message).toMatch(UNIFORM_MESSAGE);
+    expect(captured.code).toBe(UNIFORM_ERRCODE);
+  });
+
+  test("rejects with same error when source task UUID does not exist", async () => {
+    const fx = await seedUserOrgProject("h3-missing-source");
+    const sr = serviceRoleConnect();
+    let targetTaskId: string;
+    try {
+      const [targetTask] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fx.projectId}, 'tgt', 1) RETURNING id
+      `;
+      targetTaskId = targetTask.id;
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+
+    const bogusSourceId = "00000000-0000-0000-0000-000000000000";
+    const captured = await captureInsertError(bogusSourceId, targetTaskId);
+    expect(captured.message).toMatch(UNIFORM_MESSAGE);
+    expect(captured.code).toBe(UNIFORM_ERRCODE);
+  });
+
+  test("allows same-project edge insertion (positive control)", async () => {
+    const fx = await seedUserOrgProject("h3-same-project");
+    const sr = serviceRoleConnect();
+    try {
+      const [s] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fx.projectId}, 'src', 1) RETURNING id
+      `;
+      const [t] = await sr<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${fx.projectId}, 'tgt', 2) RETURNING id
+      `;
+      const rows = await sr<{ id: string }[]>`
+        INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+        VALUES (${s.id}, ${t.id}, 'depends_on')
+        RETURNING id
+      `;
+      expect(rows.length).toBe(1);
+    } finally {
+      await sr.end({ timeout: 5 });
+      const su = superuserPool();
+      try {
+        await su`DELETE FROM task_edges WHERE TRUE`;
+      } finally {
+        await su.end({ timeout: 5 });
+      }
     }
   });
 });
