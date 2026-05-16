@@ -22,6 +22,7 @@ import {
   TEAM_ACTION_MESSAGES,
 } from "@/lib/actions/team-errors";
 import { checkActionRateLimit } from "@/lib/actions/rate-limit-action";
+import { isUniqueViolation } from "@/lib/db/errors";
 
 /** Public-facing metadata for a team invite code. Hides internal fields. */
 export type InviteCodeMetadata = {
@@ -207,7 +208,7 @@ export async function getOrCreateTeamInviteCodeAction(input: {
     });
     return { ok: true, data: toMetadata(created) };
   } catch (err) {
-    if ((err as { code?: string } | null)?.code === "23505") {
+    if (isUniqueViolation(err)) {
       try {
         const row = await findTeamInviteCode(ctx, orgId);
         if (row) return { ok: true, data: toMetadata(row) };
@@ -280,7 +281,7 @@ export async function regenerateTeamInviteCodeAction(input: {
     // 23505 here is almost always the org_id UNIQUE — a concurrent
     // first-rotate just landed a row. Retry as UPDATE with a freshly
     // generated code so a (vanishingly rare) code collision can't loop.
-    if ((err as { code?: string } | null)?.code === "23505") {
+    if (isUniqueViolation(err)) {
       try {
         const retried = await rotateTeamInviteCode(ctx, {
           organizationId: orgId,

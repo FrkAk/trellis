@@ -88,6 +88,7 @@ import {
   assertTaskAccess,
 } from "@/lib/auth/authorization";
 import { withUserContext } from "@/lib/db/rls";
+import { unwrapDriverError } from "@/lib/db/errors";
 
 /**
  * Build variant-warning hints for proposed tags against existing project tags.
@@ -108,6 +109,15 @@ function tagVariantHints(proposed: string[], existing: string[]): string[] {
 }
 
 const KEBAB_CASE_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/**
+ * Edge-note values that are too thin to carry downstream-agent context.
+ * The MCP descriptions document this exact list ("placeholders ('needed',
+ * 'depends', 'related') are rejected"); enforcing it here keeps the
+ * runtime contract aligned with the doc string. Matched case-insensitively
+ * after trimming.
+ */
+const EDGE_NOTE_PLACEHOLDERS = new Set(["needed", "depends", "related"]);
 
 /**
  * Build hints for tag-taxonomy violations. Kebab-case is structural and
@@ -563,24 +573,9 @@ function stateHint(state: TaskState): string {
 // Error translation — data-layer asserts throw, this maps to actionable hints
 // ---------------------------------------------------------------------------
 
-/**
- * Detect a Postgres unique-constraint violation on a thrown driver error.
- *
- * postgres-js attaches the SQLSTATE on `code`; `23505` is unique-violation.
- * Used to map otherwise-leaky driver errors to a clean conflict message
- * before they reach the catch-all that would otherwise echo the raw query.
- *
- * @param e - Caught error.
- * @returns True when `e` carries `code === "23505"`.
- */
-function isUniqueViolation(e: unknown): boolean {
-  return (
-    typeof e === "object" &&
-    e !== null &&
-    "code" in e &&
-    (e as { code: unknown }).code === "23505"
-  );
-}
+// Shared driver-error helpers live in `lib/db/errors.ts` so the action
+// layer (`lib/actions/*`) can use the same cause-walking logic without
+// duplicating the SQLSTATE checks.
 
 /**
  * Translate a thrown error to a token-dense, agent-correcting tool failure.
@@ -650,9 +645,9 @@ function translateError(e: unknown): ToolResult {
         );
     }
   }
-  if (isUniqueViolation(e)) {
-    const constraint =
-      (e as { constraint_name?: string }).constraint_name ?? "";
+  const driverError = unwrapDriverError(e);
+  if (driverError?.code === "23505") {
+    const constraint = driverError.constraint_name ?? "";
     if (constraint.includes("identifier")) {
       return fail(
         "Project identifier already in use in this team. Pick a different one (2-12 chars, uppercase alphanumeric).",
@@ -1256,6 +1251,10 @@ export async function handleEdge(
         if (!p.note || !p.note.trim())
           return fail(
             "note required for create. Edge notes propagate to downstream agent context; placeholders ('needed', 'depends', 'related') are forbidden (artifacts §3). Write it as a brief to the developer about to start the source task: what specifically does this task get from the target?",
+          );
+        if (EDGE_NOTE_PLACEHOLDERS.has(p.note.trim().toLowerCase()))
+          return fail(
+            "Placeholder edge notes ('needed', 'depends', 'related') are not substantive enough to propagate to downstream agent context (artifacts §3). Write a one-sentence brief naming what this task gets from the target: a decision, a piece of code, a contract, a fixture.",
           );
         const edge = await createEdge(ctx, {
           sourceTaskId: p.sourceTaskId,
