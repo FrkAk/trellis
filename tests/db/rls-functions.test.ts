@@ -97,9 +97,12 @@ describe("invite-code SECURITY DEFINER functions", () => {
     });
     const c = appUserConnect();
     try {
-      const rows = await c<Array<{ id: string }>>`
-        SELECT id FROM public.reserve_team_invite_code_slot(${"RESERVE1"}, ${fx.userId}::uuid)
-      `;
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        return await tx<Array<{ id: string }>>`
+          SELECT id FROM public.reserve_team_invite_code_slot(${"RESERVE1"}, ${fx.userId}::uuid)
+        `;
+      });
       expect(rows.length).toBe(1);
       expect(rows[0].id).toBe(seeded.id);
     } finally {
@@ -126,7 +129,10 @@ describe("invite-code SECURITY DEFINER functions", () => {
     });
     const c = appUserConnect();
     try {
-      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"REVOKED1"}, ${fx.userId}::uuid)`;
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        return await tx`SELECT * FROM public.reserve_team_invite_code_slot(${"REVOKED1"}, ${fx.userId}::uuid)`;
+      });
       expect(rows.length).toBe(0);
     } finally {
       await c.end({ timeout: 5 });
@@ -142,7 +148,10 @@ describe("invite-code SECURITY DEFINER functions", () => {
     });
     const c = appUserConnect();
     try {
-      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"EXPIRED1"}, ${fx.userId}::uuid)`;
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        return await tx`SELECT * FROM public.reserve_team_invite_code_slot(${"EXPIRED1"}, ${fx.userId}::uuid)`;
+      });
       expect(rows.length).toBe(0);
     } finally {
       await c.end({ timeout: 5 });
@@ -159,7 +168,10 @@ describe("invite-code SECURITY DEFINER functions", () => {
     });
     const c = appUserConnect();
     try {
-      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"EXHAUSTED1"}, ${fx.userId}::uuid)`;
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        return await tx`SELECT * FROM public.reserve_team_invite_code_slot(${"EXHAUSTED1"}, ${fx.userId}::uuid)`;
+      });
       expect(rows.length).toBe(0);
     } finally {
       await c.end({ timeout: 5 });
@@ -308,6 +320,90 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
   });
 
+  test("H2: reserve_team_invite_code_slot returns empty when app.user_id GUC is unset", async () => {
+    const fx = await seedUserOrgProject("h2-reserve-noguc");
+    await seedCode({
+      orgId: fx.organizationId,
+      code: "h2reservenoguc",
+      useCount: 0,
+    });
+    const c = appUserConnect();
+    try {
+      const rows = await c<Array<{ id: string }>>`
+        SELECT id FROM public.reserve_team_invite_code_slot(${"h2reservenoguc"}, ${fx.userId}::uuid)
+      `;
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+
+    const sr = serviceRoleConnect();
+    try {
+      const [row] = await sr<Array<{ use_count: number; reserved_by: string | null }>>`
+        SELECT use_count, reserved_by FROM team_invite_code WHERE code = ${"h2reservenoguc"}
+      `;
+      expect(row.use_count).toBe(0);
+      expect(row.reserved_by).toBeNull();
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+  });
+
+  test("H2: reserve_team_invite_code_slot returns empty when p_user_id differs from app.user_id", async () => {
+    const fxA = await seedUserOrgProject("h2-reserve-bind-a");
+    const fxB = await seedUserOrgProject("h2-reserve-bind-b");
+    await seedCode({
+      orgId: fxA.organizationId,
+      code: "h2reservebind",
+      useCount: 0,
+    });
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fxA.userId}, true)`;
+        return await tx<Array<{ id: string }>>`
+          SELECT id FROM public.reserve_team_invite_code_slot(${"h2reservebind"}, ${fxB.userId}::uuid)
+        `;
+      });
+      expect(rows.length).toBe(0);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+
+    const sr = serviceRoleConnect();
+    try {
+      const [row] = await sr<Array<{ use_count: number; reserved_by: string | null }>>`
+        SELECT use_count, reserved_by FROM team_invite_code WHERE code = ${"h2reservebind"}
+      `;
+      expect(row.use_count).toBe(0);
+      expect(row.reserved_by).toBeNull();
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+  });
+
+  test("H2: reserve_team_invite_code_slot succeeds when p_user_id matches app.user_id", async () => {
+    const fx = await seedUserOrgProject("h2-reserve-match");
+    const seeded = await seedCode({
+      orgId: fx.organizationId,
+      code: "h2reservematch",
+      useCount: 0,
+    });
+    const c = appUserConnect();
+    try {
+      const rows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        return await tx<Array<{ id: string }>>`
+          SELECT id FROM public.reserve_team_invite_code_slot(${"h2reservematch"}, ${fx.userId}::uuid)
+        `;
+      });
+      expect(rows.length).toBe(1);
+      expect(rows[0].id).toBe(seeded.id);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+  });
+
   test("release returns false on a nonexistent reservation id (M5)", async () => {
     const fx = await seedUserOrgProject("release-bogus");
     const c = appUserConnect();
@@ -330,7 +426,10 @@ describe("invite-code SECURITY DEFINER functions", () => {
     await seedCode({ orgId: fx.organizationId, code: "TTL1", useCount: 0 });
     const c = appUserConnect();
     try {
-      await c`SELECT * FROM public.reserve_team_invite_code_slot(${"TTL1"}, ${fx.userId}::uuid)`;
+      await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        await tx`SELECT * FROM public.reserve_team_invite_code_slot(${"TTL1"}, ${fx.userId}::uuid)`;
+      });
     } finally {
       await c.end({ timeout: 5 });
     }
@@ -363,9 +462,12 @@ describe("invite-code SECURITY DEFINER functions", () => {
     const c = appUserConnect();
     let reservedRows: Array<{ id: string }> = [];
     try {
-      reservedRows = await c<Array<{ id: string }>>`
-        SELECT id FROM public.reserve_team_invite_code_slot(${"SWEEP1"}, ${fresh.userId}::uuid)
-      `;
+      reservedRows = await c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fresh.userId}, true)`;
+        return await tx<Array<{ id: string }>>`
+          SELECT id FROM public.reserve_team_invite_code_slot(${"SWEEP1"}, ${fresh.userId}::uuid)
+        `;
+      });
     } finally {
       await c.end({ timeout: 5 });
     }
