@@ -1,4 +1,4 @@
-import type { SQL } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { db as appDb } from "@/lib/db";
 
 /**
@@ -66,4 +66,27 @@ export async function executeRawDiscard(
   query: SQL,
 ): Promise<void> {
   await conn.execute(query);
+}
+
+/**
+ * Build a Postgres `uuid[]` expression from a JS `string[]`. Drizzle's
+ * `sql` tag expands a raw JS array interpolation into a parenthesized
+ * list of scalar placeholders (`($1, $2, ...)`), which Postgres cannot
+ * cast to `uuid[]` — the cast attempt yields `malformed array literal`.
+ *
+ * Emit an explicit `ARRAY[$1::uuid, $2::uuid, ...]` constructor instead so
+ * each id binds as its own parameter through postgres-js's standard path
+ * (no string concatenation, no injection surface). The per-element cast
+ * gives Postgres a typed scalar to fold into the array.
+ *
+ * @param ids - UUID strings (validated by the caller). Empty arrays yield
+ *   `ARRAY[]::uuid[]` so the result is always a typed `uuid[]`.
+ * @returns A drizzle `sql` fragment that evaluates to `uuid[]`.
+ */
+export function uuidArray(ids: readonly string[]): SQL {
+  if (ids.length === 0) return sql`ARRAY[]::uuid[]`;
+  return sql`ARRAY[${sql.join(
+    ids.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  )}]`;
 }

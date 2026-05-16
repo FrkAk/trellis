@@ -268,7 +268,7 @@ export async function getProjectListMaxUpdatedAt(
   ctx: AuthContext,
 ): Promise<Date> {
   return withUserContext(ctx.userId, async (tx) =>
-    getProjectListMaxUpdatedAtRaw(tx, ctx.userId),
+    getProjectListMaxUpdatedAtRaw(tx),
   );
 }
 

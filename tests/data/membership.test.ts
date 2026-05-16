@@ -107,7 +107,7 @@ describe("demoteMemberWithGuard", () => {
     expect(demoteCalled).toBe(false);
   });
 
-  test("returns fail/forbidden when member belongs to a different team", async () => {
+  test("returns fail/not_found when target member is in a team the caller can't see (anti-enumeration)", async () => {
     const a = await seedUserOrgProject("demote-cross-a");
     const b = await seedUserOrgProject("demote-cross-b");
 
@@ -138,8 +138,16 @@ describe("demoteMemberWithGuard", () => {
       },
     );
 
+    // `current_user_visible_member` (docker/rls-functions.sql:249)
+    // collapses "doesn't exist" and "exists but caller isn't a member of
+    // that org" into the same null result by design. Callers therefore
+    // see `not_found` for both — distinguishing them would leak existence.
+    // `forbidden` is still reachable in `demoteMemberWithGuard` for a
+    // distinct case: caller IS a member of the target's org but supplies
+    // a mismatched `input.organizationId` (defense against input
+    // tampering); that path is not exercised by this test.
     expect(outcome.kind).toBe("fail");
-    if (outcome.kind === "fail") expect(outcome.code).toBe("forbidden");
+    if (outcome.kind === "fail") expect(outcome.code).toBe("not_found");
     expect(demoteCalled).toBe(false);
   });
 

@@ -1,7 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { executeRaw } from "@/lib/db/raw";
+import { executeRaw, uuidArray } from "@/lib/db/raw";
 import { withUserContext, type Tx } from "@/lib/db/rls";
 import { decodeCursor, encodeCursor, type Cursor } from "@/lib/data/cursor";
 import { acquireOwnerDemoteLock } from "@/lib/db/raw/acquire-owner-demote-lock";
@@ -251,7 +251,7 @@ export async function lookupUserNames(
   const rows = await withUserContext(userId, async (tx) =>
     executeRaw<{ id: string; name: string }>(
       tx,
-      sql`SELECT id, name FROM public.lookup_user_names_in_shared_orgs(${userIds}::uuid[])`,
+      sql`SELECT id, name FROM public.lookup_user_names_in_shared_orgs(${uuidArray(userIds)})`,
     ),
   );
   return new Map(rows.map((u) => [u.id, u.name]));

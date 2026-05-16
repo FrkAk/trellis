@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { executeRaw, type Conn } from "@/lib/db/raw";
+import { executeRaw, uuidArray, type Conn } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import {
   projects,
@@ -546,7 +546,7 @@ export async function fetchAssigneesByTaskUnchecked(
     conn,
     sql`
       SELECT t.task_id, a.user_id, a.name, a.email
-      FROM unnest(${taskIds}::uuid[]) AS t(task_id)
+      FROM unnest(${uuidArray(taskIds)}) AS t(task_id)
       CROSS JOIN LATERAL public.task_assignees_visible(t.task_id) a
       ORDER BY a.name
     `,
@@ -1422,7 +1422,7 @@ async function assertAssigneesInTeam(
   const dedup = [...new Set(userIds)];
   const rows = await executeRaw<{ user_id: string }>(
     tx,
-    sql`SELECT user_id FROM public.org_member_user_ids_visible(${proj.organizationId}::uuid, ${dedup}::uuid[])`,
+    sql`SELECT user_id FROM public.org_member_user_ids_visible(${proj.organizationId}::uuid, ${uuidArray(dedup)})`,
   );
   const found = new Set(rows.map((r) => r.user_id));
   const missing = dedup.find((id) => !found.has(id));

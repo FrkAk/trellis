@@ -232,14 +232,11 @@ test("getProjectMaxUpdatedAt returns the latest updated_at across project + task
   }
 });
 
-test("getProjectListMaxUpdatedAt joins neon_auth.member by camelCase columns", async () => {
-  // Regression: the raw SQL referenced `m.organization_id` / `m.user_id`
-  // (snake_case), but Better Auth's `neon_auth.member` defines those
-  // columns as quoted camelCase (`"organizationId"`, `"userId"`). Hitting
-  // the helper used to throw `column m.organization_id does not exist`;
-  // every `/api/projects` call returned 500. This test exercises the
-  // happy path against the testcontainer schema and asserts a real
-  // timestamp comes back.
+test("getProjectListMaxUpdatedAt returns the latest updated_at across the caller's accessible scope", async () => {
+  // Access scoping is RLS-driven (projects/tasks/task_edges all carry
+  // app_user policies that restrict visible rows). The helper aggregates
+  // MAX(updated_at) over those filtered sets — no neon_auth join, which
+  // app_user has no grant on (docker/grants.sql:37).
   const f = await seedUserOrgProject("listmax");
   const ctx = makeAuthContext(f.userId);
 
