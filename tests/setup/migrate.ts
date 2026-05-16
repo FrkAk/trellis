@@ -16,9 +16,6 @@ import postgres from "postgres";
  */
 async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
   await sql.unsafe(`
-    -- KEEP IN SYNC WITH:
-    --   docker/init-rls.sh (self-host provisioning)
-    --   docs/neon-prod-provisioning.sql (Neon prod runbook)
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
@@ -31,40 +28,12 @@ async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
         EXECUTE 'CREATE ROLE auth_role LOGIN NOBYPASSRLS PASSWORD ''auth_role''';
       END IF;
     END $$;
-
-    GRANT USAGE ON SCHEMA public TO app_user, service_role;
-    GRANT CREATE ON SCHEMA public TO service_role;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user, service_role;
-    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user, service_role;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user, service_role;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public
-      GRANT USAGE, SELECT ON SEQUENCES TO app_user, service_role;
-    ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
-    ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
-      GRANT USAGE, SELECT ON SEQUENCES TO app_user;
-
-    -- Option B: app_user has NO direct access to neon_auth.*. All reads
-    -- under app_user go through SECURITY DEFINER functions in
-    -- docker/rls-functions.sql.
-    GRANT USAGE ON SCHEMA neon_auth TO service_role, auth_role;
-    REVOKE ALL ON SCHEMA neon_auth FROM app_user;
-    REVOKE ALL ON ALL TABLES IN SCHEMA neon_auth FROM app_user;
-    REVOKE ALL ON ALL SEQUENCES IN SCHEMA neon_auth FROM app_user;
-    GRANT SELECT, REFERENCES ON neon_auth."member" TO service_role;
-    GRANT SELECT, REFERENCES ON neon_auth.organization TO service_role;
-    GRANT SELECT, REFERENCES ON neon_auth."user" TO service_role;
-    GRANT SELECT, REFERENCES ON neon_auth.invitation TO service_role;
-    GRANT SELECT, UPDATE ON neon_auth."session" TO service_role;
-    GRANT SELECT, DELETE ON neon_auth."oauthAccessToken" TO service_role;
-    GRANT SELECT, DELETE ON neon_auth."oauthRefreshToken" TO service_role;
-    GRANT SELECT, DELETE ON neon_auth."oauthConsent" TO service_role;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA neon_auth TO auth_role;
-    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA neon_auth TO auth_role;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA neon_auth
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO auth_role;
   `);
+  const grants = readFileSync(
+    join(process.cwd(), "docker", "grants.sql"),
+    "utf8",
+  );
+  await sql.unsafe(grants);
 }
 
 /**

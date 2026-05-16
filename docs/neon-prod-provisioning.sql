@@ -9,9 +9,10 @@
 -- role-management panel for those. Everything else runs fine as neondb_owner
 -- via the Neon SQL editor or via this app's Neon MCP / psql connection.
 --
--- KEEP IN SYNC WITH:
---   docker/init-rls.sh (self-host provisioning)
---   tests/setup/migrate.ts (testcontainer provisioning)
+-- Canonical schema/table/sequence grants live in docker/grants.sql. The
+-- self-host bootstrap (docker/init-rls.sh) and the testcontainer
+-- (tests/setup/migrate.ts) consume the same file, so updates land in one
+-- place and parity holds across prod / self-host / test.
 -- =============================================================================
 
 
@@ -61,82 +62,23 @@ CREATE ROLE auth_role WITH
 
 
 -- -----------------------------------------------------------------------------
--- 2. SCHEMA-LEVEL GRANTS (runs as neondb_owner -- no special perms needed)
+-- 2. SCHEMA / TABLE / SEQUENCE GRANTS — apply docker/grants.sql
 -- -----------------------------------------------------------------------------
-
-GRANT USAGE ON SCHEMA public TO app_user, service_role;
--- Option B: app_user is REVOKED from neon_auth entirely. All reads under
--- app_user go through SECURITY DEFINER functions in
--- docker/rls-functions.sql; the public.current_user_* family is the only
--- audited surface app_user can touch in neon_auth.
-GRANT USAGE ON SCHEMA neon_auth TO service_role, auth_role;
-REVOKE ALL ON SCHEMA neon_auth FROM app_user;
-REVOKE ALL ON ALL TABLES IN SCHEMA neon_auth FROM app_user;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA neon_auth FROM app_user;
-
--- service_role only: lets `drizzle-kit migrate` create new tables when migrating
--- via DATABASE_SERVICE_ROLE_URL. app_user must NEVER have CREATE on public.
-GRANT CREATE ON SCHEMA public TO service_role;
+-- Run docker/grants.sql as neondb_owner (Neon SQL editor, Neon MCP, or psql).
+-- That file is the single source of truth for:
+--   * public schema USAGE + CREATE
+--   * public DML on all tables + sequences + default privileges
+--   * neon_auth USAGE + REVOKE-from-app_user (Option B lockdown)
+--   * neon_auth tight grants for service_role
+--   * neon_auth full DML + default privileges for auth_role
+-- See sections 1, 3-7 below for context-specific steps not covered by
+-- grants.sql (role creation, DB-level grants, drizzle migrations schema,
+-- composite index, SECURITY DEFINER functions, smoke tests).
+-- -----------------------------------------------------------------------------
 
 
 -- -----------------------------------------------------------------------------
--- 3. TABLE-LEVEL GRANTS (existing tables)
--- -----------------------------------------------------------------------------
-
--- public: full DML on the 8 RLS-protected tables
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
-    TO app_user, service_role;
-
--- neon_auth: app_user has NO direct grants. service_role retains SELECT
--- on the read-set used by `clearOrgMembershipArtifacts`.
-
--- service_role: tight neon_auth SELECT + DML on session/oauth* for clearOrgMembershipArtifacts
-GRANT SELECT, REFERENCES ON neon_auth."member" TO service_role;
-GRANT SELECT, REFERENCES ON neon_auth.organization TO service_role;
-GRANT SELECT, REFERENCES ON neon_auth."user" TO service_role;
-GRANT SELECT, REFERENCES ON neon_auth.invitation TO service_role;
-GRANT SELECT, UPDATE ON neon_auth."session" TO service_role;
-GRANT SELECT, DELETE ON neon_auth."oauthAccessToken" TO service_role;
-GRANT SELECT, DELETE ON neon_auth."oauthRefreshToken" TO service_role;
-GRANT SELECT, DELETE ON neon_auth."oauthConsent" TO service_role;
-
--- auth_role: full DML on every neon_auth table
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA neon_auth TO auth_role;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA neon_auth TO auth_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA neon_auth
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO auth_role;
-
-
--- -----------------------------------------------------------------------------
--- 4. DEFAULT PRIVILEGES (future tables created by neondb_owner)
--- -----------------------------------------------------------------------------
--- When `drizzle-kit migrate` creates new tables (it runs as service_role, which
--- has CREATE on schema public), they automatically get the same DML grants.
--- Without this, every migration would need a follow-up GRANT.
--- -----------------------------------------------------------------------------
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES
-    TO app_user, service_role;
-
-
--- -----------------------------------------------------------------------------
--- 5. SEQUENCES (current + default)
--- -----------------------------------------------------------------------------
--- Insurance for any drizzle-generated serial PKs. Mymir's schema uses
--- gen_random_uuid() for IDs today, but this future-proofs the grants.
--- -----------------------------------------------------------------------------
-
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public
-    TO app_user, service_role;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT USAGE, SELECT ON SEQUENCES
-    TO app_user, service_role;
-
-
--- -----------------------------------------------------------------------------
--- 6. drizzle-kit migrate prerequisites
+-- 3. drizzle-kit migrate prerequisites
 -- -----------------------------------------------------------------------------
 -- Added after the initial provisioning when the implementer discovered
 -- drizzle-kit's runtime requirements during MYMR-151 implementation:
@@ -155,7 +97,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA drizzle
 
 
 -- -----------------------------------------------------------------------------
--- 7. COMPOSITE INDEX for RLS predicate performance
+-- 4. COMPOSITE INDEX for RLS predicate performance
 -- -----------------------------------------------------------------------------
 -- All 8 RLS policies dispatch via:
 --   EXISTS (SELECT 1 FROM neon_auth.member m
@@ -171,7 +113,7 @@ CREATE INDEX IF NOT EXISTS member_org_user_idx
 
 
 -- -----------------------------------------------------------------------------
--- 8. VERIFY app_user has NO grants on ANY neon_auth table (Option B lockdown)
+-- 5. VERIFY app_user has NO grants on ANY neon_auth table (Option B lockdown)
 -- -----------------------------------------------------------------------------
 -- Expected: empty result (zero rows). Under Option B app_user is REVOKED
 -- from every neon_auth table — all reads route through SECURITY DEFINER
@@ -183,7 +125,7 @@ WHERE grantee = 'app_user'
 
 
 -- -----------------------------------------------------------------------------
--- 9. SECURITY DEFINER functions
+-- 6. SECURITY DEFINER functions
 -- -----------------------------------------------------------------------------
 -- Apply by running docker/rls-functions.sql as neondb_owner via the Neon SQL
 -- editor or psql. The function bodies are reviewed alongside
@@ -274,7 +216,7 @@ WHERE schemaname = 'neon_auth'
 
 
 -- -----------------------------------------------------------------------------
--- 10. SMOKE TEST after prod flip
+-- 7. SMOKE TEST after prod flip
 -- -----------------------------------------------------------------------------
 -- Run these queries from the Neon SQL editor connected as neondb_owner AFTER
 -- flipping DATABASE_URL to point at app_user. Expected results below each

@@ -50,52 +50,12 @@ BEGIN
   END IF;
 END \$\$;
 
--- KEEP IN SYNC WITH:
---   tests/setup/migrate.ts (testcontainer provisioning)
---   docs/neon-prod-provisioning.sql (Neon prod runbook)
--- Diverging grants here will cause prod/test/self-host parity drift.
+-- Canonical schema/table/sequence grants live in docker/grants.sql so the
+-- self-host, testcontainer, and Neon prod runbook stay in lockstep.
+\i /opt/postgres-init/grants.sql
 
--- public schema grants (RLS-enforced for app_user)
-GRANT USAGE ON SCHEMA public TO app_user, service_role;
-GRANT CREATE ON SCHEMA public TO service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user, service_role;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO app_user, service_role;
-ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
-ALTER DEFAULT PRIVILEGES FOR ROLE service_role IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO app_user;
-
--- app_user reaches neon_auth.* only via SECURITY DEFINER functions in
--- docker/rls-functions.sql. The explicit REVOKEs make re-runs idempotent
--- when upgrading from the pre-lockdown provisioning.
-GRANT USAGE ON SCHEMA neon_auth TO service_role, auth_role;
-REVOKE ALL ON SCHEMA neon_auth FROM app_user;
-REVOKE ALL ON ALL TABLES IN SCHEMA neon_auth FROM app_user;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA neon_auth FROM app_user;
-
--- service_role: same tight set on neon_auth (used only by clearOrgMembershipArtifacts)
-GRANT SELECT, REFERENCES ON neon_auth."member" TO service_role;
-GRANT SELECT, REFERENCES ON neon_auth.organization TO service_role;
-GRANT SELECT, REFERENCES ON neon_auth."user" TO service_role;
-GRANT SELECT, REFERENCES ON neon_auth.invitation TO service_role;
--- service_role also needs DML on session + oauth* for clearOrgMembershipArtifacts
-GRANT SELECT, UPDATE ON neon_auth."session" TO service_role;
-GRANT SELECT, DELETE ON neon_auth."oauthAccessToken" TO service_role;
-GRANT SELECT, DELETE ON neon_auth."oauthRefreshToken" TO service_role;
-GRANT SELECT, DELETE ON neon_auth."oauthConsent" TO service_role;
-
--- auth_role: full DML on every neon_auth table (Better Auth's runtime connection)
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA neon_auth TO auth_role;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA neon_auth TO auth_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA neon_auth
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO auth_role;
--- auth_role has NO grants on public; it cannot touch app data even via SQLi
-
--- drizzle migrations schema (service_role only)
+-- DB-level + drizzle migration schema (parameterized on POSTGRES_DB; kept
+-- inline because the DB name varies per context).
 GRANT CREATE ON DATABASE "${POSTGRES_DB}" TO service_role;
 CREATE SCHEMA IF NOT EXISTS drizzle;
 GRANT USAGE, CREATE ON SCHEMA drizzle TO service_role;
