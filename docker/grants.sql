@@ -53,15 +53,21 @@ REVOKE ALL ON SCHEMA neon_auth FROM app_user;
 REVOKE ALL ON ALL TABLES IN SCHEMA neon_auth FROM app_user;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA neon_auth FROM app_user;
 
--- service_role: tight set on neon_auth (used only by clearOrgMembershipArtifacts).
+-- service_role: tight set on neon_auth (used only by clearOrgMembershipArtifacts
+-- and the OAuth-session settings UI).
 GRANT SELECT, REFERENCES ON neon_auth."member" TO service_role;
 GRANT SELECT, REFERENCES ON neon_auth.organization TO service_role;
 GRANT SELECT, REFERENCES ON neon_auth."user" TO service_role;
 GRANT SELECT, REFERENCES ON neon_auth.invitation TO service_role;
 GRANT SELECT, UPDATE ON neon_auth."session" TO service_role;
 GRANT SELECT, DELETE ON neon_auth."oauthAccessToken" TO service_role;
-GRANT SELECT, DELETE ON neon_auth."oauthRefreshToken" TO service_role;
+-- UPDATE: revokeOAuthSession sets `revoked = now()` (soft revoke) before
+-- cascading the access-token delete in the same tx.
+GRANT SELECT, UPDATE, DELETE ON neon_auth."oauthRefreshToken" TO service_role;
 GRANT SELECT, DELETE ON neon_auth."oauthConsent" TO service_role;
+-- SELECT only: listActiveOAuthSessions LEFT JOINs to surface `clientName`
+-- in the settings UI. No INSERT/UPDATE/DELETE (Better Auth owns writes via auth_role).
+GRANT SELECT ON neon_auth."oauthClient" TO service_role;
 
 -- auth_role: full DML on every neon_auth table (Better Auth runtime connection).
 -- No grants on public; auth_role cannot touch app data even under SQLi.

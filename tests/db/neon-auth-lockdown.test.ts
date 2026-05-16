@@ -166,3 +166,56 @@ describe("auth_role public.* lockdown", () => {
     }
   });
 });
+
+describe("service_role neon_auth grants pin the call-site contract", () => {
+  // The data-layer call sites in lib/data/oauth-session.ts and
+  // lib/data/account.ts rely on a documented, MINIMAL set of grants. If
+  // grants.sql ever loses one of these, the affected UI surface dies
+  // with "permission denied" at runtime (e.g. the settings agent tab and
+  // session revocation). Pin the required privileges so a future grant
+  // edit can't silently widen or narrow the contract.
+  const requiredGrants: Array<{
+    table: string;
+    needs: ReadonlyArray<"SELECT" | "INSERT" | "UPDATE" | "DELETE">;
+  }> = [
+    { table: "oauthClient", needs: ["SELECT"] },
+    { table: "oauthRefreshToken", needs: ["SELECT", "UPDATE", "DELETE"] },
+    { table: "oauthAccessToken", needs: ["SELECT", "DELETE"] },
+    { table: "oauthConsent", needs: ["SELECT", "DELETE"] },
+    { table: "session", needs: ["SELECT", "UPDATE"] },
+    { table: "member", needs: ["SELECT"] },
+    { table: "organization", needs: ["SELECT"] },
+    { table: "user", needs: ["SELECT"] },
+    { table: "invitation", needs: ["SELECT"] },
+  ];
+
+  function serviceRolePool() {
+    const url = new URL(getConnectionString());
+    url.username = "service_role";
+    url.password = "service_role";
+    return postgres(url.toString(), { max: 1, idle_timeout: 5 });
+  }
+
+  for (const { table, needs } of requiredGrants) {
+    test(`service_role has the documented grants on neon_auth.${table}`, async () => {
+      const c = serviceRolePool();
+      try {
+        for (const priv of needs) {
+          const [row] = await c<Array<{ has: boolean }>>`
+            SELECT has_table_privilege(
+              'service_role',
+              ${"neon_auth.\"" + table + "\""},
+              ${priv}
+            ) AS has
+          `;
+          expect(
+            row.has,
+            `service_role must have ${priv} on neon_auth.${table}`,
+          ).toBe(true);
+        }
+      } finally {
+        await c.end({ timeout: 5 });
+      }
+    });
+  }
+});
