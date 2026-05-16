@@ -29,22 +29,29 @@ async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
       END IF;
     END $$;
   `);
+
+  const [{ current_database: db }] = await sql<{ current_database: string }[]>`
+    SELECT current_database()
+  `;
+  await sql.unsafe(`REVOKE TEMPORARY ON DATABASE "${db}" FROM PUBLIC`);
+}
+
+/**
+ * Apply `docker/grants.sql` after `drizzle-kit push` so the
+ * `GRANT … ON ALL TABLES IN SCHEMA public` statements land on the
+ * just-created public tables. Running grants.sql before push is a no-op
+ * for public — push then creates tables that app_user/service_role have
+ * zero grants on, and the first test process after a fresh container
+ * fails with `permission denied for table tasks`.
+ *
+ * @param sql - Active postgres client (must be the container superuser).
+ */
+async function applyGrants(sql: ReturnType<typeof postgres>): Promise<void> {
   const grants = readFileSync(
     join(process.cwd(), "docker", "grants.sql"),
     "utf8",
   );
   await sql.unsafe(grants);
-
-  // CVE-2018-1058 layer 2: REVOKE TEMPORARY ON DATABASE — canonical
-  // statement lives in docker/init-rls.sh (self-host). Replayed here
-  // because init-rls.sh doesn't run in the testcontainer (see header).
-  // Identifier interpolation is safe: `db` is sourced from current_database()
-  // on the trusted superuser connection — never from user input. Postgres
-  // identifiers cannot be parameterized positionally.
-  const [{ current_database: db }] = await sql<{ current_database: string }[]>`
-    SELECT current_database()
-  `;
-  await sql.unsafe(`REVOKE TEMPORARY ON DATABASE "${db}" FROM PUBLIC`);
 }
 
 /**
@@ -148,6 +155,7 @@ export async function applyMigrations(url: string): Promise<void> {
     onnotice: () => undefined,
   });
   try {
+    await applyGrants(sqlPolicies);
     await applyRlsFunctions(sqlPolicies);
     await applyRlsPolicies(sqlPolicies);
   } finally {
