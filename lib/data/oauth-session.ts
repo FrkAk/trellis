@@ -9,10 +9,13 @@ import {
   organization,
 } from "@/lib/db/auth-schema";
 
-// app_user has no grants on neon_auth.oauth* (bearer tokens). Helpers in
-// this file are reached only after `requireSession` verifies the caller,
-// so the `userId` argument is trusted and the WHERE clauses are the
-// effective scope.
+/**
+ * Service-role handle aliased as `db` for this module. `app_user` has no
+ * grants on `neon_auth.oauth*` (bearer tokens), and every helper here is
+ * reached only after `requireSession` verifies the caller — so the
+ * `userId` argument is trusted and the WHERE clauses are the effective
+ * scope.
+ */
 const db = serviceRoleDb;
 
 /** Active OAuth session row joined with client and organization metadata. */

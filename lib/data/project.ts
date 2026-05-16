@@ -548,6 +548,10 @@ export type UserTeamEntry = {
  * Empty teams (no projects) are included — that's the entire point of this
  * action; `listProjectsSlim` skips them.
  *
+ * Per-org project counts use `inArray` even though RLS already scopes
+ * `projects` to the caller's accessible orgs — the explicit list narrows
+ * the index scan.
+ *
  * @param ctx - Resolved auth context.
  * @returns Array of teams with role and project counts.
  */
@@ -567,8 +571,6 @@ export async function listUserTeams(
 
     if (orgRows.length === 0) return [];
 
-    // Per-org project counts (RLS on `projects` already scopes to the
-    // caller's accessible orgs, but the inArray narrows the index scan).
     const counts = await tx
       .select({
         organizationId: projects.organizationId,
@@ -913,8 +915,11 @@ async function pickAvailableIdentifier(
  * 4. Omitted + caller has zero memberships → raise
  *    {@link NoTeamMembershipError}.
  *
- * @param tx - Active RLS transaction frame.
- * @param ctx - Resolved auth context.
+ * @param tx - Active RLS transaction frame whose GUC already binds the
+ *   caller; membership is read via `public.current_user_orgs()`.
+ * @param _ctx - Resolved auth context (currently unused — kept for parity
+ *   with the public `createProject` signature should a future check need
+ *   non-user fields).
  * @param requested - Optional explicit `organizationId` from the caller.
  * @returns Verified destination team UUID.
  * @throws ForbiddenError when `requested` is supplied but the caller is

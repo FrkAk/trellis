@@ -13,9 +13,6 @@ import { executeRawDiscard, type RlsTx } from "@/lib/db/raw";
  */
 export type Tx = RlsTx;
 
-// Pre-validate UUID shape so a Postgres `invalid input syntax for type uuid`
-// 500 surfaces as a typed error at the helper boundary. Unicode whitespace,
-// control chars, empty strings, and non-UUID payloads all fail.
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,6 +22,9 @@ const UUID_RE =
  * `unknown` failure code.
  */
 export class InvalidUserIdError extends Error {
+  /**
+   * @param message - Override the default diagnostic text.
+   */
   constructor(message = "withUserContext: userId must be a valid UUID string") {
     super(message);
     this.name = "InvalidUserIdError";
@@ -57,10 +57,6 @@ export async function withUserContext<T>(
     throw new InvalidUserIdError();
   }
   return db.transaction(async (rawTx) => {
-    // The bare drizzle Tx satisfies `RlsTx`'s structural shape; the brand
-    // is purely nominal so a cast here is sound. The GUC is set on the
-    // same transaction before `fn` runs, so every read/write inside the
-    // callback evaluates under `app.user_id`.
     const tx = rawTx as Tx;
     await executeRawDiscard(
       tx,

@@ -23,26 +23,6 @@ import type {
 } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
-// Row-Level Security
-// ---------------------------------------------------------------------------
-//
-// Every public-schema table opts into RLS via `.enableRLS()` so push emits
-// `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`. The CREATE POLICY predicates
-// themselves live in `docker/rls-policies.sql` (applied after `db:push`):
-// `drizzle-kit push` cannot round-trip `pgPolicy()` declarations correctly —
-// its introspection-based diff drops the `USING`/`WITH CHECK` clauses — so
-// policies are managed entirely as hand-written SQL and the schema only
-// declares the RLS enable bit.
-//
-// Policies bind `TO app_user` and predicate membership through
-// `public.current_user_org_ids()` (which reads `app.user_id` from the GUC).
-// The missing-GUC path resolves to NULL so the membership lookup evaluates
-// to an empty array (default-deny). `service_role` (BYPASSRLS) sidesteps
-// policies entirely; `app_user` evaluates them on every query.
-// `team_invite_code` is the one exception — a split SELECT-for-members /
-// WRITE-for-admins pair guards admin-only mutations.
-
-// ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------
 

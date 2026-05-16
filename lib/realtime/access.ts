@@ -58,6 +58,10 @@ export async function grantOrgAccess(
  *
  * Non-throwing for the same reason as {@link grantOrgAccess}.
  *
+ * Uses the admin-scoped project list: `afterRemoveMember` fires after the
+ * member row is gone, so the user-scoped `listOrgProjectIds(userId, orgId)`
+ * would return `[]` and silently skip every `unregister`.
+ *
  * @param userId - The departing user.
  * @param orgId - The team they left.
  */
@@ -67,9 +71,6 @@ export async function revokeOrgAccess(
 ): Promise<void> {
   try {
     if (broker.hasConnections(userId)) {
-      // Must be the admin variant: `afterRemoveMember` fires after the member
-      // row is gone, so the user-scoped `listOrgProjectIds(userId, orgId)`
-      // would return `[]` and silently skip every `unregister`.
       const projectIds = await listOrgProjectIdsAsAdmin(orgId);
       for (const id of projectIds) {
         broker.unregister(userId, `project:${id}`);

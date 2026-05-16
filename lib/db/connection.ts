@@ -59,16 +59,13 @@ declare global {
 
 const isNeon = (): boolean => process.env.MYMIR_DB_DRIVER === "neon";
 
-// Pool size budget: the Next.js `output: "standalone"` server runs as a
-// single Node process, but the three pools (app_user, auth_role,
-// service_role) coexist plus dev/test parallelism. Neon Launch tier caps
-// per-branch connections at ~100. `max: 3` keeps total open connections
-// well under the cap while leaving headroom for migration runs and the
-// testcontainer setup. Bump if the deploy target adds replicas or runs on
-// a higher Neon tier.
-
 /**
  * Build the application Drizzle client for the active driver.
+ *
+ * Pool sized at `max: 3` per role so the three pools (`app_user`,
+ * `auth_role`, `service_role`) plus dev/test parallelism stay well under
+ * Neon Launch tier's ~100-connection per-branch cap. Bump if the deploy
+ * target adds replicas or runs on a higher tier.
  *
  * @returns Drizzle instance bound to the public schema.
  * @throws Error when `DATABASE_URL` is unset.

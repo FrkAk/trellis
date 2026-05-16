@@ -19,6 +19,11 @@ import {
 import { isCallerInInvitationOrg } from '@/lib/data/invitation';
 import { lookupUserNames } from '@/lib/data/membership';
 
+/**
+ * Input schema for {@link cancelInvitationAction}. Requires the caller
+ * to supply both the invitation id and the organization id they believe
+ * owns it so the action can verify the linkage without disclosing it.
+ */
 const cancelSchema = z.object({
   invitationId: z.uuid(),
   organizationId: z.uuid(),
@@ -34,7 +39,9 @@ const listInvitationsSchema = z.object({
  * actionable items.
  *
  * Inviter names are resolved via a single batched user lookup since BA
- * returns only `inviterId` on the listInvitations row.
+ * returns only `inviterId` on the listInvitations row. A transient
+ * name-lookup failure degrades gracefully to the 'Unknown' fallback
+ * rather than collapsing the whole list.
  *
  * Defense-in-depth: BA's `listInvitations` endpoint only checks team
  * membership, NOT role. Without the explicit `isOrgAdmin(organizationId)`
@@ -101,9 +108,6 @@ export async function listPendingInvitationsAction(input: {
   try {
     nameById = await lookupUserNames(userId, inviterIds);
   } catch (err) {
-    // The view already falls back to 'Unknown' for missing names, so a
-    // transient name-lookup failure should degrade gracefully rather than
-    // collapse the whole list.
     console.error('listPendingInvitationsAction: lookupUserNames failed', {
       organizationId: parsed.data.organizationId,
       err,

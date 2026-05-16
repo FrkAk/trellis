@@ -379,6 +379,11 @@ export async function updateMemberRoleAction(input: {
  * fire `afterRemoveMember`, so we call `clearOrgMembershipArtifacts` here
  * directly to wipe OAuth tokens and other-session active-org pointers.
  *
+ * Cleanup runs through `Promise.allSettled` so a failure in one side
+ * (e.g. `clearOrgMembershipArtifacts` aborting on a DB blip) still lets
+ * the other (broker revocation) commit, and each failure is logged with
+ * its own step attribution so ops can replay manually.
+ *
  * @param input - Organization id to leave.
  * @returns Discriminated result.
  */
@@ -416,10 +421,6 @@ export async function leaveTeamAction(input: {
   // access revocation is paired here because BA's `leaveOrganization`
   // does NOT fire `afterRemoveMember` — without this call, broker subs
   // and the home-grid project list stay stale until SSE reconnects.
-  //
-  // `Promise.allSettled` so a failure in one side (e.g. clearOrgMembershipArtifacts
-  // aborting on a DB blip) still lets the other (broker revocation) commit, and
-  // each failure is logged with its own attribution so ops can replay manually.
   const cleanupResults = await Promise.allSettled([
     clearOrgMembershipArtifacts(userId, parsed.data.organizationId),
     revokeOrgAccess(userId, parsed.data.organizationId),

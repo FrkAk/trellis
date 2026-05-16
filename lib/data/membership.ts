@@ -10,12 +10,14 @@ import {
   type TeamCascadePreview,
 } from "@/lib/db/raw/preview-team-cascade";
 
-// app_user has no grants on neon_auth.*. Every helper in this file reads
-// auth data via the `public.current_user_*` and `public.team_*_visible`
-// SECURITY DEFINER functions, which read `app.user_id` from the GUC that
-// `withUserContext` sets and scope rows accordingly.
-
-/** Shape of a single membership row returned to the team-list UI. */
+/**
+ * Shape of a single membership row returned to the team-list UI.
+ *
+ * `app_user` has no grants on `neon_auth.*`. Every helper in this module
+ * reads auth data via the `public.current_user_*` and `public.team_*_visible`
+ * SECURITY DEFINER functions, which read `app.user_id` from the GUC that
+ * `withUserContext` sets and scope rows accordingly.
+ */
 export type MembershipRow = {
   organizationId: string;
   name: string;
@@ -340,11 +342,18 @@ export type DemoteOutcome =
  * the lock — the lock simply serializes other actions waiting on the
  * same gate.
  *
+ * Callback errors are split: only Better Auth API errors (shape
+ * `{ body: { code } }`) are returned as `callback_error`; anything else
+ * is rethrown so the transaction rolls back and the action layer logs the
+ * underlying cause instead of swallowing it as `unknown`.
+ *
  * @param userId - Verified caller user id (used to scope the visible
  *   member + roles lookups under RLS).
  * @param input - Target team, member id, and role change parameters.
  * @param demote - Callback that performs the actual role change.
  * @returns Outcome discriminating success, validation failures, and callback errors.
+ * @throws Whatever the `demote` callback throws when it is not a Better
+ *   Auth API error.
  */
 export async function demoteMemberWithGuard(
   userId: string,
@@ -380,10 +389,6 @@ export async function demoteMemberWithGuard(
       await demote();
       return { kind: "ok" };
     } catch (err) {
-      // Only Better Auth API errors carry a `body.code` shape. Anything
-      // else (TypeError, network error, programming bug) should surface
-      // by throwing so the transaction rolls back and the action layer
-      // logs the underlying cause instead of returning `unknown`.
       const isBetterAuthError =
         (err as { body?: { code?: string } } | null)?.body?.code !==
         undefined;

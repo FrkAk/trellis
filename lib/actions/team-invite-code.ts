@@ -360,6 +360,11 @@ export async function revokeTeamInviteCodeAction(input: {
  * Rate-limited per-user (5/min) AND per-IP (20/min) as defense in depth
  * on top of the 126-bit code entropy.
  *
+ * Post-commit release is best-effort: once membership is committed a
+ * throw from `releaseInviteCodeSlot` must not surface as a 500 to a
+ * now-joined user; the pre-sweep in `reserve_team_invite_code_slot`
+ * reclaims any orphaned reservation on the next reserve.
+ *
  * @param input - `{ code }` from the join form. Must match `INVITE_CODE_PATTERN`.
  * @returns Discriminated result; `data.organizationId` on success.
  */
@@ -458,9 +463,6 @@ export async function joinTeamByCodeAction(input: {
     };
   }
 
-  // Membership committed at this point. A throw from release must NOT surface
-  // as a 500 to a now-joined user; the pre-sweep in reserve_team_invite_code_slot
-  // reclaims any orphaned reservation on the next reserve.
   await safeReleaseSlot(userId, reserved.id, true);
   return { ok: true, data: { organizationId: reserved.orgId } };
 }

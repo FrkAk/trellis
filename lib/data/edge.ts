@@ -425,8 +425,6 @@ export async function updateEdge(
     };
   }
 
-  // Only a type change INTO `depends_on` can introduce a new cycle (see
-  // the function docstring). Cheap one-line predicate, narrow on purpose.
   let targetProjectIdForCycle: string | undefined;
   if (
     updates.edgeType &&
