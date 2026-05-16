@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { projects } from "@/lib/db/schema";
 import { withUserContext } from "@/lib/db/rls";
 import { truncateAll } from "@/tests/setup/schema";
 import { appUserConnect, seedUserOrgProject } from "@/tests/setup/seed";
@@ -69,22 +71,15 @@ describe("withUserContext GUC isolation", () => {
     // could see the other's row.
     const [seenByA, seenByB] = await Promise.all([
       withUserContext(teamA.userId, async (tx) =>
-        tx.execute<{ id: string }>(
-          `SELECT id FROM public.projects` as unknown as never,
-        ),
+        tx.select({ id: projects.id }).from(projects),
       ),
       withUserContext(teamB.userId, async (tx) =>
-        tx.execute<{ id: string }>(
-          `SELECT id FROM public.projects` as unknown as never,
-        ),
+        tx.select({ id: projects.id }).from(projects),
       ),
     ]);
 
-    const idsA = (seenByA as unknown as { id: string }[]).map((r) => r.id);
-    const idsB = (seenByB as unknown as { id: string }[]).map((r) => r.id);
-
-    expect(idsA).toEqual([teamA.projectId]);
-    expect(idsB).toEqual([teamB.projectId]);
+    expect(seenByA.map((r) => r.id)).toEqual([teamA.projectId]);
+    expect(seenByB.map((r) => r.id)).toEqual([teamB.projectId]);
   });
 
   test("GUC is empty on a fresh connection after a transaction aborts", async () => {
@@ -102,8 +97,29 @@ describe("withUserContext GUC isolation", () => {
 
     // Different connection (bare pool). The GUC must report empty.
     const c = appUserConnect();
-    const [row] =
-      await c<{ value: string }[]>`SELECT current_setting('app.user_id', TRUE) AS value`;
+    const [row] = await c<{ value: string }[]>`
+      SELECT current_setting('app.user_id', TRUE) AS value
+    `;
+    expect(row.value === "" || row.value === null).toBe(true);
+  });
+
+  test("setting GUC inside a frame does not leak after a successful commit", async () => {
+    // Symmetric to the abort-path test — pins the contract for the
+    // commit path too. `eq` import is reused so the read is typed.
+    const fx = await seedUserOrgProject("guc-commit");
+
+    await withUserContext(fx.userId, async (tx) => {
+      const rows = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.id, fx.projectId));
+      expect(rows.length).toBe(1);
+    });
+
+    const c = appUserConnect();
+    const [row] = await c<{ value: string }[]>`
+      SELECT current_setting('app.user_id', TRUE) AS value
+    `;
     expect(row.value === "" || row.value === null).toBe(true);
   });
 });
