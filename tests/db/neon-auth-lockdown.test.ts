@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
 import { appUserConnect, seedUserOrgProject } from "@/tests/setup/seed";
+import { expectQueryRejects } from "@/tests/setup/expect-query";
 
 afterEach(async () => {
   await truncateAll();
@@ -25,13 +26,10 @@ describe("app_user neon_auth lockdown", () => {
   for (const t of tables) {
     test(`app_user cannot SELECT from neon_auth.${t}`, async () => {
       const c = appUserConnect();
-      try {
-        await expect(
-          c.unsafe(`SELECT 1 FROM neon_auth."${t}" LIMIT 1`),
-        ).rejects.toThrow(/permission denied/i);
-      } finally {
-        await c.end({ timeout: 5 });
-      }
+      await expectQueryRejects(
+        c.unsafe(`SELECT 1 FROM neon_auth."${t}" LIMIT 1`),
+        /permission denied/i,
+      );
     });
   }
 

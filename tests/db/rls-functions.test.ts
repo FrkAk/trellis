@@ -5,6 +5,7 @@ import {
   seedUserOrgProject,
   serviceRoleConnect,
 } from "@/tests/setup/seed";
+import { expectQueryRejects } from "@/tests/setup/expect-query";
 
 afterEach(async () => {
   await truncateAll();
@@ -72,19 +73,18 @@ describe("invite-code SECURITY DEFINER functions", () => {
     const fx = await seedUserOrgProject("lookup-shape");
     await seedCode({ orgId: fx.organizationId, code: "LOOKUPSHAPE" });
     const c = appUserConnect();
-    try {
-      await expect(
-        c`SELECT id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
-      ).rejects.toThrow(/column "id" does not exist/i);
-      await expect(
-        c`SELECT organization_id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
-      ).rejects.toThrow(/column "organization_id" does not exist/i);
-      await expect(
-        c`SELECT default_role FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
-      ).rejects.toThrow(/column "default_role" does not exist/i);
-    } finally {
-      await c.end({ timeout: 5 });
-    }
+    await expectQueryRejects(
+      c`SELECT id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      /column "id" does not exist/i,
+    );
+    await expectQueryRejects(
+      c`SELECT organization_id FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      /column "organization_id" does not exist/i,
+    );
+    await expectQueryRejects(
+      c`SELECT default_role FROM public.lookup_team_invite_code(${"LOOKUPSHAPE"})`,
+      /column "default_role" does not exist/i,
+    );
   });
 
   test("reserve_team_invite_code_slot increments use_count on a valid code", async () => {

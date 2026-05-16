@@ -79,28 +79,23 @@ let _serviceRolePool: Sql | undefined;
  * @returns Postgres-js client whose `.end` is a silent no-op.
  */
 function makeSharedPool(url: string): Sql {
-  // `connection.client_min_messages = warning` mutes server-side NOTICE
-  // chatter (TRUNCATE CASCADE, etc.) so test output stays scannable.
-  // `onnotice` is a defensive no-op for anything the server still sends.
+  // `onnotice` swallows server NOTICE chatter (TRUNCATE CASCADE, etc.)
+  // on the JS side so test output stays scannable.
   const real = postgres(url, {
     max: 4,
     idle_timeout: 30,
     onnotice: () => undefined,
-    connection: { client_min_messages: "warning" },
   });
-  return new Proxy(real, {
-    get(target, prop, receiver) {
-      if (prop === "end") return async () => undefined;
-      return Reflect.get(target, prop, receiver);
-    },
-    apply(target, _thisArg, args) {
-      return Reflect.apply(
-        target as unknown as (...a: unknown[]) => unknown,
-        real,
-        args,
-      );
-    },
-  }) as Sql;
+  // Overwrite `end` with a no-op so legacy `try { ... } finally { sql.end(...) }`
+  // callsites don't kill the shared pool for the next test. Idle connections
+  // close after 30s anyway; process exit reclaims everything.
+  //
+  // Mutating the method directly rather than wrapping in a Proxy: Bun's
+  // `expect.rejects.toThrow(...)` hangs when the rejected promise originates
+  // from a method called on a Proxy of a postgres-js client. Direct method
+  // overwrite sidesteps the issue entirely.
+  (real as unknown as { end: () => Promise<void> }).end = async () => undefined;
+  return real;
 }
 
 /**

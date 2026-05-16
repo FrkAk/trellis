@@ -7,6 +7,7 @@ import {
 } from "@/tests/setup/seed";
 import { superuserPool } from "@/tests/setup/global";
 import { withUserContext } from "@/lib/db/rls";
+import { expectQueryRejects } from "@/tests/setup/expect-query";
 
 afterEach(async () => {
   await truncateAll();
@@ -221,19 +222,16 @@ describe("RLS — defense-in-depth on team isolation", () => {
     }
 
     const c = appUserConnect();
-    try {
-      await expect(
-        c.begin(async (tx) => {
-          await tx`SELECT set_config('app.user_id', ${fxA.userId}, true)`;
-          await tx`
-            INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
-            VALUES (${taskAId}, ${taskBId}, 'depends_on')
-          `;
-        }),
-      ).rejects.toThrow(/row-level security|violates row-level security/i);
-    } finally {
-      await c.end({ timeout: 5 });
-    }
+    await expectQueryRejects(
+      c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fxA.userId}, true)`;
+        await tx`
+          INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+          VALUES (${taskAId}, ${taskBId}, 'depends_on')
+        `;
+      }),
+      /row-level security|violates row-level security/i,
+    );
   });
 
   test("task_edges USING hides cross-team edges from source-side member — SELECT and DELETE are both blocked", async () => {

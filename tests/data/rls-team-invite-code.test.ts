@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { superuserPool } from "@/tests/setup/global";
 import { truncateAll } from "@/tests/setup/schema";
 import { appUserConnect, seedUserOrgProject } from "@/tests/setup/seed";
+import { expectQueryRejects } from "@/tests/setup/expect-query";
 
 /**
  * Direct-SQL RLS tests for `team_invite_code` admin-only writes.
@@ -33,17 +34,14 @@ describe("team_invite_code RLS — admin-only writes", () => {
     }
 
     const c = appUserConnect();
-    try {
-      await expect(
-        c.begin(async (tx) => {
-          await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
-          await tx`INSERT INTO team_invite_code (organization_id, code, default_role)
-                   VALUES (${fx.organizationId}, 'BADCODE1', 'member')`;
-        }),
-      ).rejects.toThrow(/row-level security|violates row-level security/i);
-    } finally {
-      await c.end({ timeout: 5 });
-    }
+    await expectQueryRejects(
+      c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
+        await tx`INSERT INTO team_invite_code (organization_id, code, default_role)
+                 VALUES (${fx.organizationId}, 'BADCODE1', 'member')`;
+      }),
+      /row-level security|violates row-level security/i,
+    );
   });
 
   test("admin CAN INSERT a team_invite_code row via direct SQL", async () => {
