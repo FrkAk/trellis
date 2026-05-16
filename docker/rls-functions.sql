@@ -11,6 +11,10 @@
 -- granted to app_user only; the public role gets nothing. Audit by reading
 -- this file — every SECURITY DEFINER body is reviewable in one place.
 --
+-- LANGUAGE plpgsql is used on every SECURITY DEFINER body so the planner
+-- cannot inline them. Inlining has historically changed effective privileges
+-- around SECURITY DEFINER (CVE-2022-1552 class); plpgsql is never inlined.
+--
 -- KEEP IN SYNC WITH:
 --   lib/data/team-invite-code.ts (JS callers)
 --   docs/neon-prod-provisioning.sql section 9 (prod runbook pointer)
@@ -26,14 +30,17 @@ RETURNS TABLE (
   max_uses integer,
   use_count integer
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
-  SELECT revoked_at, expires_at, max_uses, use_count
-  FROM public.team_invite_code
-  WHERE code = p_code
+BEGIN
+  RETURN QUERY
+  SELECT t.revoked_at, t.expires_at, t.max_uses, t.use_count
+  FROM public.team_invite_code t
+  WHERE t.code = p_code
   LIMIT 1;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.lookup_team_invite_code(text) FROM public;
 GRANT EXECUTE ON FUNCTION public.lookup_team_invite_code(text) TO app_user;
@@ -43,18 +50,21 @@ GRANT EXECUTE ON FUNCTION public.lookup_team_invite_code(text) TO app_user;
 -- failure (anti-enumeration — caller cannot distinguish failure reasons).
 CREATE OR REPLACE FUNCTION public.reserve_team_invite_code_slot(p_code text)
 RETURNS TABLE (id uuid, organization_id uuid, default_role text)
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
-  UPDATE public.team_invite_code
-     SET use_count = use_count + 1,
+BEGIN
+  RETURN QUERY
+  UPDATE public.team_invite_code AS t
+     SET use_count = t.use_count + 1,
          updated_at = NOW()
-   WHERE code = p_code
-     AND revoked_at IS NULL
-     AND (expires_at IS NULL OR expires_at > NOW())
-     AND (max_uses IS NULL OR use_count < max_uses)
-  RETURNING id, organization_id, default_role;
+   WHERE t.code = p_code
+     AND t.revoked_at IS NULL
+     AND (t.expires_at IS NULL OR t.expires_at > NOW())
+     AND (t.max_uses IS NULL OR t.use_count < t.max_uses)
+  RETURNING t.id, t.organization_id, t.default_role;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text) FROM public;
 GRANT EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text) TO app_user;
@@ -64,20 +74,22 @@ GRANT EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text) TO app_user
 -- max_uses.
 CREATE OR REPLACE FUNCTION public.release_team_invite_code_slot(p_id uuid)
 RETURNS void
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
-  UPDATE public.team_invite_code
-     SET use_count = GREATEST(use_count - 1, 0),
+BEGIN
+  UPDATE public.team_invite_code AS t
+     SET use_count = GREATEST(t.use_count - 1, 0),
          updated_at = NOW()
-   WHERE id = p_id
+   WHERE t.id = p_id
      AND NOT EXISTS (
        SELECT 1
        FROM neon_auth."member" m
-       WHERE m."organizationId" = team_invite_code.organization_id
+       WHERE m."organizationId" = t.organization_id
          AND m."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
      );
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid) TO app_user;
@@ -93,11 +105,14 @@ GRANT EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid) TO app_user
 -- is already the documented BYPASSRLS connection.
 CREATE OR REPLACE FUNCTION public.list_org_project_ids(p_org_id uuid)
 RETURNS TABLE (id uuid)
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
-  SELECT id FROM public.projects WHERE organization_id = p_org_id;
+BEGIN
+  RETURN QUERY
+  SELECT p.id FROM public.projects p WHERE p.organization_id = p_org_id;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.list_org_project_ids(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.list_org_project_ids(uuid) TO service_role;
@@ -106,41 +121,50 @@ GRANT EXECUTE ON FUNCTION public.list_org_project_ids(uuid) TO service_role;
 -- ---------------------------------------------------------------------------
 -- current_user_* helpers — the only path app_user has to neon_auth.*.
 --
--- All are LANGUAGE sql STABLE SECURITY DEFINER. STABLE plus the `(SELECT
--- public.fn())` wrap in RLS predicates produces an InitPlan: one call per
--- query, regardless of row count. search_path is pinned so a hostile
--- caller cannot shadow neon_auth.* by setting a local search_path.
+-- STABLE plpgsql bodies. Postgres still memoizes STABLE function calls used
+-- inside WHERE / ANY constructs once per query plan. search_path is pinned
+-- so a hostile caller cannot shadow neon_auth.* by setting a local
+-- search_path.
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.current_user_org_ids()
 RETURNS uuid[]
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
-  SELECT COALESCE(
-    array_agg("organizationId") FILTER (WHERE "organizationId" IS NOT NULL),
-    ARRAY[]::uuid[]
-  )
-  FROM neon_auth."member"
-  WHERE "userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid;
+BEGIN
+  RETURN (
+    SELECT COALESCE(
+      array_agg("organizationId") FILTER (WHERE "organizationId" IS NOT NULL),
+      ARRAY[]::uuid[]
+    )
+    FROM neon_auth."member"
+    WHERE "userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
+  );
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.current_user_org_ids() FROM public;
 GRANT EXECUTE ON FUNCTION public.current_user_org_ids() TO app_user;
 
 CREATE OR REPLACE FUNCTION public.current_user_org_role(p_org_id uuid)
 RETURNS text
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
-  SELECT role
+DECLARE
+  v_role text;
+BEGIN
+  SELECT role INTO v_role
   FROM neon_auth."member"
   WHERE "organizationId" = p_org_id
     AND "userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
   LIMIT 1;
+  RETURN v_role;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.current_user_org_role(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.current_user_org_role(uuid) TO app_user;
@@ -157,11 +181,13 @@ RETURNS TABLE (
   member_created_at timestamptz,
   org_created_at timestamptz
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
+BEGIN
+  RETURN QUERY
   SELECT
     o.id,
     o.name,
@@ -174,22 +200,25 @@ AS $$
   INNER JOIN neon_auth."organization" o ON o.id = m."organizationId"
   WHERE m."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
   ORDER BY m."createdAt" ASC, o.id ASC;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.current_user_orgs() FROM public;
 GRANT EXECUTE ON FUNCTION public.current_user_orgs() TO app_user;
 
 CREATE OR REPLACE FUNCTION public.current_user_has_any_membership()
 RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
-  SELECT EXISTS (
+BEGIN
+  RETURN EXISTS (
     SELECT 1
     FROM neon_auth."member"
     WHERE "userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
   );
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.current_user_has_any_membership() FROM public;
 GRANT EXECUTE ON FUNCTION public.current_user_has_any_membership() TO app_user;
@@ -198,11 +227,13 @@ GRANT EXECUTE ON FUNCTION public.current_user_has_any_membership() TO app_user;
 -- callers cannot distinguish them (anti-enumeration).
 CREATE OR REPLACE FUNCTION public.current_user_visible_member(p_member_id uuid)
 RETURNS TABLE (id uuid, role text, organization_id uuid)
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
+BEGIN
+  RETURN QUERY
   SELECT m.id, m.role, m."organizationId"
   FROM neon_auth."member" m
   WHERE m.id = p_member_id
@@ -213,17 +244,20 @@ AS $$
         AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
     )
   LIMIT 1;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.current_user_visible_member(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.current_user_visible_member(uuid) TO app_user;
 
 CREATE OR REPLACE FUNCTION public.team_member_roles_visible(p_org_id uuid)
 RETURNS TABLE (role text)
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
+BEGIN
+  RETURN QUERY
   SELECT m.role
   FROM neon_auth."member" m
   WHERE m."organizationId" = p_org_id
@@ -233,6 +267,7 @@ AS $$
       WHERE caller."organizationId" = p_org_id
         AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
     );
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.team_member_roles_visible(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.team_member_roles_visible(uuid) TO app_user;
@@ -246,11 +281,13 @@ RETURNS TABLE (
   email text,
   member_created_at timestamptz
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
+BEGIN
+  RETURN QUERY
   SELECT m.id, m."userId", m.role, u.name, u.email, m."createdAt"
   FROM neon_auth."member" m
   INNER JOIN neon_auth."user" u ON u.id = m."userId"
@@ -262,6 +299,7 @@ AS $$
         AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
     )
   ORDER BY m."createdAt" ASC;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.team_members_visible(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.team_members_visible(uuid) TO app_user;
@@ -278,11 +316,13 @@ RETURNS TABLE (
   inviter_id uuid,
   inviter_name text
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
+BEGIN
+  RETURN QUERY
   SELECT i.id, i.email, i.role, i.status, i."expiresAt", i."createdAt",
          i."inviterId", u.name
   FROM neon_auth.invitation i
@@ -296,6 +336,7 @@ AS $$
         AND caller.role IN ('admin', 'owner')
     )
   ORDER BY i."createdAt" DESC;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.team_invitations_visible(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.team_invitations_visible(uuid) TO app_user;
@@ -304,11 +345,13 @@ GRANT EXECUTE ON FUNCTION public.team_invitations_visible(uuid) TO app_user;
 -- uuids for existence.
 CREATE OR REPLACE FUNCTION public.lookup_user_names_in_shared_orgs(p_user_ids uuid[])
 RETURNS TABLE (id uuid, name text)
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
+BEGIN
+  RETURN QUERY
   SELECT u.id, u.name
   FROM neon_auth."user" u
   WHERE u.id = ANY (p_user_ids)
@@ -320,6 +363,7 @@ AS $$
       WHERE m1."userId" = u.id
         AND m2."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
     );
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.lookup_user_names_in_shared_orgs(uuid[]) FROM public;
 GRANT EXECUTE ON FUNCTION public.lookup_user_names_in_shared_orgs(uuid[]) TO app_user;
@@ -374,12 +418,15 @@ CREATE TRIGGER tasks_project_id_immutable
 -- row is queued for deletion, so a user-scoped lookup races the cascade.
 CREATE OR REPLACE FUNCTION public.find_org_member_user_ids_as_admin(p_org_id uuid)
 RETURNS TABLE (user_id uuid)
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog
 AS $$
-  SELECT "userId" FROM neon_auth."member" WHERE "organizationId" = p_org_id;
+BEGIN
+  RETURN QUERY
+  SELECT m."userId" FROM neon_auth."member" m WHERE m."organizationId" = p_org_id;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.find_org_member_user_ids_as_admin(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.find_org_member_user_ids_as_admin(uuid) TO service_role;
