@@ -1,5 +1,4 @@
-import postgres from "postgres";
-import { getConnectionString } from "./global";
+import { superuserPool } from "./global";
 
 const TRUNCATE_TABLES = [
   "task_edges",
@@ -22,15 +21,12 @@ const TRUNCATE_TABLES = [
 
 /**
  * Wipe every test-relevant table. Call between tests to give each one
- * a clean DB without paying the cost of recreating the schema.
+ * a clean DB without paying the cost of recreating the schema. Runs on
+ * the shared superuser pool so no per-call connection setup overhead.
  */
 export async function truncateAll(): Promise<void> {
-  const sql = postgres(getConnectionString(), { max: 1 });
-  try {
-    await sql.unsafe(
-      `TRUNCATE ${TRUNCATE_TABLES.join(", ")} RESTART IDENTITY CASCADE`,
-    );
-  } finally {
-    await sql.end({ timeout: 5 });
-  }
+  const sql = superuserPool();
+  await sql.unsafe(
+    `TRUNCATE ${TRUNCATE_TABLES.join(", ")} RESTART IDENTITY CASCADE`,
+  );
 }

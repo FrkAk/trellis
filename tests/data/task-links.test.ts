@@ -1,7 +1,6 @@
 import { test, expect, afterEach } from "bun:test";
-import postgres from "postgres";
 import { truncateAll } from "@/tests/setup/schema";
-import { getConnectionString } from "@/tests/setup/global";
+import { superuserPool } from "@/tests/setup/global";
 import { seedUserOrgProject } from "@/tests/setup/seed";
 import { makeAuthContext } from "@/lib/auth/context";
 import {
@@ -299,7 +298,7 @@ test("deleting a task cascades and removes its task_links rows", async () => {
 
   await deleteTask(ctx, task.id);
 
-  const sql = postgres(getConnectionString(), { max: 1 });
+  const sql = superuserPool();
   try {
     const rows = await sql<{ count: number }[]>`
       SELECT COUNT(*)::int AS count FROM task_links WHERE task_id = ${task.id}

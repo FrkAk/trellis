@@ -1,8 +1,7 @@
 import { test, expect, beforeEach, afterEach, mock } from "bun:test";
-import postgres from "postgres";
 import { truncateAll } from "@/tests/setup/schema";
 import { seedUserOrgProject } from "@/tests/setup/seed";
-import { getConnectionString } from "@/tests/setup/global";
+import { superuserPool } from "@/tests/setup/global";
 import { broker } from "@/lib/realtime/broker";
 import { grantOrgAccess, revokeOrgAccess } from "@/lib/realtime/access";
 
@@ -27,7 +26,7 @@ const fakeConn = () => ({
  * the project lands in the same Postgres testcontainer.
  */
 async function addProject(orgId: string, suffix: string): Promise<string> {
-  const sql = postgres(getConnectionString(), { max: 1 });
+  const sql = superuserPool();
   try {
     const [p] = await sql<{ id: string }[]>`
       INSERT INTO projects ("organization_id", "title", "identifier")
@@ -164,7 +163,7 @@ test("revokeOrgAccess enumerates and unregisters subs for every project in the o
   // app_user nor service_role have DELETE on that table; only auth_role does
   // and it has no public-schema access, so the simplest path is the same
   // superuser the seed helper uses.
-  const su = postgres(getConnectionString(), { max: 1 });
+  const su = superuserPool();
   let project2Id = "";
   try {
     const [p2] = await su<{ id: string }[]>`

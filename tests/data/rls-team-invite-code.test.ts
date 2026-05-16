@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import postgres from "postgres";
-import { getConnectionString } from "@/tests/setup/global";
+import { superuserPool } from "@/tests/setup/global";
 import { truncateAll } from "@/tests/setup/schema";
 import { appUserConnect, seedUserOrgProject } from "@/tests/setup/seed";
 
@@ -25,7 +24,7 @@ afterEach(async () => {
 describe("team_invite_code RLS — admin-only writes", () => {
   test("regular member CANNOT INSERT a team_invite_code row via direct SQL", async () => {
     const fx = await seedUserOrgProject("ic-member");
-    const seed = postgres(getConnectionString(), { max: 1 });
+    const seed = superuserPool();
     try {
       await seed`UPDATE neon_auth."member" SET "role" = 'member'
                  WHERE "userId" = ${fx.userId} AND "organizationId" = ${fx.organizationId}`;
@@ -49,7 +48,7 @@ describe("team_invite_code RLS — admin-only writes", () => {
 
   test("admin CAN INSERT a team_invite_code row via direct SQL", async () => {
     const fx = await seedUserOrgProject("ic-admin");
-    const seed = postgres(getConnectionString(), { max: 1 });
+    const seed = superuserPool();
     try {
       await seed`UPDATE neon_auth."member" SET "role" = 'admin'
                  WHERE "userId" = ${fx.userId} AND "organizationId" = ${fx.organizationId}`;
@@ -74,7 +73,7 @@ describe("team_invite_code RLS — admin-only writes", () => {
 
   test("any member CAN SELECT team_invite_code rows for their org", async () => {
     const fx = await seedUserOrgProject("ic-select");
-    const seed = postgres(getConnectionString(), { max: 1 });
+    const seed = superuserPool();
     try {
       await seed`INSERT INTO team_invite_code (organization_id, code, default_role)
                  VALUES (${fx.organizationId}, 'SELECTABLE1', 'member')`;

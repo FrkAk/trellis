@@ -6,11 +6,10 @@ import {
   beforeEach,
   afterEach,
 } from "bun:test";
-import postgres from "postgres";
-import { getConnectionString } from "@/tests/setup/global";
+import { superuserPool } from "@/tests/setup/global";
 
 test("container is reachable and migrations applied", async () => {
-  const sql = postgres(getConnectionString(), { max: 1 });
+  const sql = superuserPool();
   try {
     const rows = await sql<{ name: string }[]>`
       SELECT table_name AS name FROM information_schema.tables

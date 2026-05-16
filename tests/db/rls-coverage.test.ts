@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import postgres from "postgres";
-import { getConnectionString } from "@/tests/setup/global";
+import { superuserPool } from "@/tests/setup/global";
 
 describe("RLS coverage — every public.* table is enabled + forced", () => {
   test("relrowsecurity = true and relforcerowsecurity = true for every public table", async () => {
-    const sql = postgres(getConnectionString(), { max: 1 });
+    const sql = superuserPool();
     try {
       const rows = await sql<
         { relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[]
@@ -41,7 +40,7 @@ describe("RLS coverage — every public.* table is enabled + forced", () => {
   });
 
   test("role BYPASSRLS attributes match the three-role split", async () => {
-    const sql = postgres(getConnectionString(), { max: 1 });
+    const sql = superuserPool();
     try {
       const rows = await sql<{ rolname: string; rolbypassrls: boolean }[]>`
         SELECT rolname, rolbypassrls
@@ -59,7 +58,7 @@ describe("RLS coverage — every public.* table is enabled + forced", () => {
   });
 
   test("every public.* table has at least one policy attached", async () => {
-    const sql = postgres(getConnectionString(), { max: 1 });
+    const sql = superuserPool();
     try {
       const rows = await sql<
         { tablename: string; policy_count: number }[]

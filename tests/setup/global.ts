@@ -63,6 +63,88 @@ async function waitForPostgres(url: string): Promise<void> {
   );
 }
 
+type Sql = ReturnType<typeof postgres>;
+
+let _superuserPool: Sql | undefined;
+let _appUserPool: Sql | undefined;
+let _serviceRolePool: Sql | undefined;
+
+/**
+ * Build a long-lived postgres-js pool shared across tests. `.end()` is
+ * proxied to a no-op so the legacy `try { ... } finally { sql.end(...) }`
+ * pattern in callers doesn't kill the pool for the next test. Idle
+ * connections close after 30s; process exit reclaims the rest.
+ *
+ * @param url - Connection URL with role credentials.
+ * @returns Postgres-js client whose `.end` is a silent no-op.
+ */
+function makeSharedPool(url: string): Sql {
+  const real = postgres(url, { max: 4, idle_timeout: 30 });
+  return new Proxy(real, {
+    get(target, prop, receiver) {
+      if (prop === "end") return async () => undefined;
+      return Reflect.get(target, prop, receiver);
+    },
+    apply(target, _thisArg, args) {
+      return Reflect.apply(
+        target as unknown as (...a: unknown[]) => unknown,
+        real,
+        args,
+      );
+    },
+  }) as Sql;
+}
+
+/**
+ * Rewrite the role + password segment of a postgres URL. Test roles use
+ * their role name as the password (`tests/setup/migrate.ts:provisionRoles`).
+ *
+ * @param url - Source URL.
+ * @param role - Target role name.
+ * @returns URL with `role:role@` substituted.
+ */
+function rewriteRoleUrl(url: string, role: string): string {
+  const u = new URL(url);
+  u.username = role;
+  u.password = role;
+  return u.toString();
+}
+
+/**
+ * Cached pool bound to the container superuser (`mymir/mymir`). Used by
+ * seed helpers and `truncateAll`. Stays warm for the whole test process.
+ *
+ * @returns Postgres-js client (with `.end` no-op'd) for superuser SQL.
+ */
+export function superuserPool(): Sql {
+  return (_superuserPool ??= makeSharedPool(getConnectionString()));
+}
+
+/**
+ * Cached pool bound to `app_user` — the RLS-bound runtime role. Use for
+ * assertions that must execute under RLS.
+ *
+ * @returns Postgres-js client (with `.end` no-op'd) bound to app_user.
+ */
+export function appUserPool(): Sql {
+  return (_appUserPool ??= makeSharedPool(
+    rewriteRoleUrl(getConnectionString(), "app_user"),
+  ));
+}
+
+/**
+ * Cached pool bound to `service_role` — BYPASSRLS. Use only where the
+ * production path also bypasses RLS (the 4 documented bypass sites in
+ * `lib/db/connection.ts`).
+ *
+ * @returns Postgres-js client (with `.end` no-op'd) bound to service_role.
+ */
+export function serviceRolePool(): Sql {
+  return (_serviceRolePool ??= makeSharedPool(
+    rewriteRoleUrl(getConnectionString(), "service_role"),
+  ));
+}
+
 /**
  * Idempotent global setup: wait for the externally-provisioned test
  * Postgres (docker compose locally, GitHub Actions service in CI),

@@ -1,7 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
-import postgres from "postgres";
 import { truncateAll } from "@/tests/setup/schema";
-import { getConnectionString } from "@/tests/setup/global";
+import { superuserPool } from "@/tests/setup/global";
 import { seedUserOrgProject } from "@/tests/setup/seed";
 import { listMembershipsWithCounts, demoteMemberWithGuard } from "@/lib/data/membership";
 
@@ -13,7 +12,7 @@ test("listMembershipsWithCounts paginates by (createdAt, id) cursor", async () =
   // Seed 1 user with 6 organizations (all owner-membership)
   const base = await seedUserOrgProject("memberpage");
 
-  const sqlc = postgres(getConnectionString(), { max: 1 });
+  const sqlc = superuserPool();
   try {
     for (let i = 0; i < 5; i++) {
       const [o] = await sqlc<{ id: string }[]>`
@@ -50,7 +49,7 @@ test("listMembershipsWithCounts paginates by (createdAt, id) cursor", async () =
 describe("demoteMemberWithGuard", () => {
   test("returns ok when demoting an admin who isn't the last owner", async () => {
     const f = await seedUserOrgProject("demote-ok");
-    const sqlc = postgres(getConnectionString(), { max: 1 });
+    const sqlc = superuserPool();
     let secondMemberId: string;
     try {
       const [u] = await sqlc<{ id: string }[]>`
@@ -111,7 +110,7 @@ describe("demoteMemberWithGuard", () => {
     const a = await seedUserOrgProject("demote-cross-a");
     const b = await seedUserOrgProject("demote-cross-b");
 
-    const sqlc = postgres(getConnectionString(), { max: 1 });
+    const sqlc = superuserPool();
     let bMemberId: string;
     try {
       const [m] = await sqlc<{ id: string }[]>`
@@ -153,7 +152,7 @@ describe("demoteMemberWithGuard", () => {
 
   test("last-owner guard blocks demoting the only owner", async () => {
     const f = await seedUserOrgProject("demote-lastowner");
-    const sqlc = postgres(getConnectionString(), { max: 1 });
+    const sqlc = superuserPool();
     let memberId: string;
     try {
       const [m] = await sqlc<{ id: string }[]>`
@@ -187,7 +186,7 @@ describe("demoteMemberWithGuard", () => {
 
   test("last-owner guard serializes concurrent demotes — only one of two owners gets demoted", async () => {
     const f = await seedUserOrgProject("demote-race");
-    const sqlc = postgres(getConnectionString(), { max: 1 });
+    const sqlc = superuserPool();
     let firstMemberId: string;
     let secondMemberId: string;
     try {
@@ -214,7 +213,7 @@ describe("demoteMemberWithGuard", () => {
     }
 
     const performDemote = async (memberId: string) => {
-      const c = postgres(getConnectionString(), { max: 1 });
+      const c = superuserPool();
       try {
         await c`
           UPDATE neon_auth."member"

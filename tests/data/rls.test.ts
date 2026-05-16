@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import postgres from "postgres";
 import { truncateAll } from "@/tests/setup/schema";
 import {
   appUserConnect,
   seedUserOrgProject,
   serviceRoleConnect,
 } from "@/tests/setup/seed";
-import { getConnectionString } from "@/tests/setup/global";
+import { superuserPool } from "@/tests/setup/global";
 import { withUserContext } from "@/lib/db/rls";
 
 afterEach(async () => {
@@ -85,7 +84,7 @@ describe("RLS — defense-in-depth on team isolation", () => {
     const teamA = await seedUserOrgProject("rls-e");
     const teamB = await seedUserOrgProject("rls-f");
 
-    const superuser = postgres(getConnectionString(), { max: 1 });
+    const superuser = superuserPool();
     try {
       await superuser`
         INSERT INTO tasks (project_id, title, sequence_number)
@@ -112,7 +111,7 @@ describe("RLS — defense-in-depth on team isolation", () => {
     const teamA = await seedUserOrgProject("rls-g");
     const teamB = await seedUserOrgProject("rls-h");
 
-    const superuser = postgres(getConnectionString(), { max: 1 });
+    const superuser = superuserPool();
     let taskAId = "";
     try {
       const [{ id }] = await superuser<{ id: string }[]>`

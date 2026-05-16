@@ -1,8 +1,7 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import postgres from "postgres";
 import { truncateAll } from "@/tests/setup/schema";
 import { seedUserOrgProject } from "@/tests/setup/seed";
-import { getConnectionString } from "@/tests/setup/global";
+import { superuserPool } from "@/tests/setup/global";
 import { makeAuthContext } from "@/lib/auth/context";
 import {
   createTeamInviteCode,
@@ -40,7 +39,7 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
     const fx = await seedUserOrgProject("dr-find");
 
     // Seed an existing invite code via the superuser bypass.
-    const seedSql = postgres(getConnectionString(), { max: 1 });
+    const seedSql = superuserPool();
     try {
       await seedSql`
         INSERT INTO team_invite_code (organization_id, code, created_by)
@@ -60,7 +59,7 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
     const teamA = await seedUserOrgProject("dr-find-a");
     const teamB = await seedUserOrgProject("dr-find-b");
 
-    const seedSql = postgres(getConnectionString(), { max: 1 });
+    const seedSql = superuserPool();
     try {
       await seedSql`
         INSERT INTO team_invite_code (organization_id, code, created_by)
@@ -92,7 +91,7 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
 
     // Confirm the row really landed (read via the superuser bypass to
     // sidestep the policy and prove the write itself happened).
-    const verify = postgres(getConnectionString(), { max: 1 });
+    const verify = superuserPool();
     try {
       const rows =
         await verify<{ code: string }[]>`SELECT code FROM team_invite_code WHERE organization_id = ${fx.organizationId}`;
@@ -106,7 +105,7 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
   test("rotateTeamInviteCode succeeds under app_user (uses withUserContext)", async () => {
     const fx = await seedUserOrgProject("dr-rotate");
 
-    const seedSql = postgres(getConnectionString(), { max: 1 });
+    const seedSql = superuserPool();
     try {
       await seedSql`
         INSERT INTO team_invite_code (organization_id, code, created_by, use_count)
@@ -131,7 +130,7 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
   test("revokeTeamInviteCode succeeds under app_user (uses withUserContext)", async () => {
     const fx = await seedUserOrgProject("dr-revoke");
 
-    const seedSql = postgres(getConnectionString(), { max: 1 });
+    const seedSql = superuserPool();
     try {
       await seedSql`
         INSERT INTO team_invite_code (organization_id, code, created_by)
@@ -151,7 +150,7 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
     const teamA = await seedUserOrgProject("dr-cross-a");
     const teamB = await seedUserOrgProject("dr-cross-b");
 
-    const seedSql = postgres(getConnectionString(), { max: 1 });
+    const seedSql = superuserPool();
     try {
       await seedSql`
         INSERT INTO team_invite_code (organization_id, code, created_by)
@@ -173,7 +172,7 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
     expect(rotated).toBeNull();
 
     // Confirm teamA's row is unchanged.
-    const verify = postgres(getConnectionString(), { max: 1 });
+    const verify = superuserPool();
     try {
       const rows =
         await verify<{ code: string }[]>`SELECT code FROM team_invite_code WHERE organization_id = ${teamA.organizationId}`;
