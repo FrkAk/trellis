@@ -41,6 +41,7 @@ import type { AuthContext } from "@/lib/auth/context";
 import {
   assertProjectAccess,
   assertTaskAccess,
+  assertTaskAccessTx,
   ForbiddenError,
   isUuid,
 } from "@/lib/auth/authorization";
@@ -100,6 +101,43 @@ export async function appendTaskHistory(
         updatedAt: new Date(),
       })
       .where(eq(tasks.id, taskId));
+  };
+  if ("tx" in opts) {
+    await run(opts.tx);
+    return;
+  }
+  await withUserContext(opts.userId, run);
+}
+
+/**
+ * Append the same history entry to multiple tasks in a single UPDATE.
+ * Used by edge mutations to log "edge created/updated/deleted" on both
+ * endpoints with one wire round-trip instead of two serial UPDATEs
+ * inside the transaction.
+ *
+ * Caller is responsible for asserting access to every task in `taskIds`
+ * — same contract as {@link appendTaskHistory}. Duplicates and empty
+ * arrays are handled gracefully (no-op for empty input).
+ *
+ * @param taskIds - UUIDs of the tasks to append to. Duplicates dedup'd.
+ * @param entry - The history entry to append to every supplied task.
+ * @param opts - Either `{ tx }` or `{ userId }`; see {@link appendTaskHistory}.
+ */
+export async function appendTaskHistoryMany(
+  taskIds: string[],
+  entry: HistoryEntry,
+  opts: { tx: Tx } | { userId: string },
+): Promise<void> {
+  const dedup = [...new Set(taskIds)];
+  if (dedup.length === 0) return;
+  const run = async (handle: Tx) => {
+    await handle
+      .update(tasks)
+      .set({
+        history: sql`${tasks.history} || ${JSON.stringify([entry])}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(inArray(tasks.id, dedup));
   };
   if ("tx" in opts) {
     await run(opts.tx);
@@ -429,10 +467,27 @@ export async function getTaskFull(
   ctx: AuthContext,
   taskId: string,
 ): Promise<TaskFull> {
-  await assertTaskAccess(taskId, ctx);
-  const rows = await withUserContext(ctx.userId, (tx) =>
-    fetchTaskFull(tx, taskId),
-  );
+  return withUserContext(ctx.userId, (tx) => getTaskFullTx(tx, taskId));
+}
+
+/**
+ * Same contract as {@link getTaskFull} but runs on a caller-supplied
+ * transaction handle. Use when an outer `withUserContext` frame is
+ * already open (e.g. a context-builder that wants the access check, the
+ * row fetch, and the surrounding work to all share one tx).
+ *
+ * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param taskId - UUID of the task.
+ * @returns Full task row with composed `taskRef`, assignees, criteria,
+ *   decisions, and links.
+ * @throws ForbiddenError when the caller is not a member of the task's team.
+ */
+export async function getTaskFullTx(
+  tx: Tx,
+  taskId: string,
+): Promise<TaskFull> {
+  await assertTaskAccessTx(tx, taskId);
+  const rows = await fetchTaskFull(tx, taskId);
   if (rows.length === 0) {
     throw new Error(
       `getTaskFull: task ${taskId} disappeared after access check`,
@@ -542,6 +597,47 @@ export async function fetchAssigneesByTaskUnchecked(
       FROM unnest(${uuidArray(taskIds)}) AS t(task_id)
       CROSS JOIN LATERAL public.task_assignees_visible(t.task_id) a
       ORDER BY a.name
+    `,
+  );
+  for (const r of rows) {
+    const list = result.get(r.task_id) ?? [];
+    list.push({ userId: r.user_id, name: r.name, email: r.email });
+    result.set(r.task_id, list);
+  }
+  return result;
+}
+
+/**
+ * Batched sibling of {@link fetchAssigneesByTaskUnchecked} that resolves the
+ * caller-membership check ONCE for the whole project, rather than N times
+ * per task. Calls `public.task_assignees_for_project_visible`, which holds
+ * the same anti-disclosure contract as the per-task variant (empty result
+ * for non-members; no oracle on project existence).
+ *
+ * UNCHECKED: caller must assert project access (`assertProjectAccess`)
+ * before invoking. The `Unchecked` suffix is the contract — do not strip
+ * it when wrapping or re-exporting.
+ *
+ * @param projectId - UUID of the project whose tasks to enumerate.
+ * @param conn - Drizzle client or transaction handle from an active
+ *   `withUserContext` frame; the GUC scopes the visible row set.
+ * @returns Map of taskId -> AssigneeRef[]; tasks without assignees omitted.
+ */
+export async function fetchAssigneesByProjectUnchecked(
+  projectId: string,
+  conn: Conn,
+): Promise<Map<string, AssigneeRef[]>> {
+  const result = new Map<string, AssigneeRef[]>();
+  const rows = await executeRaw<{
+    task_id: string;
+    user_id: string;
+    name: string;
+    email: string;
+  }>(
+    conn,
+    sql`
+      SELECT task_id, user_id, name, email
+      FROM public.task_assignees_for_project_visible(${projectId}::uuid)
     `,
   );
   for (const r of rows) {

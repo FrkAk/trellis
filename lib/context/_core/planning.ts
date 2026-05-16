@@ -2,14 +2,14 @@ import "server-only";
 
 import {
   getDependencyChain,
-  getDownstream,
+  getDownstreamTx,
 } from "@/lib/data/traversal";
 import {
   fetchDependencyTasks,
   fetchEdgeNotesBySource,
   fetchEdgeNotesByTarget,
   fetchTaskSummaries,
-  getTaskFull,
+  getTaskFullTx,
 } from "@/lib/data/task";
 import { getProjectHeader } from "@/lib/data/project";
 import { section, formatCriteria, formatDecisions } from "@/lib/context/format";
@@ -32,13 +32,9 @@ export async function buildPlanningContext(
   ctx: AuthContext,
   taskId: string,
 ): Promise<string> {
-  const task = await getTaskFull(ctx, taskId);
-
-  // getDownstream is public — caller already asserted; pass ctx through.
-  // It opens its own withUserContext, so keep it outside the wrap below.
-  const downstream = await getDownstream(ctx, taskId, 2);
-
   return withUserContext(ctx.userId, async (tx) => {
+    const task = await getTaskFullTx(tx, taskId);
+    const downstream = await getDownstreamTx(tx, taskId, 2);
     const project = await getProjectHeader(task.projectId, tx);
     if (!project) {
       console.error("Task has no joinable project", {

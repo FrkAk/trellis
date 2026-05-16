@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, eq, sql } from "drizzle-orm";
 import { type Conn } from "@/lib/db/raw";
-import { withUserContext } from "@/lib/db/rls";
+import { withUserContext, type Tx } from "@/lib/db/rls";
 import { tasks, projects, taskEdges } from "@/lib/db/schema";
 import { fetchDependencyChain } from "@/lib/db/raw/fetch-dependency-chain";
 import { fetchDownstream } from "@/lib/db/raw/fetch-downstream";
@@ -12,7 +12,7 @@ import { hasCriteriaExpr, deriveTaskStatesSlim } from "@/lib/data/task";
 import type { AuthContext } from "@/lib/auth/context";
 import {
   assertProjectAccess,
-  assertTaskAccess,
+  assertTaskAccessTx,
 } from "@/lib/auth/authorization";
 
 // ---------------------------------------------------------------------------
@@ -169,44 +169,61 @@ export async function getDownstream(
   taskId: string,
   maxDepth = 10,
 ): Promise<DownstreamNode[]> {
-  const rootTask = await assertTaskAccess(taskId, ctx);
+  return withUserContext(ctx.userId, (tx) =>
+    getDownstreamTx(tx, taskId, maxDepth),
+  );
+}
+
+/**
+ * Same contract as {@link getDownstream} but runs on a caller-supplied
+ * transaction handle. Use from a context-builder that already opened a
+ * `withUserContext` frame so the access check, the recursive CTE, and
+ * the downstream row-info lookup all share one tx.
+ *
+ * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param taskId - UUID of the starting task.
+ * @param maxDepth - Maximum traversal depth (default 10).
+ * @returns Array of downstream tasks with depth.
+ */
+export async function getDownstreamTx(
+  tx: Tx,
+  taskId: string,
+  maxDepth = 10,
+): Promise<DownstreamNode[]> {
+  const rootTask = await assertTaskAccessTx(tx, taskId);
   const projectId = rootTask.projectId;
 
-  return withUserContext(ctx.userId, async (tx) => {
-    const raw = await fetchDownstream(tx, taskId, projectId, maxDepth);
-    if (raw.length === 0) return [];
+  const raw = await fetchDownstream(tx, taskId, projectId, maxDepth);
+  if (raw.length === 0) return [];
 
-    const ids = raw.map((r) => r.id);
-    const taskRows = await tx
-      .select({
-        id: tasks.id,
-        title: tasks.title,
-        sequenceNumber: tasks.sequenceNumber,
-        identifier: projects.identifier,
-      })
-      .from(tasks)
-      .innerJoin(projects, eq(tasks.projectId, projects.id))
-      .where(
-        sql`${tasks.id} IN ${ids} AND ${tasks.projectId} = ${projectId}`,
-      );
+  const ids = raw.map((r) => r.id);
+  const taskRows = await tx
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      sequenceNumber: tasks.sequenceNumber,
+      identifier: projects.identifier,
+    })
+    .from(tasks)
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
+    .where(sql`${tasks.id} IN ${ids} AND ${tasks.projectId} = ${projectId}`);
 
-    const infoMap = new Map<string, { taskRef: string; title: string }>();
-    for (const t of taskRows) {
-      infoMap.set(t.id, {
-        taskRef: composeTaskRef(asIdentifier(t.identifier), t.sequenceNumber),
-        title: t.title,
-      });
-    }
-
-    return raw.map((r) => {
-      const info = infoMap.get(r.id);
-      return {
-        id: r.id,
-        taskRef: info?.taskRef ?? "",
-        title: info?.title ?? "",
-        depth: r.depth,
-      };
+  const infoMap = new Map<string, { taskRef: string; title: string }>();
+  for (const t of taskRows) {
+    infoMap.set(t.id, {
+      taskRef: composeTaskRef(asIdentifier(t.identifier), t.sequenceNumber),
+      title: t.title,
     });
+  }
+
+  return raw.map((r) => {
+    const info = infoMap.get(r.id);
+    return {
+      id: r.id,
+      taskRef: info?.taskRef ?? "",
+      title: info?.title ?? "",
+      depth: r.depth,
+    };
   });
 }
 

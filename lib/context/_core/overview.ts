@@ -6,15 +6,15 @@ import {
   composeTaskRef,
   enrichWithTaskRef,
 } from "@/lib/graph/identifier";
-import { getProjectTags } from "@/lib/data/project";
+import { getProjectTagsTx } from "@/lib/data/project";
 import {
   listProjectTasks,
-  fetchAssigneesByTaskUnchecked,
+  fetchAssigneesByProjectUnchecked,
 } from "@/lib/data/task";
 import { fetchEdgesForTaskIds } from "@/lib/data/edge";
 import { compress } from "@/lib/context/format";
 import type { AuthContext } from "@/lib/auth/context";
-import { assertProjectAccess } from "@/lib/auth/authorization";
+import { assertProjectAccessTx } from "@/lib/auth/authorization";
 import { withUserContext } from "@/lib/db/rls";
 
 /** Task summary within a project overview. */
@@ -70,18 +70,14 @@ export async function buildProjectOverview(
   ctx: AuthContext,
   projectId: string,
 ): Promise<ProjectOverview> {
-  const { project } = await assertProjectAccess(projectId, ctx);
-
-  // getProjectTags is public — it opens its own withUserContext, so keep it
-  // outside the wrap below.
-  const projectTags = await getProjectTags(ctx, projectId);
-
   return withUserContext(ctx.userId, async (tx) => {
+    const { project } = await assertProjectAccessTx(tx, projectId);
+    const projectTags = await getProjectTagsTx(tx, projectId);
     const allTasks = await listProjectTasks(projectId, tx);
 
     const identifier = asIdentifier(project.identifier);
-    const assigneesByTask = await fetchAssigneesByTaskUnchecked(
-      allTasks.map((t) => t.id),
+    const assigneesByTask = await fetchAssigneesByProjectUnchecked(
+      projectId,
       tx,
     );
     const taskSummaries: TaskSummary[] = enrichWithTaskRef(

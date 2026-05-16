@@ -2,14 +2,14 @@ import "server-only";
 
 import {
   getDependencyChain,
-  getDownstream,
+  getDownstreamTx,
 } from "@/lib/data/traversal";
 import {
   fetchDependencyTasks,
   fetchEdgeNotesBySource,
   fetchEdgeNotesByTarget,
   fetchTaskSummaries,
-  getTaskFull,
+  getTaskFullTx,
 } from "@/lib/data/task";
 import { section, formatCriteria, formatDecisions } from "@/lib/context/format";
 import type { AuthContext } from "@/lib/auth/context";
@@ -30,22 +30,20 @@ export async function buildAgentContext(
   ctx: AuthContext,
   taskId: string,
 ): Promise<string> {
-  const task = await getTaskFull(ctx, taskId);
-
-  const taskRef = task.taskRef;
-  const tags = (task.tags as string[] | null) ?? [];
-  const files = (task.files as string[] | null) ?? [];
-  const status = task.status as string;
-  const priority = task.priority as string | null;
-  const estimate = task.estimate as number | null;
-  const assignees = task.assignees;
-  const links = task.links;
-
-  // getDownstream is public — caller already asserted; pass ctx through.
-  // It opens its own withUserContext, so keep it outside the wrap below.
-  const downstream = await getDownstream(ctx, taskId, 2);
-
   return withUserContext(ctx.userId, async (tx) => {
+    const task = await getTaskFullTx(tx, taskId);
+
+    const taskRef = task.taskRef;
+    const tags = (task.tags as string[] | null) ?? [];
+    const files = (task.files as string[] | null) ?? [];
+    const status = task.status as string;
+    const priority = task.priority as string | null;
+    const estimate = task.estimate as number | null;
+    const assignees = task.assignees;
+    const links = task.links;
+
+    const downstream = await getDownstreamTx(tx, taskId, 2);
+
     const [deps, upstreamEdgeNotes] = await Promise.all([
       getDependencyChain(taskId, task.projectId, 2, tx),
       fetchEdgeNotesBySource(task.projectId, taskId, tx),

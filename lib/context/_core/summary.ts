@@ -5,8 +5,8 @@ import type {
   Priority,
   Estimate,
 } from "@/lib/types";
-import { getTaskEdgesDetailed } from "@/lib/data/edge";
-import { getTaskFull } from "@/lib/data/task";
+import { getTaskEdgesDetailedTx } from "@/lib/data/edge";
+import { getTaskFullTx } from "@/lib/data/task";
 import type { TaskLinkRef } from "@/lib/data/views";
 import { getProjectHeader } from "@/lib/data/project";
 import type { AuthContext } from "@/lib/auth/context";
@@ -54,12 +54,9 @@ export async function buildSummaryContext(
   ctx: AuthContext,
   taskId: string,
 ): Promise<SummaryContext> {
-  // getTaskFull and getTaskEdgesDetailed each open their own withUserContext,
-  // so keep them outside the wrap below.
-  const task = await getTaskFull(ctx, taskId);
-  const detailedEdges = await getTaskEdgesDetailed(ctx, taskId);
-
   return withUserContext(ctx.userId, async (tx) => {
+    const task = await getTaskFullTx(tx, taskId);
+    const detailedEdges = await getTaskEdgesDetailedTx(tx, taskId);
     const project = await getProjectHeader(task.projectId, tx);
     if (!project) {
       console.error("Task has no joinable project", {

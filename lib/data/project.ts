@@ -54,6 +54,7 @@ import {
   ForbiddenError,
   InsufficientRoleError,
   assertProjectAccess,
+  assertProjectAccessTx,
   isUuid,
 } from "@/lib/auth/authorization";
 import {
@@ -435,10 +436,24 @@ export async function getProjectTags(
   ctx: AuthContext,
   projectId: string,
 ): Promise<ProjectTag[]> {
-  await assertProjectAccess(projectId, ctx);
-  return withUserContext(ctx.userId, async (tx) =>
-    aggregateProjectTags(tx, projectId),
-  );
+  return withUserContext(ctx.userId, (tx) => getProjectTagsTx(tx, projectId));
+}
+
+/**
+ * Same contract as {@link getProjectTags} but runs on a caller-supplied
+ * transaction handle so the access check and the aggregation share one
+ * `withUserContext` frame with the surrounding work.
+ *
+ * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param projectId - UUID of the project.
+ * @returns Sorted tag vocabulary with usage counts.
+ */
+export async function getProjectTagsTx(
+  tx: Tx,
+  projectId: string,
+): Promise<ProjectTag[]> {
+  await assertProjectAccessTx(tx, projectId);
+  return aggregateProjectTags(tx, projectId);
 }
 
 // ---------------------------------------------------------------------------

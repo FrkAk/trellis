@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, eq, or, sql } from "drizzle-orm";
 import type { Conn } from "@/lib/db/raw";
-import { withUserContext } from "@/lib/db/rls";
+import { withUserContext, type Tx } from "@/lib/db/rls";
 import {
   projects,
   tasks,
@@ -12,12 +12,13 @@ import {
 import type { EdgeType, HistoryEntry } from "@/lib/types";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
 import { fetchDependencyChain } from "@/lib/db/raw/fetch-dependency-chain";
-import { appendTaskHistory } from "@/lib/data/task";
+import { appendTaskHistoryMany } from "@/lib/data/task";
 import { formatMarkdown } from "@/lib/markdown/format";
 import type { AuthContext } from "@/lib/auth/context";
 import {
   ForbiddenError,
   assertTaskAccess,
+  assertTaskAccessTx,
   isUuid,
 } from "@/lib/auth/authorization";
 import { emitEdgeMutation } from "@/lib/realtime/events";
@@ -123,68 +124,85 @@ export async function getTaskEdgesDetailed(
   ctx: AuthContext,
   taskId: string,
 ): Promise<DetailedEdge[]> {
-  await assertTaskAccess(taskId, ctx);
+  return withUserContext(ctx.userId, (tx) =>
+    getTaskEdgesDetailedTx(tx, taskId),
+  );
+}
 
-  return withUserContext(ctx.userId, async (tx) => {
-    const edges = await tx
-      .select()
-      .from(taskEdges)
-      .where(
-        or(
-          eq(taskEdges.sourceTaskId, taskId),
-          eq(taskEdges.targetTaskId, taskId),
-        ),
-      );
+/**
+ * Same contract as {@link getTaskEdgesDetailed} but runs on a
+ * caller-supplied transaction handle so context builders can share one
+ * `withUserContext` frame across the access check, the edge fetch, and
+ * the surrounding work.
+ *
+ * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param taskId - UUID of the task.
+ * @returns Array of detailed edges.
+ */
+export async function getTaskEdgesDetailedTx(
+  tx: Tx,
+  taskId: string,
+): Promise<DetailedEdge[]> {
+  await assertTaskAccessTx(tx, taskId);
 
-    const idsToFetch = new Set<string>();
-    for (const edge of edges) {
-      const isOutgoing = edge.sourceTaskId === taskId;
-      idsToFetch.add(isOutgoing ? edge.targetTaskId : edge.sourceTaskId);
-    }
+  const edges = await tx
+    .select()
+    .from(taskEdges)
+    .where(
+      or(
+        eq(taskEdges.sourceTaskId, taskId),
+        eq(taskEdges.targetTaskId, taskId),
+      ),
+    );
 
-    const taskInfoMap = new Map<
-      string,
-      { taskRef: string; title: string; status: string }
-    >();
+  const idsToFetch = new Set<string>();
+  for (const edge of edges) {
+    const isOutgoing = edge.sourceTaskId === taskId;
+    idsToFetch.add(isOutgoing ? edge.targetTaskId : edge.sourceTaskId);
+  }
 
-    if (idsToFetch.size > 0) {
-      const ids = [...idsToFetch];
-      const taskRows = await tx
-        .select({
-          id: tasks.id,
-          title: tasks.title,
-          status: tasks.status,
-          sequenceNumber: tasks.sequenceNumber,
-          identifier: projects.identifier,
-        })
-        .from(tasks)
-        .innerJoin(projects, eq(tasks.projectId, projects.id))
-        .where(sql`${tasks.id} IN ${ids}`);
-      for (const t of taskRows) {
-        taskInfoMap.set(t.id, {
-          taskRef: composeTaskRef(asIdentifier(t.identifier), t.sequenceNumber),
-          title: t.title,
-          status: t.status,
-        });
-      }
-    }
+  const taskInfoMap = new Map<
+    string,
+    { taskRef: string; title: string; status: string }
+  >();
 
-    return edges
-      .map((edge) => {
-        const isOutgoing = edge.sourceTaskId === taskId;
-        const connectedId = isOutgoing ? edge.targetTaskId : edge.sourceTaskId;
-        const info = taskInfoMap.get(connectedId);
-        if (!info) return null;
-        return {
-          edgeId: edge.id,
-          edgeType: edge.edgeType,
-          direction: isOutgoing ? ("outgoing" as const) : ("incoming" as const),
-          note: edge.note,
-          connectedTask: { id: connectedId, ...info },
-        };
+  if (idsToFetch.size > 0) {
+    const ids = [...idsToFetch];
+    const taskRows = await tx
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        sequenceNumber: tasks.sequenceNumber,
+        identifier: projects.identifier,
       })
-      .filter((e): e is DetailedEdge => e !== null);
-  });
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(sql`${tasks.id} IN ${ids}`);
+    for (const t of taskRows) {
+      taskInfoMap.set(t.id, {
+        taskRef: composeTaskRef(asIdentifier(t.identifier), t.sequenceNumber),
+        title: t.title,
+        status: t.status,
+      });
+    }
+  }
+
+  return edges
+    .map((edge) => {
+      const isOutgoing = edge.sourceTaskId === taskId;
+      const connectedId = isOutgoing ? edge.targetTaskId : edge.sourceTaskId;
+      const info = taskInfoMap.get(connectedId);
+      if (!info) return null;
+      return {
+        edgeId: edge.id,
+        edgeType: edge.edgeType,
+        direction: isOutgoing ? ("outgoing" as const) : ("incoming" as const),
+        note: edge.note,
+        connectedTask: { id: connectedId, ...info },
+      };
+    })
+    .filter((e): e is DetailedEdge => e !== null);
 }
 
 // ---------------------------------------------------------------------------
@@ -323,10 +341,11 @@ export async function createEdge(
       actor: "ai",
     });
 
-    await Promise.all([
-      appendTaskHistory(data.sourceTaskId, historyEntry, { tx }),
-      appendTaskHistory(data.targetTaskId, historyEntry, { tx }),
-    ]);
+    await appendTaskHistoryMany(
+      [data.sourceTaskId, data.targetTaskId],
+      historyEntry,
+      { tx },
+    );
 
     return created;
   });
@@ -470,10 +489,11 @@ export async function updateEdge(
       actor: "ai",
     });
 
-    await Promise.all([
-      appendTaskHistory(existing.sourceTaskId, historyEntry, { tx }),
-      appendTaskHistory(existing.targetTaskId, historyEntry, { tx }),
-    ]);
+    await appendTaskHistoryMany(
+      [existing.sourceTaskId, existing.targetTaskId],
+      historyEntry,
+      { tx },
+    );
 
     return row;
   });
@@ -506,10 +526,11 @@ export async function removeEdge(ctx: AuthContext, edgeId: string) {
       actor: "user",
     });
 
-    await Promise.all([
-      appendTaskHistory(edge.sourceTaskId, historyEntry, { tx }),
-      appendTaskHistory(edge.targetTaskId, historyEntry, { tx }),
-    ]);
+    await appendTaskHistoryMany(
+      [edge.sourceTaskId, edge.targetTaskId],
+      historyEntry,
+      { tx },
+    );
   });
 
   emitEdgeMutation(projectId, edge.sourceTaskId, edge.targetTaskId);

@@ -457,6 +457,43 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.task_assignees_visible(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.task_assignees_visible(uuid) TO app_user;
 
+-- Batched per-project sibling of task_assignees_visible: evaluates the
+-- caller-membership EXISTS check ONCE for the whole project rather than
+-- once per task (the old `CROSS JOIN LATERAL task_assignees_visible(...)`
+-- pattern paid N membership probes for a project with N tasks). The
+-- caller-membership check resolves against `p_project_id`'s
+-- `organization_id` so an attacker probing project UUIDs cannot
+-- distinguish "no project" from "project in another org".
+CREATE OR REPLACE FUNCTION public.task_assignees_for_project_visible(
+  p_project_id uuid
+)
+RETURNS TABLE (task_id uuid, user_id uuid, name text, email text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, neon_auth, pg_catalog, pg_temp
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT ta.task_id, ta.user_id, u.name, u.email
+  FROM public.tasks t
+  INNER JOIN public.task_assignees ta ON ta.task_id = t.id
+  INNER JOIN neon_auth."user" u ON u.id = ta.user_id
+  WHERE t.project_id = p_project_id
+    AND EXISTS (
+      SELECT 1
+      FROM public.projects pj
+      INNER JOIN neon_auth."member" caller
+        ON caller."organizationId" = pj.organization_id
+      WHERE pj.id = p_project_id
+        AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
+    )
+  ORDER BY ta.task_id, u.name;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.task_assignees_for_project_visible(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.task_assignees_for_project_visible(uuid) TO app_user;
+
 -- Validates that every supplied user id is a member of the given org.
 -- Returns the subset that ARE members; the TS caller derives the missing
 -- set. Used by assignee writes to fail-fast before inserting orphan rows.

@@ -2,9 +2,12 @@ import "server-only";
 
 import type { Task } from "@/lib/db/schema";
 import type { AuthContext } from "@/lib/auth/context";
+import type { Tx } from "@/lib/db/rls";
 import {
   findProjectAccess,
+  findProjectAccessTx,
   findTaskAccess,
+  findTaskAccessTx,
   type ProjectAccessRow,
 } from "@/lib/data/access";
 import {
@@ -129,6 +132,39 @@ export async function assertProjectAccess(
 }
 
 /**
+ * Same contract as {@link assertProjectAccess} but runs the membership
+ * check on a caller-supplied transaction handle. Use when the protected
+ * work already opens (or will open) a `withUserContext` frame — passing
+ * its `tx` here avoids the second BEGIN/COMMIT round-trip the outer
+ * helper pays.
+ *
+ * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param projectId - UUID of the project to authorize.
+ * @param required - Optional permission gate (e.g. `{ project: ["delete"] }`).
+ * @returns The full project row and the caller's member role.
+ * @throws ForbiddenError on missing project or non-member access.
+ * @throws InsufficientRoleError when role does not satisfy `required`.
+ */
+export async function assertProjectAccessTx(
+  tx: Tx,
+  projectId: string,
+  required?: { project: readonly ProjectAction[] },
+): Promise<ProjectAccess> {
+  if (!isUuid(projectId)) {
+    throw new ForbiddenError("Forbidden", "project", projectId);
+  }
+  const access = await findProjectAccessTx(tx, projectId);
+  if (!access) throw new ForbiddenError("Forbidden", "project", projectId);
+  if (
+    required &&
+    !roleHasProjectPermission(access.memberRole, required.project)
+  ) {
+    throw new InsufficientRoleError(required.project, "project", projectId);
+  }
+  return access;
+}
+
+/**
  * Verify the caller can access the task and return its full row. Joins
  * through the parent project to confirm the caller is a member of the
  * project's organization. The active organization is not part of the gate
@@ -147,6 +183,27 @@ export async function assertTaskAccess(
     throw new ForbiddenError("Forbidden", "task", taskId);
   }
   const task = await findTaskAccess(ctx.userId, taskId);
+  if (!task) throw new ForbiddenError("Forbidden", "task", taskId);
+  return task;
+}
+
+/**
+ * Same contract as {@link assertTaskAccess} but runs on a caller-supplied
+ * transaction handle. See {@link assertProjectAccessTx} for rationale.
+ *
+ * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param taskId - UUID of the task to authorize.
+ * @returns The full task row.
+ * @throws ForbiddenError on missing task or cross-team access.
+ */
+export async function assertTaskAccessTx(
+  tx: Tx,
+  taskId: string,
+): Promise<Task> {
+  if (!isUuid(taskId)) {
+    throw new ForbiddenError("Forbidden", "task", taskId);
+  }
+  const task = await findTaskAccessTx(tx, taskId);
   if (!task) throw new ForbiddenError("Forbidden", "task", taskId);
   return task;
 }
