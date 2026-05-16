@@ -15,6 +15,11 @@
 -- cannot inline them. Inlining has historically changed effective privileges
 -- around SECURITY DEFINER (CVE-2022-1552 class); plpgsql is never inlined.
 --
+-- Every function pins search_path with `pg_temp` appended last
+-- (CVE-2018-1058 class). Postgres implicitly searches pg_temp first
+-- unless explicitly listed; putting it last forces attacker-injected
+-- temp objects to resolve only after the trusted schemas.
+--
 -- KEEP IN SYNC WITH:
 --   lib/data/team-invite-code.ts (JS callers)
 --   docs/neon-prod-provisioning.sql section 9 (prod runbook pointer)
@@ -32,7 +37,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog
+SET search_path = public, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -158,7 +163,7 @@ CREATE OR REPLACE FUNCTION public.list_org_project_ids(p_org_id uuid)
 RETURNS TABLE (id uuid)
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog
+SET search_path = public, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -183,7 +188,7 @@ RETURNS uuid[]
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN (
@@ -204,7 +209,7 @@ RETURNS text
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 DECLARE
   v_role text;
@@ -235,7 +240,7 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -261,7 +266,7 @@ RETURNS boolean
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN EXISTS (
@@ -281,7 +286,7 @@ RETURNS TABLE (id uuid, role text, organization_id uuid)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -305,7 +310,7 @@ RETURNS TABLE (role text)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -335,7 +340,7 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -370,7 +375,7 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -399,7 +404,7 @@ RETURNS TABLE (id uuid, name text)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -429,7 +434,7 @@ RETURNS TABLE (user_id uuid, name text, email text)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = public, neon_auth, pg_catalog
+SET search_path = public, neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -465,7 +470,7 @@ RETURNS TABLE (user_id uuid)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -492,7 +497,7 @@ RETURNS uuid
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 DECLARE
   v_org_id uuid;
@@ -521,6 +526,7 @@ GRANT EXECUTE ON FUNCTION public.lookup_invitation_org_id(uuid) TO app_user;
 CREATE OR REPLACE FUNCTION public.reject_projects_organization_id_change()
 RETURNS trigger
 LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
   IF NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
@@ -541,6 +547,7 @@ CREATE TRIGGER projects_organization_id_immutable
 CREATE OR REPLACE FUNCTION public.reject_tasks_project_id_change()
 RETURNS trigger
 LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
   IF NEW.project_id IS DISTINCT FROM OLD.project_id THEN
@@ -565,7 +572,7 @@ RETURNS TABLE (user_id uuid)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog
+SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
   RETURN QUERY

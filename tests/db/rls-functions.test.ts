@@ -421,3 +421,48 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
   });
 });
+
+describe("CVE-2018-1058 hardening — search_path", () => {
+  test("every SECURITY DEFINER function in public.* ends search_path with pg_temp", async () => {
+    const sr = serviceRoleConnect();
+    const rows = await sr<Array<{ proname: string; proconfig: string[] | null }>>`
+      SELECT p.proname, p.proconfig
+      FROM pg_proc p
+      INNER JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.prosecdef = true
+      ORDER BY p.proname
+    `;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const settings = row.proconfig ?? [];
+      const searchPath = settings.find((s) => s.toLowerCase().startsWith("search_path="));
+      expect(searchPath, `${row.proname}: missing SET search_path`).toBeDefined();
+      expect(
+        (searchPath ?? "").endsWith("pg_temp"),
+        `${row.proname}: search_path must end with pg_temp (got ${searchPath})`,
+      ).toBe(true);
+    }
+  });
+
+  test("trigger functions reject_*_change pin search_path", async () => {
+    const sr = serviceRoleConnect();
+    const rows = await sr<Array<{ proname: string; proconfig: string[] | null }>>`
+      SELECT p.proname, p.proconfig
+      FROM pg_proc p
+      INNER JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname IN (
+          'reject_projects_organization_id_change',
+          'reject_tasks_project_id_change'
+        )
+    `;
+    expect(rows.length).toBe(2);
+    for (const row of rows) {
+      const settings = row.proconfig ?? [];
+      const searchPath = settings.find((s) => s.toLowerCase().startsWith("search_path="));
+      expect(searchPath, `${row.proname}: missing SET search_path`).toBeDefined();
+      expect((searchPath ?? "").endsWith("pg_temp")).toBe(true);
+    }
+  });
+});
