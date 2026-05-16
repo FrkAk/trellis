@@ -79,7 +79,15 @@ let _serviceRolePool: Sql | undefined;
  * @returns Postgres-js client whose `.end` is a silent no-op.
  */
 function makeSharedPool(url: string): Sql {
-  const real = postgres(url, { max: 4, idle_timeout: 30 });
+  // `connection.client_min_messages = warning` mutes server-side NOTICE
+  // chatter (TRUNCATE CASCADE, etc.) so test output stays scannable.
+  // `onnotice` is a defensive no-op for anything the server still sends.
+  const real = postgres(url, {
+    max: 4,
+    idle_timeout: 30,
+    onnotice: () => undefined,
+    connection: { client_min_messages: "warning" },
+  });
   return new Proxy(real, {
     get(target, prop, receiver) {
       if (prop === "end") return async () => undefined;

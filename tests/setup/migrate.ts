@@ -101,7 +101,11 @@ async function applyRlsFunctions(sql: ReturnType<typeof postgres>): Promise<void
  * @param url - Connection string for the target database.
  */
 export async function applyMigrations(url: string): Promise<void> {
-  const sql = postgres(url, { max: 1 });
+  const sql = postgres(url, {
+    max: 1,
+    onnotice: () => undefined,
+    connection: { client_min_messages: "warning" },
+  });
   try {
     const initAuth = readFileSync(
       join(process.cwd(), "docker", "init-auth.sql"),
@@ -127,7 +131,13 @@ export async function applyMigrations(url: string): Promise<void> {
     throw new Error(`drizzle-kit push exited with code ${proc.exitCode}`);
   }
 
-  const sqlPolicies = postgres(url, { max: 1 });
+  // `DROP POLICY IF EXISTS` in docker/rls-policies.sql emits NOTICE
+  // chatter on a fresh DB; muted via client_min_messages + onnotice.
+  const sqlPolicies = postgres(url, {
+    max: 1,
+    onnotice: () => undefined,
+    connection: { client_min_messages: "warning" },
+  });
   try {
     await applyRlsFunctions(sqlPolicies);
     await applyRlsPolicies(sqlPolicies);
