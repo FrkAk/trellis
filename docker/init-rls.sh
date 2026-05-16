@@ -68,5 +68,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA drizzle
 -- shadowing surface entirely. service_role and auth_role lose TEMPORARY
 -- too; nothing in our query path creates temp tables. Regrant explicitly
 -- if a future feature needs them.
+-- KEEP IN SYNC WITH tests/setup/migrate.ts (testcontainer replay).
 REVOKE TEMPORARY ON DATABASE "${POSTGRES_DB}" FROM PUBLIC;
 EOSQL

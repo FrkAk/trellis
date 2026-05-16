@@ -34,6 +34,14 @@ async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
     "utf8",
   );
   await sql.unsafe(grants);
+
+  // CVE-2018-1058 layer 2: REVOKE TEMPORARY ON DATABASE — canonical
+  // statement lives in docker/init-rls.sh (self-host). Replayed here
+  // because init-rls.sh doesn't run in the testcontainer (see header).
+  const [{ current_database: db }] = await sql<{ current_database: string }[]>`
+    SELECT current_database()
+  `;
+  await sql.unsafe(`REVOKE TEMPORARY ON DATABASE "${db}" FROM PUBLIC`);
 }
 
 /**

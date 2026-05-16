@@ -468,6 +468,7 @@ describe("CVE-2018-1058 hardening — search_path", () => {
 
   test("app_user cannot CREATE TEMP TABLE (TEMPORARY revoked from PUBLIC)", async () => {
     const c = appUserConnect();
+    // PG 17 emits "...create temporary tables in database"; pre-17 emits "...for database".
     await expectQueryRejects(
       c`CREATE TEMP TABLE _temp_probe (x int)`,
       /permission denied (to create temporary tables in database|for database)/,
