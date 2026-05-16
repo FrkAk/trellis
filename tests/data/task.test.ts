@@ -5,6 +5,7 @@ import { seedUserOrgProject } from "@/tests/setup/seed";
 import { createTask, deleteTask, updateTask, searchTasksPaged, getTaskSlim, getTaskFull } from "@/lib/data/task";
 import { getProjectMaxUpdatedAt } from "@/lib/data/project";
 import { makeAuthContext } from "@/lib/auth/context";
+import { ForbiddenError } from "@/lib/auth/authorization";
 
 afterEach(async () => {
   await truncateAll();
@@ -314,13 +315,13 @@ test("createTask with assigneeIds rejects non-team-member users", async () => {
     projectId: f.projectId,
     title: "T",
     assigneeIds: [strangerId],
-  }).catch((e: unknown) => e) as { message?: string; resourceId?: string; name?: string } | null;
+  }).catch((e: unknown) => e);
 
-  expect(err).not.toBeNull();
-  expect(err?.name).toBe("ForbiddenError");
-  expect(err?.message).toBe("One or more assignees are not members of this team.");
-  expect(err?.resourceId).toBeUndefined();
-  expect(err?.message).not.toContain(strangerId);
+  expect(err).toBeInstanceOf(ForbiddenError);
+  const fe = err as ForbiddenError;
+  expect(fe.message).toBe("One or more assignees are not members of this team.");
+  expect(fe.resourceId).toBeUndefined();
+  expect(fe.message).not.toContain(strangerId);
 });
 
 test("updateTask appends assigneeIds by default and replaces with overwriteArrays", async () => {

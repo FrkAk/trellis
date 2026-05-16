@@ -38,6 +38,9 @@ async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
   // CVE-2018-1058 layer 2: REVOKE TEMPORARY ON DATABASE — canonical
   // statement lives in docker/init-rls.sh (self-host). Replayed here
   // because init-rls.sh doesn't run in the testcontainer (see header).
+  // Identifier interpolation is safe: `db` is sourced from current_database()
+  // on the trusted superuser connection — never from user input. Postgres
+  // identifiers cannot be parameterized positionally.
   const [{ current_database: db }] = await sql<{ current_database: string }[]>`
     SELECT current_database()
   `;

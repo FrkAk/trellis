@@ -1405,7 +1405,9 @@ export type CreateTaskInput = Omit<NewTask, "id" | "sequenceNumber"> & {
  * @param tx - Drizzle transaction handle.
  * @param projectId - UUID of the project the task belongs to.
  * @param userIds - Caller-supplied assignee ids.
- * @throws ForbiddenError if any supplied id is not a team member.
+ * @throws ForbiddenError with a generic message and no `resourceId` if any
+ *   supplied id is not a team member. Per-id details are deliberately
+ *   withheld so the error cannot be used as a membership oracle.
  */
 async function assertAssigneesInTeam(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
