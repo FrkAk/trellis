@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import type { Conn } from "@/lib/db/raw";
+import { executeRaw, type Conn } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import {
   projects,
@@ -15,7 +15,6 @@ import {
   type NewTask,
   type TaskLink,
 } from "@/lib/db/schema";
-import { user, member } from "@/lib/db/auth-schema";
 import { acquireProjectLock } from "@/lib/db/raw/acquire-project-lock";
 import { fetchTaskFull } from "@/lib/db/raw/fetch-task-full";
 import {
@@ -488,53 +487,48 @@ export async function getTaskFull(
 
 /**
  * Fetch the assignee projection (userId + name + email) for a task,
- * joined to `neon_auth.user` and ordered by name.
+ * routed through the `task_assignees_visible` SECURITY DEFINER function
+ * so `app_user` can read `neon_auth.user` under the Option-B lockdown.
  *
- * UNCHECKED: this function performs NO authorization. The caller is
- * responsible for asserting task access (`assertTaskAccess`) before
- * invoking. Calling without an upstream check leaks assignee identity
- * cross-team. The `Unchecked` suffix is the contract — do not strip
- * it when wrapping or re-exporting.
+ * UNCHECKED: the SDF itself re-checks caller membership of the task's
+ * org, but the upstream `assertTaskAccess` is still the contract. The
+ * `Unchecked` suffix is the contract — do not strip it when wrapping or
+ * re-exporting.
  *
  * @param taskId - UUID of the task.
- * @param conn - Drizzle client or transaction handle. Defaults to the bare
- *   `db` pool client; callers running under a `withUserContext` transaction
- *   should pass the active `tx` so the read participates in the same
- *   RLS-scoped frame.
+ * @param conn - Drizzle client or transaction handle. Callers running
+ *   under a `withUserContext` transaction should pass the active `tx`
+ *   so the read participates in the same RLS-scoped frame (the SDF
+ *   reads `app.user_id` from the GUC).
  * @returns Ordered array of assignee refs (empty when nobody is assigned).
  */
 export async function fetchAssigneesUnchecked(
   taskId: string,
   conn: Conn,
 ): Promise<AssigneeRef[]> {
-  return conn
-    .select({
-      userId: taskAssignees.userId,
-      name: user.name,
-      email: user.email,
-    })
-    .from(taskAssignees)
-    .innerJoin(user, eq(user.id, taskAssignees.userId))
-    .where(eq(taskAssignees.taskId, taskId))
-    .orderBy(asc(user.name));
+  const rows = await executeRaw<{
+    user_id: string;
+    name: string;
+    email: string;
+  }>(
+    conn,
+    sql`SELECT user_id, name, email FROM public.task_assignees_visible(${taskId}::uuid) ORDER BY name`,
+  );
+  return rows.map((r) => ({ userId: r.user_id, name: r.name, email: r.email }));
 }
 
 /**
- * Fetch assignee projections for a batch of task ids. Returns a map
- * keyed by taskId for easy zipping with a parallel task list.
+ * Fetch assignee projections for a batch of task ids in one round-trip
+ * via `LATERAL public.task_assignees_visible(...)`. Returns a map keyed
+ * by taskId for easy zipping with a parallel task list.
  *
- * UNCHECKED: this function performs NO authorization. The caller is
- * responsible for asserting access on every supplied taskId (typically
- * via `assertProjectAccess` on the parent project) before invoking.
- * Calling without an upstream check leaks assignee identity cross-team.
- * The `Unchecked` suffix is the contract — do not strip it when
- * wrapping or re-exporting.
+ * UNCHECKED: per-task membership is enforced by the SDF, but the upstream
+ * `assertProjectAccess` is still the contract. The `Unchecked` suffix is
+ * the contract — do not strip it when wrapping or re-exporting.
  *
  * @param taskIds - UUIDs to fetch assignees for.
- * @param conn - Drizzle client or transaction handle. Defaults to the bare
- *   `db` pool client; callers running under a `withUserContext` transaction
- *   should pass the active `tx` so the read participates in the same
- *   RLS-scoped frame.
+ * @param conn - Drizzle client or transaction handle. Callers running
+ *   under a `withUserContext` transaction should pass the active `tx`.
  * @returns Map of taskId -> AssigneeRef[]; missing tasks omitted.
  */
 export async function fetchAssigneesByTaskUnchecked(
@@ -543,21 +537,24 @@ export async function fetchAssigneesByTaskUnchecked(
 ): Promise<Map<string, AssigneeRef[]>> {
   const result = new Map<string, AssigneeRef[]>();
   if (taskIds.length === 0) return result;
-  const rows = await conn
-    .select({
-      taskId: taskAssignees.taskId,
-      userId: taskAssignees.userId,
-      name: user.name,
-      email: user.email,
-    })
-    .from(taskAssignees)
-    .innerJoin(user, eq(user.id, taskAssignees.userId))
-    .where(sql`${taskAssignees.taskId} IN ${taskIds}`)
-    .orderBy(asc(user.name));
+  const rows = await executeRaw<{
+    task_id: string;
+    user_id: string;
+    name: string;
+    email: string;
+  }>(
+    conn,
+    sql`
+      SELECT t.task_id, a.user_id, a.name, a.email
+      FROM unnest(${taskIds}::uuid[]) AS t(task_id)
+      CROSS JOIN LATERAL public.task_assignees_visible(t.task_id) a
+      ORDER BY a.name
+    `,
+  );
   for (const r of rows) {
-    const list = result.get(r.taskId) ?? [];
-    list.push({ userId: r.userId, name: r.name, email: r.email });
-    result.set(r.taskId, list);
+    const list = result.get(r.task_id) ?? [];
+    list.push({ userId: r.user_id, name: r.name, email: r.email });
+    result.set(r.task_id, list);
   }
   return result;
 }
@@ -1423,16 +1420,11 @@ async function assertAssigneesInTeam(
     .limit(1);
   if (!proj) throw new ProjectNotFoundError(projectId);
   const dedup = [...new Set(userIds)];
-  const rows = await tx
-    .select({ userId: member.userId })
-    .from(member)
-    .where(
-      and(
-        eq(member.organizationId, proj.organizationId),
-        sql`${member.userId} IN ${dedup}`,
-      ),
-    );
-  const found = new Set(rows.map((r) => r.userId));
+  const rows = await executeRaw<{ user_id: string }>(
+    tx,
+    sql`SELECT user_id FROM public.org_member_user_ids_visible(${proj.organizationId}::uuid, ${dedup}::uuid[])`,
+  );
+  const found = new Set(rows.map((r) => r.user_id));
   const missing = dedup.find((id) => !found.has(id));
   if (missing) {
     throw new ForbiddenError(

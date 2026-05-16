@@ -389,6 +389,99 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.lookup_user_names_in_shared_orgs(uuid[]) FROM public;
 GRANT EXECUTE ON FUNCTION public.lookup_user_names_in_shared_orgs(uuid[]) TO app_user;
 
+-- Returns assignees of a task to a caller who is a member of the task's
+-- org. Replaces an inline `JOIN neon_auth."user"` in `getTaskFull` (which
+-- app_user cannot run under the Option-B lockdown). Caller membership is
+-- re-checked inside the function so upstream regressions cannot leak
+-- assignee identity cross-team.
+CREATE OR REPLACE FUNCTION public.task_assignees_visible(p_task_id uuid)
+RETURNS TABLE (user_id uuid, name text, email text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, neon_auth, pg_catalog
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT ta.user_id, u.name, u.email
+  FROM public.task_assignees ta
+  INNER JOIN neon_auth."user" u ON u.id = ta.user_id
+  WHERE ta.task_id = p_task_id
+    AND EXISTS (
+      SELECT 1
+      FROM public.tasks t
+      INNER JOIN public.projects pj ON pj.id = t.project_id
+      INNER JOIN neon_auth."member" caller
+        ON caller."organizationId" = pj.organization_id
+      WHERE t.id = p_task_id
+        AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
+    )
+  ORDER BY u.name;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.task_assignees_visible(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.task_assignees_visible(uuid) TO app_user;
+
+-- Validates that every supplied user id is a member of the given org.
+-- Returns the subset that ARE members; the TS caller derives the missing
+-- set. Used by assignee writes to fail-fast before inserting orphan rows.
+-- Caller-membership self-check keeps the function from leaking membership
+-- of foreign orgs.
+CREATE OR REPLACE FUNCTION public.org_member_user_ids_visible(
+  p_org_id uuid,
+  p_user_ids uuid[]
+)
+RETURNS TABLE (user_id uuid)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = neon_auth, pg_catalog
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT m."userId"
+  FROM neon_auth."member" m
+  WHERE m."organizationId" = p_org_id
+    AND m."userId" = ANY (p_user_ids)
+    AND EXISTS (
+      SELECT 1
+      FROM neon_auth."member" caller
+      WHERE caller."organizationId" = p_org_id
+        AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
+    );
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.org_member_user_ids_visible(uuid, uuid[]) FROM public;
+GRANT EXECUTE ON FUNCTION public.org_member_user_ids_visible(uuid, uuid[]) TO app_user;
+
+-- Returns the invitation's organization_id only when the caller is a
+-- member of that org. NULL on miss or cross-org probe — anti-enumeration.
+-- Used by the cancel-invite action to scope its admin check.
+CREATE OR REPLACE FUNCTION public.lookup_invitation_org_id(p_invitation_id uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = neon_auth, pg_catalog
+AS $$
+DECLARE
+  v_org_id uuid;
+BEGIN
+  SELECT i."organizationId" INTO v_org_id
+  FROM neon_auth.invitation i
+  WHERE i.id = p_invitation_id
+    AND EXISTS (
+      SELECT 1
+      FROM neon_auth."member" caller
+      WHERE caller."organizationId" = i."organizationId"
+        AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
+    );
+  RETURN v_org_id;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.lookup_invitation_org_id(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.lookup_invitation_org_id(uuid) TO app_user;
+
 -- ---------------------------------------------------------------------------
 -- Immutability triggers — block cross-team moves at the DB level.
 -- RLS WITH CHECK passes when a dual-org member is in both source and

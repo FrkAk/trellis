@@ -1,21 +1,20 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { isUuid } from "@/lib/auth/authorization";
+import { executeRaw } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
-import { invitation } from "@/lib/db/auth-schema";
 
 /**
- * Fetch the organization id for an invitation. Used by the cancel-invite
- * action to scope the admin check to the invitation's own team.
- *
- * Wrapped in `withUserContext` for discipline-uniformity even though
- * `neon_auth.invitation` is not RLS-policied — the convention is that every
- * data-ring entry point opens a GUC frame so callers don't have to reason
- * about which reads are gated by RLS.
+ * Fetch the organization id for an invitation, routed through the
+ * `lookup_invitation_org_id` SECURITY DEFINER function so `app_user` can
+ * resolve `neon_auth.invitation` rows under the Option-B lockdown. The
+ * SDF returns the org id only when the caller is already a member of
+ * that org — cross-org probes resolve to null (anti-enumeration).
  *
  * @param userId - Authenticated caller's user id.
  * @param invitationId - UUID of the invitation.
- * @returns The organization id, or null if no row matches.
+ * @returns The organization id, or null when the invitation does not
+ *   exist or the caller is not a member of its org.
  */
 export async function findInvitationOrgId(
   userId: string,
@@ -23,11 +22,10 @@ export async function findInvitationOrgId(
 ): Promise<string | null> {
   if (!isUuid(invitationId)) return null;
   return withUserContext(userId, async (tx) => {
-    const [row] = await tx
-      .select({ organizationId: invitation.organizationId })
-      .from(invitation)
-      .where(eq(invitation.id, invitationId))
-      .limit(1);
-    return row?.organizationId ?? null;
+    const rows = await executeRaw<{ org_id: string | null }>(
+      tx,
+      sql`SELECT public.lookup_invitation_org_id(${invitationId}::uuid) AS org_id`,
+    );
+    return rows[0]?.org_id ?? null;
   });
 }
