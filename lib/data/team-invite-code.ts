@@ -2,7 +2,7 @@ import "server-only";
 
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { executeRaw, executeRawDiscard } from "@/lib/db/raw";
+import { executeRaw } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import { teamInviteCodes } from "@/lib/db/team-schema";
 
@@ -140,16 +140,24 @@ export type InviteCodeReservation = {
 
 /**
  * Atomically reserve a slot on an invite code: increments `use_count` if
- * the code is non-revoked, non-expired, and below `max_uses`. Returns the
- * row's `{id, orgId, defaultRole}` on success, null when the code is
- * invalid or exhausted.
+ * the code is non-revoked, non-expired, and below `max_uses`. Records the
+ * caller's `userId` in `reserved_by` so the matching release can confirm
+ * the same caller before mutating the slot. Returns the row's
+ * `{id, orgId, defaultRole}` on success, null when the code is invalid or
+ * exhausted.
  *
  * Anti-enumeration: a null result hides which validity guard failed.
  *
+ * Trust boundary: `userId` must come from a verified session (the action
+ * layer enforces this via `requireSession`). The SDF runs on the bare
+ * pool — it does NOT read `app.user_id` from the GUC.
+ *
+ * @param userId - Authenticated caller's user id.
  * @param code - Raw invite code string (already shape-validated).
  * @returns Reservation handle, or null on failure.
  */
 export async function reserveInviteCodeSlot(
+  userId: string,
   code: string,
 ): Promise<InviteCodeReservation | null> {
   const rows = await executeRaw<{
@@ -158,7 +166,7 @@ export async function reserveInviteCodeSlot(
     default_role: "member" | "admin";
   }>(
     db,
-    sql`SELECT id, organization_id, default_role FROM public.reserve_team_invite_code_slot(${code})`,
+    sql`SELECT id, organization_id, default_role FROM public.reserve_team_invite_code_slot(${code}, ${userId}::uuid)`,
   );
   const reserved = rows[0];
   if (!reserved) return null;
@@ -171,23 +179,37 @@ export async function reserveInviteCodeSlot(
 
 /**
  * Finalize a reservation after the downstream membership add resolves.
+ * Caller passes the explicit outcome — no server-side state inference.
  *
- * Dual semantic, evaluated server-side from the membership state:
- * - Member row exists (success path): clears `reserved_until`, keeps
+ * - `succeeded = true`: clears `reserved_until` + `reserved_by`, keeps
  *   `use_count`. The slot is consumed.
- * - No member row (failure path): decrements `use_count` and clears
- *   `reserved_until`. The slot is freed for the next attempt.
+ * - `succeeded = false`: decrements `use_count` and clears both
+ *   `reserved_until` and `reserved_by`. The slot is freed.
  *
- * Caller invokes this exactly once per reservation, on both success and
- * failure paths of the addMember call.
+ * The SDF gates on `reserved_by = userId`; a mismatch returns false and
+ * is logged. Caller invokes this exactly once per reservation, on both
+ * success and failure paths of the addMember call.
  *
+ * @param userId - Authenticated caller's user id (must match `reserved_by`).
  * @param id - UUID of the invite-code row whose slot was reserved.
+ * @param succeeded - Whether the downstream membership add succeeded.
  */
-export async function releaseInviteCodeSlot(id: string): Promise<void> {
-  await executeRawDiscard(
+export async function releaseInviteCodeSlot(
+  userId: string,
+  id: string,
+  succeeded: boolean,
+): Promise<void> {
+  const rows = await executeRaw<{ release_team_invite_code_slot: boolean }>(
     db,
-    sql`SELECT public.release_team_invite_code_slot(${id}::uuid)`,
+    sql`SELECT public.release_team_invite_code_slot(${id}::uuid, ${userId}::uuid, ${succeeded})`,
   );
+  if (!rows[0]?.release_team_invite_code_slot) {
+    console.error("[invite-code] release skipped: caller binding mismatch", {
+      reservationId: id,
+      userId,
+      succeeded,
+    });
+  }
 }
 
 /** Diagnostic outcome categories. */

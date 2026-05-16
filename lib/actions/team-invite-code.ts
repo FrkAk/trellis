@@ -341,7 +341,7 @@ export async function joinTeamByCodeAction(input: {
   }
   const { code } = parsed.data;
 
-  const reserved = await reserveInviteCodeSlot(code);
+  const reserved = await reserveInviteCodeSlot(userId, code);
 
   if (!reserved) {
     // Fire-and-forget: keeping the diagnostic SELECT off the response
@@ -371,7 +371,7 @@ export async function joinTeamByCodeAction(input: {
       headers: reqHeaders,
     });
   } catch (err) {
-    await releaseInviteCodeSlot(reserved.id);
+    await releaseInviteCodeSlot(userId, reserved.id, false);
 
     const mapped = mapBetterAuthError(err);
     if (mapped === "already_member") {
@@ -399,10 +399,6 @@ export async function joinTeamByCodeAction(input: {
     };
   }
 
-  // Success path also calls release: the SDF detects the new membership
-  // row and finalizes the slot (clears reserved_until, keeps use_count).
-  // Without this the next reserve attempt's sweep would roll back this
-  // saga 15 minutes later.
-  await releaseInviteCodeSlot(reserved.id);
+  await releaseInviteCodeSlot(userId, reserved.id, true);
   return { ok: true, data: { organizationId: reserved.orgId } };
 }

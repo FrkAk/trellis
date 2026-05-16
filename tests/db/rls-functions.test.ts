@@ -25,16 +25,20 @@ describe("invite-code SECURITY DEFINER functions", () => {
     expiresAt?: Date | null;
     revokedAt?: Date | null;
     useCount?: number;
+    reservedBy?: string | null;
+    reservedUntil?: Date | null;
   }): Promise<{ id: string }> {
     const sr = serviceRoleConnect();
     try {
       const rows = await sr<{ id: string }[]>`
         INSERT INTO team_invite_code (
-          organization_id, code, default_role, max_uses, expires_at, revoked_at, use_count
+          organization_id, code, default_role, max_uses, expires_at, revoked_at,
+          use_count, reserved_by, reserved_until
         ) VALUES (
           ${opts.orgId}, ${opts.code}, 'member',
           ${opts.maxUses ?? null}, ${opts.expiresAt ?? null}, ${opts.revokedAt ?? null},
-          ${opts.useCount ?? 0}
+          ${opts.useCount ?? 0},
+          ${opts.reservedBy ?? null}, ${opts.reservedUntil ?? null}
         )
         RETURNING id
       `;
@@ -87,7 +91,7 @@ describe("invite-code SECURITY DEFINER functions", () => {
     );
   });
 
-  test("reserve_team_invite_code_slot increments use_count on a valid code", async () => {
+  test("reserve_team_invite_code_slot increments use_count and records reserved_by", async () => {
     const fx = await seedUserOrgProject("reserve-1");
     const seeded = await seedCode({
       orgId: fx.organizationId,
@@ -97,7 +101,7 @@ describe("invite-code SECURITY DEFINER functions", () => {
     const c = appUserConnect();
     try {
       const rows = await c<Array<{ id: string }>>`
-        SELECT id FROM public.reserve_team_invite_code_slot(${"RESERVE1"})
+        SELECT id FROM public.reserve_team_invite_code_slot(${"RESERVE1"}, ${fx.userId}::uuid)
       `;
       expect(rows.length).toBe(1);
       expect(rows[0].id).toBe(seeded.id);
@@ -106,10 +110,11 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
     const sr = serviceRoleConnect();
     try {
-      const [row] = await sr<Array<{ use_count: number }>>`
-        SELECT use_count FROM team_invite_code WHERE id = ${seeded.id}
+      const [row] = await sr<Array<{ use_count: number; reserved_by: string | null }>>`
+        SELECT use_count, reserved_by FROM team_invite_code WHERE id = ${seeded.id}
       `;
       expect(row.use_count).toBe(1);
+      expect(row.reserved_by).toBe(fx.userId);
     } finally {
       await sr.end({ timeout: 5 });
     }
@@ -124,7 +129,7 @@ describe("invite-code SECURITY DEFINER functions", () => {
     });
     const c = appUserConnect();
     try {
-      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"REVOKED1"})`;
+      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"REVOKED1"}, ${fx.userId}::uuid)`;
       expect(rows.length).toBe(0);
     } finally {
       await c.end({ timeout: 5 });
@@ -140,7 +145,7 @@ describe("invite-code SECURITY DEFINER functions", () => {
     });
     const c = appUserConnect();
     try {
-      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"EXPIRED1"})`;
+      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"EXPIRED1"}, ${fx.userId}::uuid)`;
       expect(rows.length).toBe(0);
     } finally {
       await c.end({ timeout: 5 });
@@ -157,23 +162,100 @@ describe("invite-code SECURITY DEFINER functions", () => {
     });
     const c = appUserConnect();
     try {
-      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"EXHAUSTED1"})`;
+      const rows = await c`SELECT * FROM public.reserve_team_invite_code_slot(${"EXHAUSTED1"}, ${fx.userId}::uuid)`;
       expect(rows.length).toBe(0);
     } finally {
       await c.end({ timeout: 5 });
     }
   });
 
-  test("release_team_invite_code_slot decrements use_count, floored at zero", async () => {
-    const fx = await seedUserOrgProject("release-1");
+  test("release with succeeded=false decrements use_count and clears reservation", async () => {
+    const fx = await seedUserOrgProject("release-false");
     const seeded = await seedCode({
       orgId: fx.organizationId,
-      code: "RELEASE1",
+      code: "RELFALSE",
       useCount: 1,
+      reservedBy: fx.userId,
+      reservedUntil: new Date(Date.now() + 15 * 60_000),
     });
     const c = appUserConnect();
     try {
-      await c`SELECT public.release_team_invite_code_slot(${seeded.id}::uuid)`;
+      const rows = await c<Array<{ release_team_invite_code_slot: boolean }>>`
+        SELECT public.release_team_invite_code_slot(${seeded.id}::uuid, ${fx.userId}::uuid, FALSE)
+      `;
+      expect(rows[0].release_team_invite_code_slot).toBe(true);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+    const sr = serviceRoleConnect();
+    try {
+      const [row] = await sr<Array<{
+        use_count: number;
+        reserved_by: string | null;
+        reserved_until: Date | null;
+      }>>`
+        SELECT use_count, reserved_by, reserved_until
+        FROM team_invite_code WHERE id = ${seeded.id}
+      `;
+      expect(row.use_count).toBe(0);
+      expect(row.reserved_by).toBeNull();
+      expect(row.reserved_until).toBeNull();
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+  });
+
+  test("release with succeeded=true keeps use_count and clears reservation", async () => {
+    const fx = await seedUserOrgProject("release-true");
+    const seeded = await seedCode({
+      orgId: fx.organizationId,
+      code: "RELTRUE",
+      useCount: 1,
+      reservedBy: fx.userId,
+      reservedUntil: new Date(Date.now() + 15 * 60_000),
+    });
+    const c = appUserConnect();
+    try {
+      const rows = await c<Array<{ release_team_invite_code_slot: boolean }>>`
+        SELECT public.release_team_invite_code_slot(${seeded.id}::uuid, ${fx.userId}::uuid, TRUE)
+      `;
+      expect(rows[0].release_team_invite_code_slot).toBe(true);
+    } finally {
+      await c.end({ timeout: 5 });
+    }
+    const sr = serviceRoleConnect();
+    try {
+      const [row] = await sr<Array<{
+        use_count: number;
+        reserved_by: string | null;
+        reserved_until: Date | null;
+      }>>`
+        SELECT use_count, reserved_by, reserved_until
+        FROM team_invite_code WHERE id = ${seeded.id}
+      `;
+      expect(row.use_count).toBe(1);
+      expect(row.reserved_by).toBeNull();
+      expect(row.reserved_until).toBeNull();
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+  });
+
+  test("release with succeeded=false floors use_count at zero", async () => {
+    const fx = await seedUserOrgProject("release-floor");
+    const seeded = await seedCode({
+      orgId: fx.organizationId,
+      code: "RELFLOOR",
+      useCount: 0,
+      reservedBy: fx.userId,
+      reservedUntil: new Date(Date.now() + 15 * 60_000),
+    });
+    const c = appUserConnect();
+    try {
+      const rows = await c<Array<{ release_team_invite_code_slot: boolean }>>`
+        SELECT public.release_team_invite_code_slot(${seeded.id}::uuid, ${fx.userId}::uuid, FALSE)
+      `;
+      expect(rows[0].release_team_invite_code_slot).toBe(true);
     } finally {
       await c.end({ timeout: 5 });
     }
@@ -186,21 +268,63 @@ describe("invite-code SECURITY DEFINER functions", () => {
     } finally {
       await sr.end({ timeout: 5 });
     }
+  });
 
-    const c2 = appUserConnect();
+  test("release returns false and is a no-op when caller did not reserve (H1)", async () => {
+    const fxA = await seedUserOrgProject("release-cross-a");
+    const fxB = await seedUserOrgProject("release-cross-b");
+    const seeded = await seedCode({
+      orgId: fxA.organizationId,
+      code: "CROSSREL",
+      useCount: 1,
+      reservedBy: fxA.userId,
+      reservedUntil: new Date(Date.now() + 15 * 60_000),
+    });
+
+    const cb = appUserConnect();
     try {
-      await c2`SELECT public.release_team_invite_code_slot(${seeded.id}::uuid)`;
-    } finally {
-      await c2.end({ timeout: 5 });
-    }
-    const sr2 = serviceRoleConnect();
-    try {
-      const [row] = await sr2<Array<{ use_count: number }>>`
-        SELECT use_count FROM team_invite_code WHERE id = ${seeded.id}
+      const finalize = await cb<Array<{ release_team_invite_code_slot: boolean }>>`
+        SELECT public.release_team_invite_code_slot(${seeded.id}::uuid, ${fxB.userId}::uuid, TRUE)
       `;
-      expect(row.use_count).toBe(0);
+      expect(finalize[0].release_team_invite_code_slot).toBe(false);
+
+      const rollback = await cb<Array<{ release_team_invite_code_slot: boolean }>>`
+        SELECT public.release_team_invite_code_slot(${seeded.id}::uuid, ${fxB.userId}::uuid, FALSE)
+      `;
+      expect(rollback[0].release_team_invite_code_slot).toBe(false);
     } finally {
-      await sr2.end({ timeout: 5 });
+      await cb.end({ timeout: 5 });
+    }
+
+    const sr = serviceRoleConnect();
+    try {
+      const [row] = await sr<Array<{
+        use_count: number;
+        reserved_by: string | null;
+      }>>`
+        SELECT use_count, reserved_by FROM team_invite_code WHERE id = ${seeded.id}
+      `;
+      expect(row.use_count).toBe(1);
+      expect(row.reserved_by).toBe(fxA.userId);
+    } finally {
+      await sr.end({ timeout: 5 });
+    }
+  });
+
+  test("release returns false on a nonexistent reservation id (M5)", async () => {
+    const fx = await seedUserOrgProject("release-bogus");
+    const c = appUserConnect();
+    try {
+      const rows = await c<Array<{ release_team_invite_code_slot: boolean }>>`
+        SELECT public.release_team_invite_code_slot(
+          '00000000-0000-0000-0000-000000000000'::uuid,
+          ${fx.userId}::uuid,
+          TRUE
+        )
+      `;
+      expect(rows[0].release_team_invite_code_slot).toBe(false);
+    } finally {
+      await c.end({ timeout: 5 });
     }
   });
 
@@ -209,7 +333,7 @@ describe("invite-code SECURITY DEFINER functions", () => {
     await seedCode({ orgId: fx.organizationId, code: "TTL1", useCount: 0 });
     const c = appUserConnect();
     try {
-      await c`SELECT * FROM public.reserve_team_invite_code_slot(${"TTL1"})`;
+      await c`SELECT * FROM public.reserve_team_invite_code_slot(${"TTL1"}, ${fx.userId}::uuid)`;
     } finally {
       await c.end({ timeout: 5 });
     }
@@ -228,25 +352,22 @@ describe("invite-code SECURITY DEFINER functions", () => {
   });
 
   test("reserve sweeps a stale (crashed) reservation before a new attempt — maxUses=1 case", async () => {
-    const fx = await seedUserOrgProject("ttl-sweep");
+    const stale = await seedUserOrgProject("ttl-sweep-prev");
+    const fresh = await seedUserOrgProject("ttl-sweep-new");
     const seeded = await seedCode({
-      orgId: fx.organizationId,
+      orgId: stale.organizationId,
       code: "SWEEP1",
       maxUses: 1,
       useCount: 1,
+      reservedBy: stale.userId,
+      reservedUntil: new Date(Date.now() - 60_000),
     });
-    const sr = serviceRoleConnect();
-    try {
-      await sr`UPDATE team_invite_code SET reserved_until = NOW() - interval '1 minute' WHERE id = ${seeded.id}`;
-    } finally {
-      await sr.end({ timeout: 5 });
-    }
 
     const c = appUserConnect();
     let reservedRows: Array<{ id: string }> = [];
     try {
       reservedRows = await c<Array<{ id: string }>>`
-        SELECT id FROM public.reserve_team_invite_code_slot(${"SWEEP1"})
+        SELECT id FROM public.reserve_team_invite_code_slot(${"SWEEP1"}, ${fresh.userId}::uuid)
       `;
     } finally {
       await c.end({ timeout: 5 });
@@ -255,47 +376,16 @@ describe("invite-code SECURITY DEFINER functions", () => {
 
     const sr2 = serviceRoleConnect();
     try {
-      const [row] = await sr2<Array<{ use_count: number; reserved_until: Date | null }>>`
-        SELECT use_count, reserved_until FROM team_invite_code WHERE id = ${seeded.id}
+      const [row] = await sr2<Array<{
+        use_count: number;
+        reserved_until: Date | null;
+        reserved_by: string | null;
+      }>>`
+        SELECT use_count, reserved_until, reserved_by FROM team_invite_code WHERE id = ${seeded.id}
       `;
       expect(row.use_count).toBe(1);
       expect(row.reserved_until).not.toBeNull();
-    } finally {
-      await sr2.end({ timeout: 5 });
-    }
-  });
-
-  test("release finalizes (clears reserved_until without decrementing) when caller is already a member", async () => {
-    const fx = await seedUserOrgProject("finalize-1");
-    const seeded = await seedCode({
-      orgId: fx.organizationId,
-      code: "FINAL1",
-      useCount: 1,
-    });
-    const sr = serviceRoleConnect();
-    try {
-      await sr`UPDATE team_invite_code SET reserved_until = NOW() + interval '15 minutes' WHERE id = ${seeded.id}`;
-    } finally {
-      await sr.end({ timeout: 5 });
-    }
-
-    const c = appUserConnect();
-    try {
-      await c.begin(async (tx) => {
-        await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
-        await tx`SELECT public.release_team_invite_code_slot(${seeded.id}::uuid)`;
-      });
-    } finally {
-      await c.end({ timeout: 5 });
-    }
-
-    const sr2 = serviceRoleConnect();
-    try {
-      const [row] = await sr2<Array<{ use_count: number; reserved_until: Date | null }>>`
-        SELECT use_count, reserved_until FROM team_invite_code WHERE id = ${seeded.id}
-      `;
-      expect(row.use_count).toBe(1);
-      expect(row.reserved_until).toBeNull();
+      expect(row.reserved_by).toBe(fresh.userId);
     } finally {
       await sr2.end({ timeout: 5 });
     }
@@ -311,8 +401,8 @@ describe("invite-code SECURITY DEFINER functions", () => {
     try {
       const fns = [
         "public.lookup_team_invite_code(text)",
-        "public.reserve_team_invite_code_slot(text)",
-        "public.release_team_invite_code_slot(uuid)",
+        "public.reserve_team_invite_code_slot(text, uuid)",
+        "public.release_team_invite_code_slot(uuid, uuid, boolean)",
       ];
       for (const fn of fns) {
         const [row] = await sr<

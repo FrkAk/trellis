@@ -46,26 +46,36 @@ REVOKE EXECUTE ON FUNCTION public.lookup_team_invite_code(text) FROM public;
 GRANT EXECUTE ON FUNCTION public.lookup_team_invite_code(text) TO app_user;
 
 -- Atomically reserve a slot on a valid, non-revoked, non-expired,
--- non-exhausted code. Returns the row identifiers on success, empty set on
--- failure (anti-enumeration — caller cannot distinguish failure reasons).
+-- non-exhausted code. Records `reserved_by = p_user_id` so the matching
+-- `release_team_invite_code_slot` call can confirm it's the same caller
+-- before mutating the slot (H1 binding check). Returns the row
+-- identifiers on success, empty set on failure (anti-enumeration —
+-- caller cannot distinguish failure reasons).
 --
 -- Pre-sweep: an unreleased reservation older than its `reserved_until`
--- gets its slot reclaimed before the new attempt is evaluated. This
--- handles the crash-between-reserve-and-release case (OOM, SIGTERM). The
--- sweep is scoped to the row being attempted, so unrelated codes are not
--- touched. Concurrent reservations on the same code: the later one's TTL
--- overwrites; if the earlier saga crashes during the overlap, its slot
--- stays stranded until the next reserve attempt — accepted v1 limitation.
-CREATE OR REPLACE FUNCTION public.reserve_team_invite_code_slot(p_code text)
+-- gets its slot reclaimed (use_count decremented, reserved_until +
+-- reserved_by cleared) before the new attempt is evaluated. This handles
+-- the crash-between-reserve-and-release case (OOM, SIGTERM). The sweep
+-- is scoped to the row being attempted, so unrelated codes are not
+-- touched.
+--
+-- This SDF does NOT read `app.user_id` from the GUC — the caller's
+-- identity is passed explicitly so the SDF is safe to call on the bare
+-- pool (no withUserContext wrapper required). Trust boundary: the JS
+-- action verifies `session.user.id` before invoking, identical to the
+-- contract of `auth.api.addMember`.
+DROP FUNCTION IF EXISTS public.reserve_team_invite_code_slot(text);
+CREATE OR REPLACE FUNCTION public.reserve_team_invite_code_slot(p_code text, p_user_id uuid)
 RETURNS TABLE (id uuid, organization_id uuid, default_role text)
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog
+SET search_path = public, pg_catalog, pg_temp
 AS $$
 BEGIN
   UPDATE public.team_invite_code AS t
      SET use_count = GREATEST(t.use_count - 1, 0),
          reserved_until = NULL,
+         reserved_by = NULL,
          updated_at = NOW()
    WHERE t.code = p_code
      AND t.reserved_until IS NOT NULL
@@ -75,6 +85,7 @@ BEGIN
   UPDATE public.team_invite_code AS t
      SET use_count = t.use_count + 1,
          reserved_until = NOW() + interval '15 minutes',
+         reserved_by = p_user_id,
          updated_at = NOW()
    WHERE t.code = p_code
      AND t.revoked_at IS NULL
@@ -83,37 +94,56 @@ BEGIN
   RETURNING t.id, t.organization_id, t.default_role;
 END;
 $$;
-REVOKE EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text) FROM public;
-GRANT EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text) TO app_user;
+REVOKE EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text, uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text, uuid) TO app_user;
 
--- Dual role: rollback when the addMember step failed (no membership row yet
--- → decrement use_count) AND finalize when it succeeded (membership row
--- exists → keep use_count, clear `reserved_until` so the next reserve does
--- not sweep this slot back). The saga calls this exactly once after the
--- addMember attempt, on both success and failure paths.
-CREATE OR REPLACE FUNCTION public.release_team_invite_code_slot(p_id uuid)
-RETURNS void
+-- Finalize a reservation. The caller passes the explicit outcome
+-- (`p_succeeded`) — the SDF no longer infers it from DB state, which
+-- closes the `already_member` mis-finalize hole (the JS layer is the
+-- only place that can tell "this saga created the member row" from
+-- "caller was already a member of this org before reserve").
+--
+-- Gates on `reserved_by = p_user_id` so an attacker who learns a row's
+-- UUID (log leak, debugger trace) cannot release someone else's
+-- reservation. Mismatches match zero rows and return false; the JS
+-- caller logs and moves on.
+--
+-- Outcomes:
+--   p_succeeded = true  → keep use_count, clear reserved_until + reserved_by.
+--   p_succeeded = false → decrement use_count (floored at 0), clear both.
+--
+-- Returns: true when an authorized row was updated, false otherwise.
+-- This SDF does NOT read `app.user_id`.
+DROP FUNCTION IF EXISTS public.release_team_invite_code_slot(uuid);
+CREATE OR REPLACE FUNCTION public.release_team_invite_code_slot(
+  p_id uuid,
+  p_user_id uuid,
+  p_succeeded boolean
+)
+RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog
+SET search_path = public, pg_catalog, pg_temp
 AS $$
+DECLARE
+  v_matched integer;
 BEGIN
   UPDATE public.team_invite_code AS t
      SET use_count = CASE
-           WHEN EXISTS (
-             SELECT 1 FROM neon_auth."member" m
-             WHERE m."organizationId" = t.organization_id
-               AND m."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
-           ) THEN t.use_count
+           WHEN p_succeeded THEN t.use_count
            ELSE GREATEST(t.use_count - 1, 0)
          END,
          reserved_until = NULL,
+         reserved_by = NULL,
          updated_at = NOW()
-   WHERE t.id = p_id;
+   WHERE t.id = p_id
+     AND t.reserved_by = p_user_id;
+  GET DIAGNOSTICS v_matched = ROW_COUNT;
+  RETURN v_matched = 1;
 END;
 $$;
-REVOKE EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid) TO app_user;
+REVOKE EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid, uuid, boolean) FROM public;
+GRANT EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid, uuid, boolean) TO app_user;
 
 -- Admin/system lookup: list project ids for an org without scoping by the
 -- caller's membership. Used by lib/realtime/access.ts:revokeOrgAccess which
