@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 import { auth } from "@/lib/auth";
 import { requireSession } from "@/lib/auth/session";
 import { isOrgAdmin } from "@/lib/auth/org-permissions";
+import { makeAuthContext } from "@/lib/auth/context";
 import { generateInviteCode, INVITE_CODE_PATTERN } from "@/lib/auth/invite-code";
 import {
   createTeamInviteCode,
@@ -182,10 +183,10 @@ export async function getOrCreateTeamInviteCodeAction(input: {
 
   const authResult = await resolveAdminContext(orgId);
   if (!authResult.ok) return authResult;
-  const { userId } = authResult;
+  const ctx = makeAuthContext(authResult.userId);
 
   try {
-    const existing = await findTeamInviteCode(orgId, userId);
+    const existing = await findTeamInviteCode(ctx, orgId);
     if (existing) return { ok: true, data: toMetadata(existing) };
   } catch (err) {
     console.error("getOrCreateTeamInviteCodeAction findTeamInviteCode failed", {
@@ -200,16 +201,15 @@ export async function getOrCreateTeamInviteCodeAction(input: {
   }
 
   try {
-    const created = await createTeamInviteCode({
+    const created = await createTeamInviteCode(ctx, {
       organizationId: orgId,
       code: generateInviteCode(),
-      createdBy: userId,
     });
     return { ok: true, data: toMetadata(created) };
   } catch (err) {
     if ((err as { code?: string } | null)?.code === "23505") {
       try {
-        const row = await findTeamInviteCode(orgId, userId);
+        const row = await findTeamInviteCode(ctx, orgId);
         if (row) return { ok: true, data: toMetadata(row) };
       } catch (lookupErr) {
         console.error(
@@ -250,13 +250,12 @@ export async function regenerateTeamInviteCodeAction(input: {
 
   const authResult = await resolveAdminContext(orgId);
   if (!authResult.ok) return authResult;
-  const { userId } = authResult;
+  const ctx = makeAuthContext(authResult.userId);
 
   try {
-    const updated = await rotateTeamInviteCode({
+    const updated = await rotateTeamInviteCode(ctx, {
       organizationId: orgId,
       newCode: generateInviteCode(),
-      adminUserId: userId,
     });
     if (updated) return { ok: true, data: toMetadata(updated) };
   } catch (err) {
@@ -272,10 +271,9 @@ export async function regenerateTeamInviteCodeAction(input: {
   }
 
   try {
-    const created = await createTeamInviteCode({
+    const created = await createTeamInviteCode(ctx, {
       organizationId: orgId,
       code: generateInviteCode(),
-      createdBy: userId,
     });
     return { ok: true, data: toMetadata(created) };
   } catch (err) {
@@ -284,10 +282,9 @@ export async function regenerateTeamInviteCodeAction(input: {
     // generated code so a (vanishingly rare) code collision can't loop.
     if ((err as { code?: string } | null)?.code === "23505") {
       try {
-        const retried = await rotateTeamInviteCode({
+        const retried = await rotateTeamInviteCode(ctx, {
           organizationId: orgId,
           newCode: generateInviteCode(),
-          adminUserId: userId,
         });
         if (retried) return { ok: true, data: toMetadata(retried) };
       } catch (retryErr) {
@@ -330,11 +327,11 @@ export async function revokeTeamInviteCodeAction(input: {
 
   const authResult = await resolveAdminContext(orgId);
   if (!authResult.ok) return authResult;
-  const { userId } = authResult;
+  const ctx = makeAuthContext(authResult.userId);
 
   let updated: InviteCodeRow | null;
   try {
-    updated = await revokeTeamInviteCode(orgId, userId);
+    updated = await revokeTeamInviteCode(ctx, orgId);
   } catch (err) {
     console.error("revokeTeamInviteCodeAction failed", { orgId, err });
     return {

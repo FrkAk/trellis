@@ -177,6 +177,13 @@ WHERE grantee = 'app_user'
 -- one-line REVOKE in section 8 below; the verification queries in the same
 -- section confirm the change took.
 
+-- [PROD UPDATE 2026-05-16] Added RESTRICTIVE per-command floor on
+-- team_invite_code writes so a future permissive write policy cannot
+-- OR-relax the admin/owner gate. Also wrapped policy membership lookups
+-- in `(SELECT public.current_user_org_ids())` so the InitPlan node is
+-- guaranteed by the planner. Apply by re-running docker/rls-policies.sql
+-- against the Neon prod database.
+
 -- [PROD UPDATE 2026-05-16] Every SECURITY DEFINER function now pins
 -- pg_temp last in SET search_path (CVE-2018-1058 layer 1). Already
 -- bundled into the docker/rls-functions.sql re-apply above; no separate

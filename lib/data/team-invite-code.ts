@@ -2,6 +2,7 @@ import "server-only";
 
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import type { AuthContext } from "@/lib/auth/context";
 import { executeRaw } from "@/lib/db/raw";
 import { withUserContext } from "@/lib/db/rls";
 import { teamInviteCodes } from "@/lib/db/team-schema";
@@ -12,21 +13,21 @@ export type InviteCodeRow = typeof teamInviteCodes.$inferSelect;
 /**
  * Look up the existing invite-code row for a team.
  *
- * Runs under the supplied admin's `app.user_id` GUC so the row passes the
- * RLS policy's membership predicate. The action layer
- * (`lib/actions/team-invite-code.ts`) verifies the caller is an org admin
- * via {@link isOrgAdmin} before invoking this helper, which guarantees the
- * admin is a member of the target org.
+ * Takes a branded `AuthContext` rather than a raw user id so the caller
+ * cannot accidentally forward a request-body field as the GUC identity.
+ * The RLS policy's admin/owner write predicate is evaluated under
+ * `ctx.userId`; for read calls the member SELECT policy covers any team
+ * member.
  *
+ * @param ctx - Verified caller context.
  * @param organizationId - UUID of the team.
- * @param adminUserId - UUID of the org admin performing the lookup.
  * @returns The row, or null when the team has no code yet.
  */
 export async function findTeamInviteCode(
+  ctx: AuthContext,
   organizationId: string,
-  adminUserId: string,
 ): Promise<InviteCodeRow | null> {
-  return withUserContext(adminUserId, async (tx) => {
+  return withUserContext(ctx.userId, async (tx) => {
     const [row] = await tx
       .select()
       .from(teamInviteCodes)
@@ -40,7 +41,6 @@ export async function findTeamInviteCode(
 export type CreateInviteCodeInput = {
   organizationId: string;
   code: string;
-  createdBy: string;
 };
 
 /**
@@ -48,23 +48,26 @@ export type CreateInviteCodeInput = {
  * Surfaces the underlying driver error (notably `23505` on the org_id
  * UNIQUE) so the caller can run its retry-as-lookup compensation.
  *
- * Runs under `createdBy`'s GUC — the action layer enforces that `createdBy`
- * is an admin of `organizationId`, which satisfies the policy WITH CHECK
- * clause's membership predicate.
+ * `createdBy` and the GUC identity both come from `ctx.userId` — a branded
+ * value the auth layer minted from `requireSession()`. The action layer
+ * gates with `isOrgAdmin(organizationId)`, and the RESTRICTIVE write
+ * policy enforces the same predicate at the DB.
  *
- * @param input - Team UUID, generated code, and creator user id.
+ * @param ctx - Verified caller context.
+ * @param input - Team UUID and generated code.
  * @returns The inserted row.
  */
 export async function createTeamInviteCode(
+  ctx: AuthContext,
   input: CreateInviteCodeInput,
 ): Promise<InviteCodeRow> {
-  return withUserContext(input.createdBy, async (tx) => {
+  return withUserContext(ctx.userId, async (tx) => {
     const [row] = await tx
       .insert(teamInviteCodes)
       .values({
         organizationId: input.organizationId,
         code: input.code,
-        createdBy: input.createdBy,
+        createdBy: ctx.userId,
       })
       .returning();
     return row;
@@ -75,7 +78,6 @@ export async function createTeamInviteCode(
 export type RotateInviteCodeInput = {
   organizationId: string;
   newCode: string;
-  adminUserId: string;
 };
 
 /**
@@ -83,16 +85,15 @@ export type RotateInviteCodeInput = {
  * `revoked_at`. Old codes stop working immediately because lookups are by
  * `code` (UNIQUE).
  *
- * Runs under `adminUserId`'s GUC; the action layer enforces admin
- * membership of `organizationId` before this helper runs.
- *
- * @param input - Team UUID, freshly generated code, and admin user id.
+ * @param ctx - Verified caller context.
+ * @param input - Team UUID and freshly generated code.
  * @returns The updated row, or null when the team has no row to update.
  */
 export async function rotateTeamInviteCode(
+  ctx: AuthContext,
   input: RotateInviteCodeInput,
 ): Promise<InviteCodeRow | null> {
-  return withUserContext(input.adminUserId, async (tx) => {
+  return withUserContext(ctx.userId, async (tx) => {
     const [row] = await tx
       .update(teamInviteCodes)
       .set({
@@ -110,18 +111,15 @@ export async function rotateTeamInviteCode(
 /**
  * Mark the team's invite code as revoked. Subsequent join attempts fail.
  *
- * Runs under `adminUserId`'s GUC; the action layer enforces admin
- * membership of `organizationId` before this helper runs.
- *
+ * @param ctx - Verified caller context.
  * @param organizationId - UUID of the team.
- * @param adminUserId - UUID of the org admin performing the revoke.
  * @returns The updated row, or null when the team has no row to revoke.
  */
 export async function revokeTeamInviteCode(
+  ctx: AuthContext,
   organizationId: string,
-  adminUserId: string,
 ): Promise<InviteCodeRow | null> {
-  return withUserContext(adminUserId, async (tx) => {
+  return withUserContext(ctx.userId, async (tx) => {
     const [row] = await tx
       .update(teamInviteCodes)
       .set({ revokedAt: sql`NOW()`, updatedAt: sql`NOW()` })

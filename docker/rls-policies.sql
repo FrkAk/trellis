@@ -2,9 +2,10 @@
 -- drops USING/WITH CHECK on push, so policy DDL lives here.
 --
 -- Membership is computed once per query via `public.current_user_org_ids()`,
--- a STABLE SECURITY DEFINER function. Wrapping the call in `(SELECT ...)`
--- forces an InitPlan; `organization_id = ANY (cached_array)` then runs as
--- a single index-scan condition per row. 2- and 3-hop tables delegate
+-- a STABLE SECURITY DEFINER function returning `uuid[]`. The membership
+-- predicates use `IN (SELECT unnest(public.current_user_org_ids()))` — an
+-- explicit sublink that forces an InitPlan node regardless of planner
+-- heuristics on STABLE-function memoization. 2- and 3-hop tables delegate
 -- through the parent table's RLS rather than duplicating the membership
 -- join, so adding new auth schema columns doesn't ripple here.
 --
@@ -13,10 +14,12 @@
 -- on DELETE; without it, a source-side member could delete (or read) an
 -- edge whose target lives in a foreign team.
 
--- projects — 1-hop directly on organization_id
+-- projects — 1-hop directly on organization_id. The `IN (SELECT unnest(...))`
+-- form materializes the membership array once via an InitPlan node so the
+-- per-row check is a constant-time set probe.
 DROP POLICY IF EXISTS "projects_member_access" ON "projects";
 CREATE POLICY "projects_member_access" ON "projects" AS PERMISSIVE FOR ALL TO app_user
-  USING (organization_id = ANY (public.current_user_org_ids()));
+  USING (organization_id IN (SELECT unnest(public.current_user_org_ids())));
 
 -- tasks — 2-hop via projects. Delegates to projects' RLS so the membership
 -- check evaluates once at the projects layer, not per task row.
@@ -66,7 +69,7 @@ DROP POLICY IF EXISTS "team_invite_code_admin_write" ON "team_invite_code";
 
 CREATE POLICY "team_invite_code_member_select" ON "team_invite_code"
   AS PERMISSIVE FOR SELECT TO app_user
-  USING (organization_id = ANY (public.current_user_org_ids()));
+  USING (organization_id IN (SELECT unnest(public.current_user_org_ids())));
 
 CREATE POLICY "team_invite_code_admin_write" ON "team_invite_code"
   AS PERMISSIVE FOR ALL TO app_user
@@ -76,6 +79,30 @@ CREATE POLICY "team_invite_code_admin_write" ON "team_invite_code"
 -- WITH CHECK is explicit (not implicit-from-USING) so the INSERT-time policy
 -- evaluation is unambiguous to readers and future Postgres versions can't
 -- regress the behavior by tightening the implicit-reuse rule.
+
+-- RESTRICTIVE floor on writes. Postgres AND's restrictive policies with
+-- the OR of permissive policies. Even if a future engineer adds another
+-- permissive write policy (intentionally or otherwise), this floor still
+-- requires admin/owner for any INSERT/UPDATE/DELETE on team_invite_code —
+-- it cannot be OR-relaxed by adding more permissives. Scoped per-command
+-- so member SELECT remains unaffected.
+DROP POLICY IF EXISTS "team_invite_code_write_admin_only" ON "team_invite_code";
+DROP POLICY IF EXISTS "team_invite_code_insert_admin_only" ON "team_invite_code";
+DROP POLICY IF EXISTS "team_invite_code_update_admin_only" ON "team_invite_code";
+DROP POLICY IF EXISTS "team_invite_code_delete_admin_only" ON "team_invite_code";
+
+CREATE POLICY "team_invite_code_insert_admin_only" ON "team_invite_code"
+  AS RESTRICTIVE FOR INSERT TO app_user
+  WITH CHECK (public.current_user_org_role(organization_id) IN ('admin', 'owner'));
+
+CREATE POLICY "team_invite_code_update_admin_only" ON "team_invite_code"
+  AS RESTRICTIVE FOR UPDATE TO app_user
+  USING (public.current_user_org_role(organization_id) IN ('admin', 'owner'))
+  WITH CHECK (public.current_user_org_role(organization_id) IN ('admin', 'owner'));
+
+CREATE POLICY "team_invite_code_delete_admin_only" ON "team_invite_code"
+  AS RESTRICTIVE FOR DELETE TO app_user
+  USING (public.current_user_org_role(organization_id) IN ('admin', 'owner'));
 
 
 -- FORCE makes the table owner subject to RLS. Targets the Neon prod

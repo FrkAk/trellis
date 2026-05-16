@@ -49,7 +49,10 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
       await seedSql.end({ timeout: 5 });
     }
 
-    const row = await findTeamInviteCode(fx.organizationId, fx.userId);
+    const row = await findTeamInviteCode(
+      makeAuthContext(fx.userId),
+      fx.organizationId,
+    );
 
     expect(row).not.toBeNull();
     expect(row?.code).toBe("SEED-FIND-CODE");
@@ -72,7 +75,10 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
     // teamB's admin should NOT see teamA's invite-code row. The policy
     // joins through neon_auth.member, which has no (teamA.org, teamB.user)
     // pairing, so the USING predicate filters the row out.
-    const leak = await findTeamInviteCode(teamA.organizationId, teamB.userId);
+    const leak = await findTeamInviteCode(
+      makeAuthContext(teamB.userId),
+      teamA.organizationId,
+    );
 
     expect(leak).toBeNull();
   });
@@ -80,10 +86,9 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
   test("createTeamInviteCode succeeds under app_user (uses withUserContext)", async () => {
     const fx = await seedUserOrgProject("dr-create");
 
-    const created = await createTeamInviteCode({
+    const created = await createTeamInviteCode(makeAuthContext(fx.userId), {
       organizationId: fx.organizationId,
       code: "NEW-CREATE-CODE",
-      createdBy: fx.userId,
     });
 
     expect(created.code).toBe("NEW-CREATE-CODE");
@@ -115,10 +120,9 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
       await seedSql.end({ timeout: 5 });
     }
 
-    const rotated = await rotateTeamInviteCode({
+    const rotated = await rotateTeamInviteCode(makeAuthContext(fx.userId), {
       organizationId: fx.organizationId,
       newCode: "NEW-ROTATE-CODE",
-      adminUserId: fx.userId,
     });
 
     expect(rotated).not.toBeNull();
@@ -140,7 +144,10 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
       await seedSql.end({ timeout: 5 });
     }
 
-    const revoked = await revokeTeamInviteCode(fx.organizationId, fx.userId);
+    const revoked = await revokeTeamInviteCode(
+      makeAuthContext(fx.userId),
+      fx.organizationId,
+    );
 
     expect(revoked).not.toBeNull();
     expect(revoked?.revokedAt).not.toBeNull();
@@ -163,10 +170,9 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
     // Driving rotateTeamInviteCode against teamA's org with teamB's
     // admin user as the GUC must NOT mutate teamA's row — the policy
     // USING predicate filters the UPDATE's target out.
-    const rotated = await rotateTeamInviteCode({
+    const rotated = await rotateTeamInviteCode(makeAuthContext(teamB.userId), {
       organizationId: teamA.organizationId,
       newCode: "LEAKED-ROTATE",
-      adminUserId: teamB.userId,
     });
 
     expect(rotated).toBeNull();
@@ -185,9 +191,9 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
 
   test("AuthContext factory still mints expected userId shape", () => {
     // Smoke check that the AuthContext brand contract hasn't drifted —
-    // the team-invite-code helpers don't take an AuthContext directly
-    // (they take adminUserId), but the wider edge/project helpers do,
-    // and they accept any value minted by makeAuthContext.
+    // every team-invite-code helper takes an AuthContext rather than a raw
+    // user id, so a future regression that swapped the brand for a bare
+    // string would surface as a TypeScript error at every call site.
     const ctx = makeAuthContext("00000000-0000-0000-0000-000000000001");
     expect(ctx.userId).toBe("00000000-0000-0000-0000-000000000001");
   });

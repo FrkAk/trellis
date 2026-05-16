@@ -376,6 +376,16 @@ async function loadAuthorizedEdge(edgeId: string, ctx: AuthContext) {
 
 /**
  * Update an existing edge's edgeType and/or note.
+ *
+ * `sourceTaskId` and `targetTaskId` are immutable through this helper, so
+ * the only mutation that can introduce a new cycle is a type change INTO
+ * `depends_on`. The cycle check fires exclusively for that case; an
+ * existing `depends_on` edge being updated with the same type, or a
+ * `depends_on` → `blocks` demotion, cannot introduce a new cycle and the
+ * extra dependency-chain fetch would be pure overhead. The check runs
+ * inside the same `withUserContext` transaction as the UPDATE so the read
+ * and write share one RLS-scoped frame.
+ *
  * @param ctx - Resolved auth context.
  * @param edgeId - UUID of the edge to update.
  * @param updates - Fields to update.
@@ -396,6 +406,8 @@ export async function updateEdge(
     };
   }
 
+  // Only a type change INTO `depends_on` can introduce a new cycle (see
+  // the function docstring). Cheap one-line predicate, narrow on purpose.
   let targetProjectIdForCycle: string | undefined;
   if (
     updates.edgeType &&
