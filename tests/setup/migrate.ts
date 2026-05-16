@@ -22,13 +22,13 @@ async function provisionRoles(sql: ReturnType<typeof postgres>): Promise<void> {
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
-        EXECUTE 'CREATE ROLE app_user LOGIN PASSWORD ''app_user''';
+        EXECUTE 'CREATE ROLE app_user LOGIN NOBYPASSRLS PASSWORD ''app_user''';
       END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
         EXECUTE 'CREATE ROLE service_role LOGIN BYPASSRLS PASSWORD ''service_role''';
       END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'auth_role') THEN
-        EXECUTE 'CREATE ROLE auth_role LOGIN PASSWORD ''auth_role''';
+        EXECUTE 'CREATE ROLE auth_role LOGIN NOBYPASSRLS PASSWORD ''auth_role''';
       END IF;
     END $$;
 

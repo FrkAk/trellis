@@ -34,16 +34,19 @@ psql -v ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" \
   <<EOSQL
+-- NOBYPASSRLS is explicit on app_user/auth_role so a future ALTER ROLE
+-- can be audited; without it, a silent BYPASSRLS flip would void RLS without
+-- touching this file.
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
-    EXECUTE 'CREATE ROLE app_user LOGIN PASSWORD ''${APP_USER_PASSWORD}''';
+    EXECUTE 'CREATE ROLE app_user LOGIN NOBYPASSRLS PASSWORD ''${APP_USER_PASSWORD}''';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
     EXECUTE 'CREATE ROLE service_role LOGIN BYPASSRLS PASSWORD ''${SERVICE_ROLE_PASSWORD}''';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'auth_role') THEN
-    EXECUTE 'CREATE ROLE auth_role LOGIN PASSWORD ''${AUTH_ROLE_PASSWORD}''';
+    EXECUTE 'CREATE ROLE auth_role LOGIN NOBYPASSRLS PASSWORD ''${AUTH_ROLE_PASSWORD}''';
   END IF;
 END \$\$;
 

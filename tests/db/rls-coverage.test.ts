@@ -40,6 +40,24 @@ describe("RLS coverage — every public.* table is enabled + forced", () => {
     }
   });
 
+  test("role BYPASSRLS attributes match the three-role split", async () => {
+    const sql = postgres(getConnectionString(), { max: 1 });
+    try {
+      const rows = await sql<{ rolname: string; rolbypassrls: boolean }[]>`
+        SELECT rolname, rolbypassrls
+        FROM pg_roles
+        WHERE rolname IN ('app_user', 'service_role', 'auth_role')
+        ORDER BY rolname
+      `;
+      const byName = Object.fromEntries(rows.map((r) => [r.rolname, r.rolbypassrls]));
+      expect(byName.app_user).toBe(false);
+      expect(byName.auth_role).toBe(false);
+      expect(byName.service_role).toBe(true);
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  });
+
   test("every public.* table has at least one policy attached", async () => {
     const sql = postgres(getConnectionString(), { max: 1 });
     try {
