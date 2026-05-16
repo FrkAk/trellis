@@ -223,7 +223,8 @@ export async function diagnoseTeamInviteCode(
     }
     if (row.max_uses !== null && row.use_count >= row.max_uses) return "exhausted";
     return "unknown";
-  } catch {
+  } catch (err) {
+    console.error("[invite-code] diagnose failed:", err);
     return "unknown";
   }
 }

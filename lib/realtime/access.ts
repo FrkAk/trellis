@@ -67,6 +67,9 @@ export async function revokeOrgAccess(
 ): Promise<void> {
   try {
     if (broker.hasConnections(userId)) {
+      // Must be the admin variant: `afterRemoveMember` fires after the member
+      // row is gone, so the user-scoped `listOrgProjectIds(userId, orgId)`
+      // would return `[]` and silently skip every `unregister`.
       const projectIds = await listOrgProjectIdsAsAdmin(orgId);
       for (const id of projectIds) {
         broker.unregister(userId, `project:${id}`);

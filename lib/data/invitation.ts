@@ -1,5 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
+import { isUuid } from "@/lib/auth/authorization";
 import { withUserContext } from "@/lib/db/rls";
 import { invitation } from "@/lib/db/auth-schema";
 
@@ -20,6 +21,7 @@ export async function findInvitationOrgId(
   userId: string,
   invitationId: string,
 ): Promise<string | null> {
+  if (!isUuid(invitationId)) return null;
   return withUserContext(userId, async (tx) => {
     const [row] = await tx
       .select({ organizationId: invitation.organizationId })

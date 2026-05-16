@@ -44,6 +44,7 @@ import {
   assertProjectAccess,
   assertTaskAccess,
   ForbiddenError,
+  isUuid,
 } from "@/lib/auth/authorization";
 import {
   decodeOrderCursor,
@@ -2137,6 +2138,7 @@ export async function removeTaskLink(
   ctx: AuthContext,
   linkId: string,
 ): Promise<{ id: string }> {
+  if (!isUuid(linkId)) throw new ForbiddenError("Forbidden", "task", linkId);
   const result = await withUserContext(ctx.userId, async (tx) => {
     const [row] = await tx
       .select({
@@ -2185,6 +2187,7 @@ export async function updateTaskLink(
   linkId: string,
   url: string,
 ): Promise<TaskLink> {
+  if (!isUuid(linkId)) throw new ForbiddenError("Forbidden", "task", linkId);
   let classified;
   try {
     classified = classifyLink(url);
