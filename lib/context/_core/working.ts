@@ -3,7 +3,7 @@ import "server-only";
 import type { AcceptanceCriterion } from "@/lib/types";
 import { getAncestors } from "@/lib/data/traversal";
 import { getTaskEdgesDetailedTx } from "@/lib/data/edge";
-import { fetchSiblingTasks, getTaskFullTx } from "@/lib/data/task";
+import { getTaskFullTx } from "@/lib/data/task";
 import type { AssigneeRef, TaskLinkRef } from "@/lib/data/views";
 import { section, formatCriteria } from "@/lib/context/format";
 import type { AuthContext } from "@/lib/auth/context";
@@ -23,7 +23,6 @@ type WorkingContext = {
     status: string;
     note: string;
   }[];
-  siblings: { id: string; taskRef: string; title: string; status: string }[];
   assignees: AssigneeRef[];
   links: TaskLinkRef[];
 };
@@ -32,12 +31,12 @@ type WorkingContext = {
  * Build full working context for a task. 1-hop traversal.
  *
  * Sections ordered by U-shaped attention: header + description + criteria at
- * start, edges + siblings in middle. No token budget — all content included
- * as-is. Used by MCP for `mymir_context depth='working'`.
+ * start, edges in middle. No token budget — all content included as-is. Used
+ * by MCP for `mymir_context depth='working'`.
  *
  * @param ctx - Resolved auth context.
  * @param taskId - UUID of the task.
- * @returns Working context with task data, ancestors, edges, and siblings.
+ * @returns Working context with task data, ancestors, and edges.
  */
 export async function buildWorkingContext(
   ctx: AuthContext,
@@ -45,13 +44,8 @@ export async function buildWorkingContext(
 ): Promise<WorkingContext> {
   return withUserContext(ctx.userId, async (tx) => {
     const task = await getTaskFullTx(tx, taskId);
-    const projectId = task.projectId;
     const detailedEdges = await getTaskEdgesDetailedTx(tx, taskId);
-
-    const [ancestors, siblings] = await Promise.all([
-      getAncestors(taskId, tx),
-      fetchSiblingTasks(projectId, taskId, tx),
-    ]);
+    const ancestors = await getAncestors(taskId, tx);
 
     const edges = detailedEdges.map((e) => ({
       id: e.connectedTask.id,
@@ -68,7 +62,6 @@ export async function buildWorkingContext(
       taskRef: task.taskRef,
       ancestors,
       edges,
-      siblings,
       assignees: task.assignees,
       links: task.links,
     };
@@ -111,9 +104,6 @@ export async function formatWorkingContext(
 
   const edges = formatEdgesSection(ctx.edges);
   if (edges) parts.push(edges);
-
-  const siblings = formatSiblingsSection(ctx.siblings);
-  if (siblings) parts.push(siblings);
 
   const links = formatLinksSection(ctx.links);
   if (links) parts.push(links);
@@ -242,16 +232,3 @@ function formatEdgesSection(edges: WorkingContext["edges"]): string {
   return lines.join("\n");
 }
 
-/**
- * Format siblings section.
- * @param siblings - Array of sibling task summaries.
- * @returns Formatted siblings section or empty string.
- */
-function formatSiblingsSection(siblings: WorkingContext["siblings"]): string {
-  if (siblings.length === 0) return "";
-  const lines = ["\n## Siblings"];
-  for (const s of siblings) {
-    lines.push(`- \`${s.taskRef}\` "${s.title}" (${s.status})`);
-  }
-  return lines.join("\n");
-}
