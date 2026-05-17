@@ -1,38 +1,26 @@
 -- =============================================================================
--- MYMR-151 Neon prod provisioning
--- Project: ancient-scene-55031748 (Mymir)
--- Date: 2026-05-15
--- Runs against: production Neon main branch
+-- Neon prod provisioning runbook
 --
--- Order matters. Statements marked [UI-ONLY] cannot be run via SQL on Neon
--- because they require SUPERUSER (only cloud_admin is). Use Neon console's
--- role-management panel for those. Everything else runs fine as neondb_owner
--- via the Neon SQL editor or via this app's Neon MCP / psql connection.
---
--- Canonical schema/table/sequence grants live in docker/grants.sql. The
--- self-host bootstrap (docker/init-rls.sh) and the testcontainer
--- (tests/setup/migrate.ts) consume the same file, so updates land in one
--- place and parity holds across prod / self-host / test.
+-- Order matters. Statements marked [UI-ONLY] need the Neon console (only
+-- cloud_admin can set BYPASSRLS via SQL). Everything else runs as neondb_owner
+-- via the Neon SQL editor, the Neon MCP, or psql.
 --
 -- ORDERING INVARIANT: docker/rls-functions.sql MUST be applied before
--- docker/rls-policies.sql on every re-application. Policies reference
--- `public.current_user_org_ids()`; re-running policies without functions
--- takes the app offline.
+-- docker/rls-policies.sql. Policies reference public.current_user_org_ids();
+-- reversing the order takes the app offline.
 -- =============================================================================
 
 
 -- -----------------------------------------------------------------------------
 -- 1. ROLES
 -- -----------------------------------------------------------------------------
--- These two CREATE ROLE statements are the SQL equivalent of what the Neon
--- console UI does, but on Neon you cannot run them via SQL with these explicit
--- attributes (permission denied: only cloud_admin can set BYPASSRLS etc.).
--- On Neon: create via "Add role" in the console, then toggle attributes in
--- the role-detail panel. On self-hosted Postgres or another platform where
--- the migration role IS a superuser, these statements run as-is.
+-- On Neon: create each role from the console role panel, then set the
+-- BYPASSRLS attribute on service_role only. Set passwords there as well.
+-- The CREATE ROLE blocks below document the intended attributes; they run
+-- as-is on self-hosted Postgres where the migration role is superuser.
 -- -----------------------------------------------------------------------------
 
--- [UI-ONLY on Neon] runtime app role, RLS-enforcing
+-- [UI-ONLY on Neon] runtime app role, RLS enforcing
 CREATE ROLE app_user WITH
     LOGIN
     INHERIT
@@ -41,9 +29,9 @@ CREATE ROLE app_user WITH
     NOCREATEROLE
     NOREPLICATION
     NOBYPASSRLS
-    PASSWORD '<set-via-neon-console>';
+    PASSWORD '<set via Neon console>';
 
--- [UI-ONLY on Neon] service bypass role, used by 4 functions only
+-- [UI-ONLY on Neon] service bypass role, used by migrations and 3 SDFs
 CREATE ROLE service_role WITH
     LOGIN
     INHERIT
@@ -52,7 +40,7 @@ CREATE ROLE service_role WITH
     NOCREATEROLE
     NOREPLICATION
     BYPASSRLS
-    PASSWORD '<set-via-neon-console>';
+    PASSWORD '<set via Neon console>';
 
 -- [UI-ONLY on Neon] Better Auth runtime role, DML on neon_auth.* only
 CREATE ROLE auth_role WITH
@@ -63,45 +51,29 @@ CREATE ROLE auth_role WITH
     NOCREATEROLE
     NOREPLICATION
     NOBYPASSRLS
-    PASSWORD '<set-via-neon-console>';
+    PASSWORD '<set via Neon console>';
 
 
 -- -----------------------------------------------------------------------------
--- 2. SCHEMA / TABLE / SEQUENCE GRANTS — apply docker/grants.sql
+-- 2. SCHEMA / TABLE / SEQUENCE GRANTS
 -- -----------------------------------------------------------------------------
--- Run docker/grants.sql as neondb_owner (Neon SQL editor, Neon MCP, or psql).
--- That file is the single source of truth for:
---   * public schema USAGE + CREATE
---   * public DML on all *existing* tables + sequences (no default privileges)
---   * neon_auth USAGE + REVOKE-from-app_user (Option B lockdown)
---   * neon_auth tight grants for service_role
---   * neon_auth full DML on existing tables for auth_role (no default privileges)
+-- Apply docker/grants.sql as neondb_owner. That file is the single source of
+-- truth for grants across prod, self-host, and tests.
 --
--- New public tables require explicit `GRANT SELECT, INSERT, UPDATE, DELETE
--- ON <table> TO app_user, service_role;` in their migration. Default
--- privileges on schema public were intentionally removed — they would
--- auto-grant DML before RLS is attached to a newly created table.
---
--- New neon_auth tables require explicit `GRANT SELECT, INSERT, UPDATE,
--- DELETE ON neon_auth.<table> TO auth_role;` in their migration. Default
--- privileges on schema neon_auth were intentionally removed for the same
--- RLS-race reason (lower blast radius — auth_role has no public grants).
---
--- See sections 1, 3-7 below for context-specific steps not covered by
--- grants.sql (role creation, DB-level grants, drizzle migrations schema,
--- composite index, SECURITY DEFINER functions, smoke tests).
+-- New public or neon_auth tables MUST receive explicit grants in their
+-- migration. Default privileges on both schemas are intentionally removed
+-- to prevent auto-granting DML before RLS attaches.
 -- -----------------------------------------------------------------------------
+
+-- [Apply docker/grants.sql as neondb_owner]
 
 
 -- -----------------------------------------------------------------------------
 -- 3. drizzle-kit migrate prerequisites
 -- -----------------------------------------------------------------------------
--- drizzle-kit's runtime requirements:
---   `drizzle-kit migrate` issues `CREATE SCHEMA IF NOT EXISTS drizzle`
---   unconditionally to provision its own migrations-tracking schema. This
---   requires CREATE on the database itself (not just on schema public).
---   Pre-creating the drizzle schema + granting service_role on it avoids
---   the per-migration permission check.
+-- drizzle-kit migrate issues CREATE SCHEMA IF NOT EXISTS drizzle on every run,
+-- which requires CREATE on the database itself. Pre-creating the schema and
+-- granting service_role avoids the per-migration permission check.
 -- -----------------------------------------------------------------------------
 
 GRANT CREATE ON DATABASE neondb TO service_role;
@@ -114,12 +86,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA drizzle
 -- -----------------------------------------------------------------------------
 -- 4. COMPOSITE INDEX for RLS predicate performance
 -- -----------------------------------------------------------------------------
--- All 8 RLS policies dispatch via:
---   EXISTS (SELECT 1 FROM neon_auth.member m
---           WHERE m.organization_id = projects.organization_id
---             AND m.user_id = current_setting('app.user_id', TRUE)::uuid)
--- Individual indexes on organization_id and user_id exist, but a composite
--- speeds the policy predicate to a single index lookup per row evaluated.
+-- public.current_user_org_ids() (hot path behind every policy) filters
+-- neon_auth.member on both ("userId", "organizationId"). Single column indexes
+-- force a bitmap AND; the composite collapses to one lookup per call.
 -- Idempotent.
 -- -----------------------------------------------------------------------------
 
@@ -128,130 +97,48 @@ CREATE INDEX IF NOT EXISTS member_org_user_idx
 
 
 -- -----------------------------------------------------------------------------
--- 5. VERIFY app_user has NO grants on ANY neon_auth table (Option B lockdown)
+-- 5. SECURITY DEFINER functions and triggers
 -- -----------------------------------------------------------------------------
--- Expected: empty result (zero rows). Under Option B app_user is REVOKED
--- from every neon_auth table — all reads route through SECURITY DEFINER
--- functions in docker/rls-functions.sql.
-SELECT grantee, table_name, privilege_type
-FROM information_schema.table_privileges
-WHERE grantee = 'app_user'
-  AND table_schema = 'neon_auth';
-
-
--- -----------------------------------------------------------------------------
--- 6. SECURITY DEFINER functions
--- -----------------------------------------------------------------------------
--- Apply by running docker/rls-functions.sql as neondb_owner via the Neon SQL
--- editor or psql. The function bodies are reviewed alongside
--- docker/rls-functions.sql; this section is a pointer (not a duplicate) so
--- the prod runbook stays the single source of truth for what runs on Neon.
---
--- Functions installed (invite-code flow):
---   public.lookup_team_invite_code(text)            -- service_role only (anti-enumeration)
---   public.reserve_team_invite_code_slot(text, uuid)
---   public.release_team_invite_code_slot(uuid, uuid, boolean)
---     -- WHERE clause requires reserved_until IS NOT NULL so a replayed
---     -- release call matches zero rows (idempotent, no use_count underflow)
---
--- Functions installed (Option B — neon_auth lockdown, grants to app_user):
---   public.current_user_org_ids()              -- uuid[]; RLS policy hot path
---   public.current_user_org_role(uuid)         -- text role or NULL
---   public.current_user_orgs()                 -- caller's org summary
---   public.current_user_has_any_membership()   -- bool, drives /onboarding
---   public.current_user_visible_member(uuid)   -- single member, cross-team scoped
---   public.team_member_roles_visible(uuid)     -- last-owner guard data
---   public.lookup_user_names_in_shared_orgs(uuid[]) -- batched name lookup; capped at 1000 ids
---   public.is_caller_in_invitation_org(uuid, uuid)  -- boolean predicate, no value disclosed
---
--- Functions installed (admin/system, service_role only):
---   public.list_org_project_ids(uuid)
---   public.find_org_member_user_ids_as_admin(uuid)
---   public.lookup_team_invite_code(text)
---
--- Triggers installed:
---   projects_organization_id_immutable             -- block cross-team project moves
---   tasks_project_id_immutable                     -- block cross-team task moves
---   team_invite_code_organization_id_immutable     -- block cross-team invite-code reparenting
---   task_edges_same_project_immutable              -- BEFORE INSERT/UPDATE; rejects
---     -- edges whose endpoints resolve to different (or NULL/invisible)
---     -- project_ids. SECURITY DEFINER so it sees rows hidden from app_user
---     -- by RLS, closing the dual-org / SQLi cross-tenant edge-wiring hole.
+-- Apply docker/rls-functions.sql as neondb_owner. The file is the canonical
+-- inventory. Re-applying is idempotent.
 -- -----------------------------------------------------------------------------
 
 -- [Apply docker/rls-functions.sql as neondb_owner]
 
 
--- [PROD UPDATE 2026-05-15] team_invite_code policy split for admin-only writes.
--- The previous member-access policy let any org member INSERT/UPDATE/DELETE
--- invite codes via direct SQL. Apply by re-running docker/rls-policies.sql
--- against the Neon prod database.
+-- -----------------------------------------------------------------------------
+-- 6. RLS policies, ENABLE, FORCE
+-- -----------------------------------------------------------------------------
+-- Apply docker/rls-policies.sql as neondb_owner AFTER section 5. The file also
+-- issues ENABLE ROW LEVEL SECURITY and FORCE ROW LEVEL SECURITY on the 8
+-- public tables, which the self-host path gets implicitly via drizzle-kit
+-- push but the Neon prod path (drizzle-kit migrate) does not.
+-- -----------------------------------------------------------------------------
 
--- [PROD UPDATE 2026-05-15] Added list_org_project_ids(uuid) SECURITY DEFINER
--- function for revokeOrgAccess. Apply by re-running docker/rls-functions.sql
--- against the Neon prod database.
-
--- [PROD UPDATE 2026-05-16] Replaced lookup_invitation_org_id(uuid)→uuid with
--- is_caller_in_invitation_org(uuid, uuid)→boolean (predicate-only API that
--- closes the invitation→org linkage disclosure to non-members). Apply by
--- re-running docker/rls-functions.sql against the Neon prod database.
-
--- [PROD UPDATE 2026-05-16] Added section 8 (REVOKE TEMPORARY ON DATABASE
--- FROM PUBLIC) for CVE-2018-1058 defense-in-depth. Apply by running the
--- one-line REVOKE in section 8 below; the verification queries in the same
--- section confirm the change took.
-
--- [PROD UPDATE 2026-05-16] Added RESTRICTIVE per-command floor on
--- team_invite_code writes so a future permissive write policy cannot
--- OR-relax the admin/owner gate. Also wrapped policy membership lookups
--- in `(SELECT public.current_user_org_ids())` so the InitPlan node is
--- guaranteed by the planner. Apply by re-running docker/rls-policies.sql
--- against the Neon prod database.
-
--- [PROD UPDATE 2026-05-17] Added team_invite_code_organization_id_immutable
--- trigger so the invite-code row pointer cannot be reparented across teams
--- under any RLS evaluation order. Added RESTRICTIVE per-command floor on
--- task_edges writes so a future permissive write policy cannot OR-relax
--- the both-endpoints-visible gate. Added explicit WITH CHECK on the
--- tasks/task_assignees/task_acceptance_criteria/task_decisions/task_links
--- policies (matching the team_invite_code convention). Added cardinality
--- guard (max 1000 ids) on lookup_user_names_in_shared_orgs. Dropped the
--- unused team_members_visible and team_invitations_visible SDFs.
--- Apply by re-running docker/rls-functions.sql then docker/rls-policies.sql
--- against the Neon prod database.
---
--- [PROD UPDATE 2026-05-17] Added REVOKE CREATE ON SCHEMA public FROM PUBLIC
--- to docker/grants.sql (CVE-2018-1058 belt). PG ≤ 14 grants CREATE on
--- schema public to PUBLIC by default; PG 15+ removes the default but the
--- bootstrap should not depend on server version. Apply by re-running
--- docker/grants.sql as neondb_owner.
-
--- [PROD UPDATE 2026-05-16] Every SECURITY DEFINER function now pins
--- pg_temp last in SET search_path (CVE-2018-1058 layer 1). Already
--- bundled into the docker/rls-functions.sql re-apply above; no separate
--- step required.
+-- [Apply docker/rls-policies.sql as neondb_owner]
 
 
 -- =============================================================================
--- VERIFICATION QUERIES (read-only; safe to re-run anytime)
+-- VERIFICATION QUERIES (read only, safe to re-run anytime)
 -- =============================================================================
 
--- Confirm role attributes (expected: app_user.rolbypassrls=false; service_role.rolbypassrls=true)
+-- Role attributes. Expected: app_user.rolbypassrls=false, service_role.rolbypassrls=true.
 SELECT rolname, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole,
        rolreplication, rolinherit, rolcanlogin
 FROM pg_roles
-WHERE rolname IN ('app_user', 'service_role')
+WHERE rolname IN ('app_user', 'service_role', 'auth_role')
 ORDER BY rolname;
 
--- Confirm no leftover neon_superuser membership (expected: empty result)
+-- Leftover neon_superuser membership. Expected: empty.
 SELECT r.rolname AS role, gr.rolname AS member_of
 FROM pg_auth_members m
 JOIN pg_roles r ON r.oid = m.member
 JOIN pg_roles gr ON gr.oid = m.roleid
-WHERE r.rolname IN ('app_user', 'service_role')
+WHERE r.rolname IN ('app_user', 'service_role', 'auth_role')
 ORDER BY r.rolname, gr.rolname;
 
--- Confirm public table grants (expected: 4 rows per role per table)
+-- Public table grants. Expected: one row per role per table, privs =
+-- 'DELETE, INSERT, SELECT, UPDATE'. Source of truth: docker/grants.sql.
 SELECT grantee, table_name,
        string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privs
 FROM information_schema.table_privileges
@@ -260,99 +147,91 @@ WHERE grantee IN ('app_user', 'service_role')
 GROUP BY grantee, table_name
 ORDER BY table_name, grantee;
 
--- Confirm neon_auth grants per role
--- Expected (source of truth: docker/grants.sql):
---   app_user: zero rows on neon_auth.* (Option B lockdown — neon_auth reads
---             route through SECURITY DEFINER functions in docker/rls-functions.sql)
---   service_role: SELECT + REFERENCES on member/organization/user/invitation,
---                 PLUS SELECT/UPDATE on session, SELECT/DELETE on oauth* tables
---   auth_role: SELECT/INSERT/UPDATE/DELETE on every neon_auth table
+-- neon_auth grants per role. Source of truth: docker/grants.sql.
 SELECT grantee, table_schema, table_name, privilege_type
 FROM information_schema.table_privileges
 WHERE grantee IN ('app_user', 'service_role', 'auth_role')
   AND table_schema = 'neon_auth'
 ORDER BY grantee, table_name, privilege_type;
 
--- Confirm composite index exists (expected: one row)
+-- Composite index. Expected: one row.
 SELECT indexname, indexdef
 FROM pg_indexes
 WHERE schemaname = 'neon_auth'
   AND tablename = 'member'
   AND indexname = 'member_org_user_idx';
 
+-- SECURITY DEFINER function count. Cross check against docker/rls-functions.sql.
+SELECT count(*) AS sdf_count
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.prosecdef = true;
+
+-- RLS enabled and forced on every public table. Expected: both true on 8 rows.
+SELECT c.relname, c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relkind = 'r'
+ORDER BY c.relname;
+
 
 -- -----------------------------------------------------------------------------
--- 7. SMOKE TEST after prod flip
+-- 7. SMOKE TESTS after prod flip
 -- -----------------------------------------------------------------------------
--- Run these queries from the Neon SQL editor connected as neondb_owner AFTER
--- flipping DATABASE_URL to point at app_user. Expected results below each
--- query show what each role can and cannot see.
+-- Run from the Neon SQL editor as neondb_owner AFTER flipping DATABASE_URL.
 -- -----------------------------------------------------------------------------
 
--- (a) confirm a SELECT from neon_auth.account as app_user is denied
+-- (a) app_user is denied on neon_auth.account
 SET ROLE app_user;
 SELECT 1 FROM neon_auth.account LIMIT 1;
 -- Expected: ERROR: permission denied for table account
 RESET ROLE;
 
--- (b) confirm an unscoped SELECT from public.projects under app_user with
---     no GUC set returns zero rows (default-deny via RLS)
+-- (b) unscoped SELECT under app_user with no GUC returns zero rows (default deny)
 SET ROLE app_user;
 SELECT count(*) FROM public.projects;  -- expected: 0
 RESET ROLE;
 
--- (c) confirm SECURITY DEFINER function is reachable from app_user
+-- (c) lookup_team_invite_code is service_role only
 SET ROLE app_user;
-SELECT * FROM public.lookup_team_invite_code('<nonexistent-code>');
--- Expected: zero rows, no error (function executes; just no match)
+SELECT * FROM public.lookup_team_invite_code('nonexistent');
+-- Expected: ERROR: permission denied for function lookup_team_invite_code
 RESET ROLE;
 
--- (d) confirm auth_role has no grants on public
+-- (d) auth_role cannot read public
 SET ROLE auth_role;
 SELECT 1 FROM public.projects LIMIT 1;
 -- Expected: ERROR: permission denied for table projects
 RESET ROLE;
 
--- (e) Option B: confirm app_user is REVOKED from every neon_auth table.
---     Reads under app_user only succeed via the SECURITY DEFINER
---     public.current_user_* and public.team_*_visible functions.
+-- (e) app_user is revoked from every neon_auth table; reads must route through SDFs
 SET ROLE app_user;
-SELECT 1 FROM neon_auth."member" LIMIT 1;
--- Expected: ERROR: permission denied for table member
-SELECT 1 FROM neon_auth."user" LIMIT 1;
--- Expected: ERROR: permission denied for table user
-SELECT 1 FROM neon_auth."session" LIMIT 1;
--- Expected: ERROR: permission denied for table session
-SELECT 1 FROM neon_auth.jwks LIMIT 1;
--- Expected: ERROR: permission denied for table jwks
+SELECT 1 FROM neon_auth."member" LIMIT 1;  -- Expected: ERROR: permission denied
+SELECT 1 FROM neon_auth."user" LIMIT 1;    -- Expected: ERROR: permission denied
+SELECT 1 FROM neon_auth."session" LIMIT 1; -- Expected: ERROR: permission denied
+SELECT 1 FROM neon_auth.jwks LIMIT 1;      -- Expected: ERROR: permission denied
 RESET ROLE;
 
--- (f) confirm app_user CAN call the SECURITY DEFINER lookups
---     (the function bodies run as their owner, which retains SELECT).
+-- (f) app_user can call SDFs granted to it; no GUC returns the default deny shape
 SET ROLE app_user;
-SELECT public.current_user_has_any_membership();
--- Expected: false (no GUC set; no caller identity → zero memberships)
-SELECT public.current_user_org_ids();
--- Expected: {} (empty uuid array)
+SELECT public.current_user_has_any_membership();  -- Expected: false
+SELECT public.current_user_org_ids();             -- Expected: {}
 RESET ROLE;
 
 
 -- -----------------------------------------------------------------------------
--- 8. REVOKE TEMPORARY on DATABASE from PUBLIC (CVE-2018-1058)
+-- 8. REVOKE TEMPORARY ON DATABASE from PUBLIC (CVE-2018-1058)
 -- -----------------------------------------------------------------------------
--- Defense-in-depth alongside `pg_temp` pinned last in every SECURITY DEFINER
--- search_path. Removes the privilege that lets app_user create temp objects
--- which could shadow operators/functions used inside SDF bodies.
---
--- service_role and auth_role lose TEMPORARY too; nothing in our query path
--- creates temp tables (verified by inspection — drizzle's migration tracking
--- uses the permanent `drizzle.*` schema). Regrant explicitly if a future
--- feature needs it.
+-- Belt alongside pg_temp pinned last in every SDF search_path. Removes the
+-- privilege that lets app_user create temp objects shadowing operators or
+-- functions inside SDF bodies. service_role and auth_role lose TEMPORARY too;
+-- no code path creates temp tables (drizzle uses the permanent drizzle.*
+-- schema). Re-grant explicitly if a future feature needs it.
 -- -----------------------------------------------------------------------------
 
 REVOKE TEMPORARY ON DATABASE neondb FROM PUBLIC;
 
--- Verify (expected: false)
-SELECT has_database_privilege('app_user', 'neondb', 'TEMPORARY') AS has_temp;
-SELECT has_database_privilege('service_role', 'neondb', 'TEMPORARY') AS has_temp;
-SELECT has_database_privilege('auth_role', 'neondb', 'TEMPORARY') AS has_temp;
+-- Verify. Expected: all three false.
+SELECT has_database_privilege('app_user',     'neondb', 'TEMPORARY') AS app_user_temp;
+SELECT has_database_privilege('service_role', 'neondb', 'TEMPORARY') AS service_role_temp;
+SELECT has_database_privilege('auth_role',    'neondb', 'TEMPORARY') AS auth_role_temp;

@@ -26,7 +26,7 @@ export type ProjectAccessRow = {
  * for the team chip + caller's role. RLS guarantees the project is only
  * visible if the caller is a member of its org; the org-row map then
  * provides the role and display fields without touching `neon_auth.*`
- * directly (app_user has no grants there under Option B).
+ * directly (app_user has no grants there; reads route through SDFs).
  *
  * @param userId - Verified user id.
  * @param projectId - UUID of the project.
