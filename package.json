@@ -13,6 +13,8 @@
     "test": "bun test",
     "test:db": "bun test tests/db tests/data tests/auth",
     "lint": "eslint .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "typecheck": "tsc --noEmit",
     "check:plugins": "bun run scripts/check-plugins.ts",
     "sync:plugins": "bun run scripts/check-plugins.ts --fix",
@@ -52,6 +54,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.15",
     "@types/d3-force": "^3.0.10",
     "@types/node": "^24.12.4",
     "@types/react": "^19.2.14",
