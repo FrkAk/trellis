@@ -1,11 +1,13 @@
+-- Nightly purge of expired and revoked OAuth tokens.
+-- Apply against the application database. pg_cron schedules in UTC.
+-- Idempotent — safe to re-run.
+
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
 DO $$
 BEGIN
   PERFORM cron.unschedule('purge-oauth-tokens')
   WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-oauth-tokens');
-EXCEPTION
-  WHEN OTHERS THEN NULL;
 END $$;
 
 SELECT cron.schedule(
