@@ -573,10 +573,6 @@ function stateHint(state: TaskState): string {
 // Error translation — data-layer asserts throw, this maps to actionable hints
 // ---------------------------------------------------------------------------
 
-// Shared driver-error helpers live in `lib/db/errors.ts` so the action
-// layer (`lib/actions/*`) can use the same cause-walking logic without
-// duplicating the SQLSTATE checks.
-
 /**
  * Translate a thrown error to a token-dense, agent-correcting tool failure.
  *

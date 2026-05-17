@@ -329,10 +329,7 @@ async function applyDecisionsWrite(
  * UNCHECKED: caller must assert access on every supplied taskId.
  *
  * @param taskIds - UUIDs to fetch criteria for.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Map of taskId -> AcceptanceCriterion[]; missing tasks omitted.
  */
 export async function fetchCriteriaByTaskUnchecked(
@@ -365,10 +362,7 @@ export async function fetchCriteriaByTaskUnchecked(
  * UNCHECKED: caller must assert access on every supplied taskId.
  *
  * @param taskIds - UUIDs to fetch decisions for.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Map of taskId -> Decision[]; missing tasks omitted.
  */
 export async function fetchDecisionsByTaskUnchecked(
@@ -437,12 +431,9 @@ export async function getTaskFull(
 }
 
 /**
- * Same contract as {@link getTaskFull} but runs on a caller-supplied
- * transaction handle. Use when an outer `withUserContext` frame is
- * already open (e.g. a context-builder that wants the access check, the
- * row fetch, and the surrounding work to all share one tx).
+ * {@link getTaskFull} on a caller-supplied tx.
  *
- * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param tx - Active RLS transaction handle.
  * @param taskId - UUID of the task.
  * @returns Full task row with composed `taskRef`, assignees, criteria,
  *   decisions, and links.
@@ -585,8 +576,7 @@ export async function fetchAssigneesByTaskUnchecked(
  * it when wrapping or re-exporting.
  *
  * @param projectId - UUID of the project whose tasks to enumerate.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC scopes the visible row set.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Map of taskId -> AssigneeRef[]; tasks without assignees omitted.
  */
 export async function fetchAssigneesByProjectUnchecked(
@@ -624,10 +614,7 @@ export async function fetchAssigneesByProjectUnchecked(
  * when wrapping or re-exporting.
  *
  * @param taskId - UUID of the task.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Ordered array of link refs (empty when no links exist).
  */
 export async function fetchLinksUnchecked(
@@ -746,10 +733,7 @@ export async function getProjectTasks(ctx: AuthContext, projectId: string) {
  * assemblers that have already authorized the parent project.
  *
  * @param projectId - UUID of the project.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Ordered array of tasks.
  */
 export async function listProjectTasks(projectId: string, conn: Conn) {
@@ -888,9 +872,7 @@ function deriveTaskState(
  *
  * @param projectId - UUID of the project.
  * @param taskSubset - Tasks in `TaskStateInput` shape.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the underlying `buildEffectiveDepGraph`
- *   reads inherit the same RLS-scoped GUC. Pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Map of taskId → TaskState.
  */
 export async function deriveTaskStatesSlim(
@@ -1179,10 +1161,7 @@ export async function searchTasksPaged(
  * note into context output.
  * @param projectId - UUID of the project the source task belongs to.
  * @param taskId - UUID of the source task.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Map of target task ID to edge note.
  */
 export async function fetchEdgeNotesBySource(
@@ -1214,10 +1193,7 @@ export async function fetchEdgeNotesBySource(
  * for the projectId-filter rationale.
  * @param projectId - UUID of the project the target task belongs to.
  * @param taskId - UUID of the target task.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Map of source task ID to edge note.
  */
 export async function fetchEdgeNotesByTarget(
@@ -1254,10 +1230,7 @@ export async function fetchEdgeNotesByTarget(
  * id list that crosses projects, the SQL ignores out-of-project rows.
  * @param projectId - UUID of the project the tasks belong to.
  * @param taskIds - Array of task UUIDs.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Array of task summaries with composed taskRef.
  */
 export async function fetchTaskSummaries(
@@ -1307,10 +1280,7 @@ export type DependencyTaskInfo = {
  *
  * @param projectId - UUID of the project the dependency tasks belong to.
  * @param taskIds - UUIDs of the dependency tasks.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Dep-task projections including `executionRecord` and `taskRef`.
  */
 export async function fetchDependencyTasks(
@@ -1357,10 +1327,7 @@ export type SiblingTaskInfo = {
  *
  * @param projectId - UUID of the project.
  * @param excludeTaskId - UUID of the task to omit from the result.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Sibling task projections.
  */
 export async function fetchSiblingTasks(
@@ -1398,10 +1365,7 @@ export async function fetchSiblingTasks(
  * algorithms (`buildEffectiveDepGraph`) that only need a small slice.
  *
  * @param projectId - UUID of the project.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Slim rows for every task in the project.
  */
 export async function listTasksForGraph(projectId: string, conn: Conn) {
@@ -1842,28 +1806,14 @@ export async function updateTask(
   delete changes.decisions;
 
   let wasNoOp = false;
-  // Surface the post-update criteria/decisions on the returned row so
-  // callers that read `result.acceptanceCriteria` / `result.decisions`
-  // (e.g. tool-handlers' completion-protocol hint checks on status
-  // transitions to done/in_review/cancelled) see the freshest state.
-  //
-  // One round-trip via `fetchTaskChildren` — both `json_agg` subqueries
-  // ride a single SELECT. PARTIAL CONTRACT: skipped entirely when
-  // neither a child write nor a status change occurred. Callers on the
-  // skip path see `[]` regardless of persisted state; this is documented
-  // on `UpdateTaskResult`. Do not extend the consumer set without
-  // either (a) including their call site in the refetch trigger or
-  // (b) routing them through `getTaskFull` afterwards.
   const wroteChildren =
     formattedCriteria !== undefined || formattedDecisions !== undefined;
   const statusChanged = typeof input.status === "string";
   const refetchNeeded = wroteChildren || statusChanged;
   const result = await withUserContext(ctx.userId, async (tx) => {
     await assertTaskAccessTx(tx, taskId);
-    // Row-level INSERT/UPDATE/DELETE on the child tables is atomic per row
-    // via MVCC + ON CONFLICT (id) DO UPDATE, so a FOR UPDATE row lock is not
-    // required. A plain SELECT is sufficient for the no-op short-circuit
-    // and the history-row baseline.
+    // Child-table writes are atomic per row (MVCC + ON CONFLICT (id) DO
+    // UPDATE); no FOR UPDATE lock needed for this baseline SELECT.
     const [current] = await tx
       .select()
       .from(tasks)

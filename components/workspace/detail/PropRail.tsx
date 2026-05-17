@@ -1129,8 +1129,6 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
   // Sync from props only when no mutations are in flight. Otherwise we
   // race: a settled-but-not-final mutation updates `assignees` to an
   // intermediate state and overwrites the user's latest local intent.
-  // The ref is updated alongside state so async readers (toggleMember)
-  // always see the live value without depending on render commit.
   useEffect(() => {
     if (pendingMutationsRef.current > 0) return;
     const next = new Set(assignees.map((a) => a.userId));

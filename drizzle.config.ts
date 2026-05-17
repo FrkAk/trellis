@@ -15,12 +15,8 @@ if (existsSync(envPath)) {
   }
 }
 
-// `drizzle-kit push` runs DDL (CREATE TABLE / ALTER TABLE / etc.) and needs
-// the BYPASSRLS + CREATE-on-schema-public role. The runtime `DATABASE_URL`
-// points at `app_user` (no CREATE, no BYPASSRLS), so push must connect via
-// `DATABASE_SERVICE_ROLE_URL`. Falls back to `DATABASE_URL` for legacy
-// single-role setups (pre-MYMR-151 clones, or environments where the
-// runtime role still carries BYPASSRLS).
+// drizzle-kit push runs DDL — needs BYPASSRLS + CREATE on schema public.
+// Falls back to DATABASE_URL for pre-RLS single-role setups.
 const pushUrl =
   process.env.DATABASE_SERVICE_ROLE_URL ?? process.env.DATABASE_URL;
 

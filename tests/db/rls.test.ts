@@ -95,7 +95,6 @@ describe("withUserContext GUC isolation", () => {
       }),
     ).rejects.toThrow(sentinel);
 
-    // Different connection (bare pool). The GUC must report empty.
     const c = appUserConnect();
     const [row] = await c<{ value: string }[]>`
       SELECT current_setting('app.user_id', TRUE) AS value
@@ -104,8 +103,6 @@ describe("withUserContext GUC isolation", () => {
   });
 
   test("setting GUC inside a frame does not leak after a successful commit", async () => {
-    // Symmetric to the abort-path test — pins the contract for the
-    // commit path too. `eq` import is reused so the read is typed.
     const fx = await seedUserOrgProject("guc-commit");
 
     await withUserContext(fx.userId, async (tx) => {

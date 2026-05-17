@@ -1,3 +1,10 @@
+/**
+ * OAuth session helpers.
+ *
+ * `app_user` has no grants on `neon_auth.oauth*`; every helper here goes
+ * through `serviceRoleDb` (BYPASSRLS). Callers must pass a `userId` that
+ * `requireSession` verified — the WHERE clause is the effective scope.
+ */
 import "server-only";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { serviceRoleDb } from "@/lib/db";
@@ -9,13 +16,6 @@ import {
   organization,
 } from "@/lib/db/auth-schema";
 
-/**
- * Service-role handle aliased as `db` for this module. `app_user` has no
- * grants on `neon_auth.oauth*` (bearer tokens), and every helper here is
- * reached only after `requireSession` verifies the caller — so the
- * `userId` argument is trusted and the WHERE clauses are the effective
- * scope.
- */
 const db = serviceRoleDb;
 
 /** Active OAuth session row joined with client and organization metadata. */

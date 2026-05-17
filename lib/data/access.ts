@@ -1,3 +1,11 @@
+/**
+ * Membership-gated project + task lookups.
+ *
+ * RLS scopes every read here. `app_user` has no grants on `neon_auth.*`;
+ * the org metadata join routes through `public.current_user_orgs()`
+ * (SECURITY DEFINER). `*Tx` variants take a caller-supplied tx so the
+ * access check and the protected work share one `withUserContext` frame.
+ */
 import "server-only";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -10,7 +18,7 @@ import { executeRaw } from "@/lib/db/raw";
 import { withUserContext, type Tx } from "@/lib/db/rls";
 import type { ProjectListOrganization } from "@/lib/data/views";
 
-/** Resolved project access — what the membership check returns when a caller can read a project. */
+/** Resolved project access returned when a caller can read a project. */
 export type ProjectAccessRow = {
   /** The authorized project row. */
   project: Project;
@@ -21,16 +29,11 @@ export type ProjectAccessRow = {
 };
 
 /**
- * Membership-gated project lookup. Combines the RLS-scoped `projects`
- * SELECT with a single-row lookup against `public.current_user_orgs()`
- * for the team chip + caller's role. RLS guarantees the project is only
- * visible if the caller is a member of its org; the org-row map then
- * provides the role and display fields without touching `neon_auth.*`
- * directly (app_user has no grants there; reads route through SDFs).
+ * Membership-gated project lookup.
  *
  * @param userId - Verified user id.
  * @param projectId - UUID of the project.
- * @returns Access row, or null when the project doesn't exist or the user is not a member.
+ * @returns Access row, or null when the project is missing or caller is not a member.
  */
 export async function findProjectAccess(
   userId: string,
@@ -40,16 +43,11 @@ export async function findProjectAccess(
 }
 
 /**
- * Same contract as {@link findProjectAccess} but runs on a caller-supplied
- * transaction handle so the membership check and the protected work can
- * share one `withUserContext` frame. Public helpers that today call
- * `findProjectAccess` and then open their own `withUserContext` pay two
- * BEGIN/COMMIT round-trips per protected read; passing the working `tx`
- * here collapses that to one.
+ * {@link findProjectAccess} on a caller-supplied tx.
  *
- * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param tx - Active RLS transaction handle.
  * @param projectId - UUID of the project.
- * @returns Access row, or null when the project doesn't exist or the user is not a member.
+ * @returns Access row, or null when the project is missing or caller is not a member.
  */
 export async function findProjectAccessTx(
   tx: Tx,
@@ -83,14 +81,11 @@ export async function findProjectAccessTx(
 }
 
 /**
- * Single-query membership-gated task lookup. Returns the task row when
- * RLS allows it (i.e. the caller is a member of the task's project's
- * org); RLS does the membership gate so this helper does not need any
- * JOIN through `neon_auth.*`.
+ * Membership-gated task lookup. RLS gates membership; no neon_auth JOIN.
  *
  * @param userId - Verified user id.
  * @param taskId - UUID of the task.
- * @returns Full task row when the user can access it, null otherwise.
+ * @returns Task row when accessible, null otherwise.
  */
 export async function findTaskAccess(
   userId: string,
@@ -100,12 +95,11 @@ export async function findTaskAccess(
 }
 
 /**
- * Same contract as {@link findTaskAccess} but runs on a caller-supplied
- * transaction handle. See {@link findProjectAccessTx} for the rationale.
+ * {@link findTaskAccess} on a caller-supplied tx.
  *
- * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param tx - Active RLS transaction handle.
  * @param taskId - UUID of the task.
- * @returns Full task row when the user can access it, null otherwise.
+ * @returns Task row when accessible, null otherwise.
  */
 export async function findTaskAccessTx(
   tx: Tx,

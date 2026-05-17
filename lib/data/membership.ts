@@ -1,3 +1,10 @@
+/**
+ * Membership helpers.
+ *
+ * `app_user` has no grants on `neon_auth.*`; every read here routes through
+ * the `public.current_user_*` / `public.team_*_visible` SECURITY DEFINER
+ * functions that read `app.user_id` from the GUC `withUserContext` sets.
+ */
 import "server-only";
 import { sql } from "drizzle-orm";
 import { serviceRoleDb } from "@/lib/db";
@@ -10,14 +17,7 @@ import {
   type TeamCascadePreview,
 } from "@/lib/db/raw/preview-team-cascade";
 
-/**
- * Shape of a single membership row returned to the team-list UI.
- *
- * `app_user` has no grants on `neon_auth.*`. Every helper in this module
- * reads auth data via the `public.current_user_*` and `public.team_*_visible`
- * SECURITY DEFINER functions, which read `app.user_id` from the GUC that
- * `withUserContext` sets and scope rows accordingly.
- */
+/** Single membership row returned to the team-list UI. */
 export type MembershipRow = {
   organizationId: string;
   name: string;
@@ -212,15 +212,11 @@ export async function listMemberRolesTx(
 }
 
 /**
- * Admin/system lookup: user ids of every member of an org, NOT scoped by
- * the caller's membership. Used by the better-auth `beforeDeleteOrganization`
- * hook which iterates every member to wipe OAuth artifacts AFTER the org
- * row is queued for deletion (so a user-scoped lookup would race the
- * cascade and miss the trailing edge).
- *
- * Routes through the SECURITY DEFINER `find_org_member_user_ids_as_admin`
- * which is EXECUTE-restricted to `service_role`. The JS data ring MUST
- * call this via `serviceRoleDb`.
+ * Admin lookup: user ids of every member of an org, NOT scoped by the
+ * caller's membership. Routes through `find_org_member_user_ids_as_admin`
+ * (SECURITY DEFINER, service_role-only). Used by Better Auth's
+ * `beforeDeleteOrganization` hook where caller-scoped reads would race
+ * the cascade.
  *
  * @param orgId - UUID of the organization.
  * @returns Array of user ids in the organization.
@@ -331,29 +327,17 @@ export type DemoteOutcome =
   | { kind: "callback_error"; err: unknown };
 
 /**
- * Atomically demote (or otherwise change the role of) a member, holding
- * the per-org owner-demote advisory lock so concurrent demotes serialize.
- * The actual role change is performed by the supplied `demote` callback
- * — which lets actions thread Better Auth's `updateMemberRole` through
- * the lock without `lib/data/` taking a dep on `auth.api`.
+ * Change a member's role under the per-org owner-demote advisory lock so
+ * concurrent demotes serialize. The `demote` callback runs the actual write
+ * on Better Auth's autocommit adapter (separate connection — no deadlock).
+ * Better Auth API errors surface as `callback_error`; anything else rethrows
+ * and the transaction rolls back.
  *
- * The callback runs inside the transaction window but on its own
- * connection (BA's adapter is autocommit), so it doesn't deadlock against
- * the lock — the lock simply serializes other actions waiting on the
- * same gate.
- *
- * Callback errors are split: only Better Auth API errors (shape
- * `{ body: { code } }`) are returned as `callback_error`; anything else
- * is rethrown so the transaction rolls back and the action layer logs the
- * underlying cause instead of swallowing it as `unknown`.
- *
- * @param userId - Verified caller user id (used to scope the visible
- *   member + roles lookups under RLS).
+ * @param userId - Verified caller user id.
  * @param input - Target team, member id, and role change parameters.
  * @param demote - Callback that performs the actual role change.
  * @returns Outcome discriminating success, validation failures, and callback errors.
- * @throws Whatever the `demote` callback throws when it is not a Better
- *   Auth API error.
+ * @throws Whatever the `demote` callback throws when not a Better Auth API error.
  */
 export async function demoteMemberWithGuard(
   userId: string,

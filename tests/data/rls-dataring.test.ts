@@ -38,7 +38,6 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
   test("findTeamInviteCode succeeds under app_user (uses withUserContext)", async () => {
     const fx = await seedUserOrgProject("dr-find");
 
-    // Seed an existing invite code via the superuser bypass.
     const seedSql = superuserPool();
     try {
       await seedSql`
@@ -94,8 +93,6 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
     expect(created.code).toBe("NEW-CREATE-CODE");
     expect(created.organizationId).toBe(fx.organizationId);
 
-    // Confirm the row really landed (read via the superuser bypass to
-    // sidestep the policy and prove the write itself happened).
     const verify = superuserPool();
     try {
       const rows =
@@ -177,7 +174,6 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
 
     expect(rotated).toBeNull();
 
-    // Confirm teamA's row is unchanged.
     const verify = superuserPool();
     try {
       const rows =

@@ -14,9 +14,7 @@ const noopSubscribe = () => () => {};
  * @returns `true` when the query currently matches.
  */
 export function useMediaQuery(query: string, defaultValue = false): boolean {
-  // `subscribe` must keep a stable identity per `query` — `useSyncExternalStore`
-  // re-subscribes whenever the function reference changes, which without
-  // memoisation would mean an unsubscribe+resubscribe on every render.
+  // `useSyncExternalStore` re-subscribes on identity change — memoise per `query`.
   const subscribe = useCallback(
     (callback: () => void) => {
       if (typeof window === 'undefined') return noopSubscribe();

@@ -230,9 +230,6 @@ export function ForceGraph({
     [edges, filteredTaskIds, edgeFilter],
   );
 
-  // Theme detection with mutation observer — initial value comes from the
-  // lazy `useState` initialiser above, so this effect only owns the live
-  // subscription to subsequent class flips.
   useEffect(() => {
     const observer = new MutationObserver(() => setLight(isLightMode()));
     observer.observe(document.documentElement, {
@@ -327,11 +324,7 @@ export function ForceGraph({
 
   const ticking = state === "settling";
 
-  // Refs that the camera effect and render loop can read without re-firing.
-  // Mirrored in an effect so the assignment happens after commit (the rule
-  // forbids ref writes during render). Consumers run in effects / RAF / event
-  // handlers, all of which fire after commit, so the one-render delay is
-  // invisible.
+  // Ref writes are mirrored in effects; all consumers run post-commit.
   const nodesForFitRef = useRef<GraphNode[]>([]);
   const sizeRef = useRef(size);
   useEffect(() => {
@@ -556,14 +549,7 @@ export function ForceGraph({
     [links],
   );
 
-  // -----------------------------------------------------------------------
-  // Drawing
-  //
-  // Mutates per-node animation lerps in place every frame — see the inline
-  // block below for the rationale. The hook-level `immutability` disable
-  // mirrors the inner block disable; the rule reports at both the mutation
-  // site and the containing hook.
-  // -----------------------------------------------------------------------
+  // Disable mirrors the inner-block disable on the lerp mutation site.
   // eslint-disable-next-line react-hooks/immutability
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -657,16 +643,8 @@ export function ForceGraph({
       return g;
     };
 
-    // Advance per-node animations — gentle lerps for buttery transitions.
-    // `_enterT` is driven by the render loop (not the simulation tick) so
-    // sync pre-tick paths still get a fade-in if a node was uncached.
-    // At degrade level 2 we snap to target instead so the render loop's
-    // `hasAnimating` flag drops to false and we stop redrawing for free.
-    //
-    // The lerp fields are canvas-only and never drive React reconciliation,
-    // so the React Compiler's immutability invariant doesn't apply — moving
-    // them off the node object into a side Map would burn allocation budget
-    // on every frame for 200+ node graphs.
+    // Lerp fields are canvas-only and never drive React reconciliation; an
+    // off-node Map would burn allocation budget on every frame for 200+ nodes.
     /* eslint-disable react-hooks/immutability */
     if (effLerps) {
       for (const n of nodes) {
@@ -1225,12 +1203,7 @@ export function ForceGraph({
     }
   }, [state, selectedNodeId, rightInset, size, animateTransform]);
 
-  // -----------------------------------------------------------------------
-  // Render loop — drives canvas redraws while there's anything in motion.
-  // Calls `draw()` which mutates the per-node lerp fields in place. The
-  // `immutability` rule reports at the containing effect as well as the
-  // mutation site, so both need to be silenced.
-  // -----------------------------------------------------------------------
+  // Disable mirrors the lerp-mutation site inside `draw()`.
   // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
     let raf: number;

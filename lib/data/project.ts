@@ -142,9 +142,6 @@ export async function getProjectGraphSlim(
       asIdentifier(project.identifier),
     );
 
-    // Derived state lives on the slim payload — single source of truth for
-    // every UI surface. Computing it here avoids the client mirroring the
-    // server-side rules and the drift that pattern caused historically.
     const stateMap = await deriveTaskStatesSlim(
       projectId,
       enriched.map((t) => ({
@@ -191,10 +188,8 @@ export async function getProjectGraphSlim(
 }
 
 /**
- * Chrome data for the workspace layout (TopBar + settings modal). Returns
- * the project header fields plus the caller's role, owning team, and a
- * total task count — fetched in two queries (`assertProjectAccessTx` JOIN
- * plus a single `COUNT(*)`).
+ * Chrome data for the workspace layout: project header, caller role,
+ * owning team, and total task count.
  *
  * @param ctx - Resolved auth context.
  * @param projectId - UUID of the project.
@@ -275,16 +270,9 @@ export async function getProjectListMaxUpdatedAt(
 }
 
 /**
- * Project ids belonging to a single organization. Meant for trusted
- * server-side bookkeeping inside the org-membership hooks where the caller
- * has already established the scope (see `lib/realtime/access.ts`). Do NOT
- * expose this through any route or server action that takes user-supplied
- * input.
- *
- * Runs under `withUserContext(userId)` so RLS still scopes the query to the
- * caller's accessible rows under the `app_user` role; the realtime hook
- * only ever invokes this for the user who just gained or lost access, so
- * the user's membership is the correct scope.
+ * Project ids in a single organization, scoped to the caller's membership.
+ * Internal — for trusted bookkeeping in org-membership hooks; do NOT expose
+ * through any route that takes user-supplied input.
  *
  * @param userId - Verified user id of the member triggering the lookup.
  * @param organizationId - Organization UUID.
@@ -304,12 +292,10 @@ export async function listOrgProjectIds(
 }
 
 /**
- * Admin/system lookup: project ids for an org, NOT scoped by caller membership.
- * Used by the better-auth afterRemoveMember hook (lib/realtime/access.ts)
- * which runs after the member row is deleted — at that point a member-scoped
- * `listOrgProjectIds` returns []. Routes through the SECURITY DEFINER
- * function `public.list_org_project_ids`, which is EXECUTE-restricted to
- * service_role. The JS data ring MUST call this via `serviceRoleDb`.
+ * Admin lookup: project ids for an org, NOT scoped by caller membership.
+ * Routes through `list_org_project_ids` (SECURITY DEFINER, service_role-only).
+ * Used by Better Auth's `afterRemoveMember` hook, where the member row is
+ * already gone and the caller-scoped variant returns [].
  *
  * @param orgId - UUID of the organization.
  * @returns Array of project ids in the organization.
@@ -369,9 +355,7 @@ export async function getProjectSlim(
  * assemblers — caller has already asserted access on the parent task.
  *
  * @param projectId - UUID of the project.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns The identifier string, or null when the project is missing.
  */
 export async function getProjectIdentifier(
@@ -399,9 +383,7 @@ export type ProjectHeader = {
  * task.
  *
  * @param projectId - UUID of the project.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns The header, or null when the project is missing.
  */
 export async function getProjectHeader(
@@ -441,11 +423,9 @@ export async function getProjectTags(
 }
 
 /**
- * Same contract as {@link getProjectTags} but runs on a caller-supplied
- * transaction handle so the access check and the aggregation share one
- * `withUserContext` frame with the surrounding work.
+ * {@link getProjectTags} on a caller-supplied tx.
  *
- * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param tx - Active RLS transaction handle.
  * @param projectId - UUID of the project.
  * @returns Sorted tag vocabulary with usage counts.
  */

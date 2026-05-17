@@ -171,8 +171,6 @@ test("revokeOrgAccess enumerates and unregisters subs for every project in the o
       VALUES (${f.organizationId}, 'Second project', 'PRJ2')
       RETURNING id`;
     project2Id = p2.id;
-    // Remove membership BEFORE invoking revokeOrgAccess — mirrors what
-    // better-auth's afterRemoveMember does in production.
     await su`DELETE FROM neon_auth."member"
              WHERE "userId" = ${f.userId}
                AND "organizationId" = ${f.organizationId}`;
@@ -187,8 +185,6 @@ test("revokeOrgAccess enumerates and unregisters subs for every project in the o
 
   await revokeOrgAccess(f.userId, f.organizationId);
 
-  // Both project subs must be cleared. Under the buggy member-scoped path
-  // these would still be present because listOrgProjectIds returned [].
   expect([...broker.subscribers(`project:${f.projectId}`)]).toEqual([]);
   expect([...broker.subscribers(`project:${project2Id}`)]).toEqual([]);
 });

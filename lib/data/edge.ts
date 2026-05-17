@@ -217,10 +217,7 @@ export async function getTaskEdgesDetailedTx(
  * ids so the OR-on-id-list is safely scoped.
  *
  * @param taskIds - Task ids to filter the endpoints on.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Full edge rows.
  */
 export async function fetchEdgesForTaskIds(
@@ -244,10 +241,7 @@ export async function fetchEdgesForTaskIds(
  * id set. Used by graph algorithms.
  *
  * @param sourceTaskIds - Task ids to filter the source side on.
- * @param conn - Drizzle client or transaction handle from an active
- *   `withUserContext` frame; the GUC on this handle scopes the read to
- *   the caller's org. Helpers in this file never default-construct a
- *   handle — pass the `tx` you opened.
+ * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Edge endpoints (source/target only — no metadata).
  */
 export async function listDependsOnEdges(
@@ -364,16 +358,11 @@ export async function createEdge(
 }
 
 /**
- * Internal helper: fetch an edge by id then assert the caller can reach it
- * via the parent project on a caller-supplied transaction handle. Both the
- * missing-edge case and a cross-team task surface as a `ForbiddenError`
- * tagged with `resource: "edge"` so the tool layer can render an
- * edge-specific recovery hint without re-querying. Sharing one
- * `withUserContext` frame across the edge lookup, the access check, and
- * the surrounding mutation keeps every read/write on a single RLS-scoped
- * transaction.
+ * Fetch an edge and assert caller access via the parent project on a
+ * supplied tx. Missing edge and cross-team access both surface as
+ * `ForbiddenError({ resource: "edge" })`.
  *
- * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param tx - Active RLS transaction handle.
  * @param edgeId - UUID of the edge.
  * @returns The edge row and its parent project id.
  * @throws ForbiddenError on missing edge, malformed id, or cross-team access.
@@ -400,16 +389,8 @@ async function loadAuthorizedEdgeTx(tx: Tx, edgeId: string) {
 }
 
 /**
- * Update an existing edge's edgeType and/or note.
- *
- * `sourceTaskId` and `targetTaskId` are immutable through this helper, so
- * the only mutation that can introduce a new cycle is a type change INTO
- * `depends_on`. The cycle check fires exclusively for that case; an
- * existing `depends_on` edge being updated with the same type, or a
- * `depends_on` → `blocks` demotion, cannot introduce a new cycle and the
- * extra dependency-chain fetch would be pure overhead. The check runs
- * inside the same `withUserContext` transaction as the UPDATE so the read
- * and write share one RLS-scoped frame.
+ * Update an edgeType and/or note. Endpoints are immutable through this
+ * helper, so a cycle check is only needed on a type change INTO `depends_on`.
  *
  * @param ctx - Resolved auth context.
  * @param edgeId - UUID of the edge to update.

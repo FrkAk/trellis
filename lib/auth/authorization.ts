@@ -132,13 +132,10 @@ export async function assertProjectAccess(
 }
 
 /**
- * Same contract as {@link assertProjectAccess} but runs the membership
- * check on a caller-supplied transaction handle. Use when the protected
- * work already opens (or will open) a `withUserContext` frame — passing
- * its `tx` here avoids the second BEGIN/COMMIT round-trip the outer
- * helper pays.
+ * {@link assertProjectAccess} on a caller-supplied tx so the access
+ * check shares one `withUserContext` frame with the protected work.
  *
- * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param tx - Active RLS transaction handle.
  * @param projectId - UUID of the project to authorize.
  * @param required - Optional permission gate (e.g. `{ project: ["delete"] }`).
  * @returns The full project row and the caller's member role.
@@ -188,10 +185,9 @@ export async function assertTaskAccess(
 }
 
 /**
- * Same contract as {@link assertTaskAccess} but runs on a caller-supplied
- * transaction handle. See {@link assertProjectAccessTx} for rationale.
+ * {@link assertTaskAccess} on a caller-supplied tx.
  *
- * @param tx - Drizzle transaction handle from an active `withUserContext` frame.
+ * @param tx - Active RLS transaction handle.
  * @param taskId - UUID of the task to authorize.
  * @returns The full task row.
  * @throws ForbiddenError on missing task or cross-team access.

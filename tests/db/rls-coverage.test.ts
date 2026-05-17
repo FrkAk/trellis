@@ -31,8 +31,6 @@ describe("RLS coverage — every public.* table is enabled + forced", () => {
         );
       }
       expect(missing.length).toBe(0);
-      // Sanity: the suite shouldn't pass on an empty database — confirm
-      // we found the eight public tables we expect.
       expect(rows.length).toBeGreaterThanOrEqual(8);
     } finally {
       await sql.end({ timeout: 5 });
