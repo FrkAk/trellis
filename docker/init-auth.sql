@@ -185,3 +185,8 @@ CREATE INDEX IF NOT EXISTS "oauthRefreshToken_clientId_idx" ON "oauthRefreshToke
 CREATE INDEX IF NOT EXISTS "oauthRefreshToken_userId_idx" ON "oauthRefreshToken"("userId");
 CREATE INDEX IF NOT EXISTS "oauthConsent_clientId_idx" ON "oauthConsent"("clientId");
 CREATE INDEX IF NOT EXISTS "oauthConsent_userId_idx" ON "oauthConsent"("userId");
+
+-- Optional follow-up: docker/init-pg-cron.sql schedules a nightly janitor
+-- that purges revoked/expired OAuth tokens. Requires the pg_cron extension
+-- to be enabled (Neon console or self-host superuser). Not applied by the
+-- testcontainer migrator — the test image ships without pg_cron.
