@@ -8,7 +8,7 @@
 # equivalent declaration via GitHub Actions `services:` — see ci.yml.
 services:
   db-test:
-    image: postgres:17.6
+    image: postgres:17.10
     environment:
       POSTGRES_USER: mymir
       POSTGRES_PASSWORD: mymir
