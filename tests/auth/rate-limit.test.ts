@@ -43,17 +43,14 @@ test("attack: 10 sign-in attempts from one IP hit the 5/60s rate limit", async (
   // at least five of these must return 429.
   const responses: Response[] = [];
   for (let i = 0; i < 10; i++) {
-    const request = new Request(
-      "https://example.test/api/auth/sign-in/email",
-      {
-        body: JSON.stringify({ email, password: "wrong-password" }),
-        headers: {
-          "content-type": "application/json",
-          "cf-connecting-ip": ATTACK_IP,
-        },
-        method: "POST",
+    const request = new Request("https://example.test/api/auth/sign-in/email", {
+      body: JSON.stringify({ email, password: "wrong-password" }),
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": ATTACK_IP,
       },
-    );
+      method: "POST",
+    });
     responses.push(await auth.handler(request));
   }
 

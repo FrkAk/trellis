@@ -8,13 +8,14 @@ import { SessionProvider } from "@/components/providers/SessionProvider";
 import "./globals.css";
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
 };
 
 export const metadata: Metadata = {
   title: "mymir",
-  description: "A structure that supports organic growth. Track projects created by your coding agent.",
+  description:
+    "A structure that supports organic growth. Track projects created by your coding agent.",
 };
 
 /**
@@ -33,7 +34,11 @@ export default async function RootLayout({
   const theme = raw === "light" ? "light" : "dark";
 
   return (
-    <html lang="en" suppressHydrationWarning className={theme === "light" ? "light" : ""}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={theme === "light" ? "light" : ""}
+    >
       <body>
         <ThemeProvider initialTheme={theme}>
           <QueryProvider>

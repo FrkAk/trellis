@@ -7,7 +7,10 @@
  * @param teamId - Stable identifier for the team (UUID).
  * @returns From/to HSL color strings for a 135deg linear gradient.
  */
-export function teamAvatarGradient(teamId: string): { from: string; to: string } {
+export function teamAvatarGradient(teamId: string): {
+  from: string;
+  to: string;
+} {
   let h = 0;
   for (let i = 0; i < teamId.length; i++) {
     h = (h * 31 + teamId.charCodeAt(i)) | 0;

@@ -24,9 +24,7 @@ import { executeRaw, type Conn } from "@/lib/db/raw";
  *   accessible projects (so a missing-data response still carries a
  *   stable validator the client can revalidate against).
  */
-export async function getProjectListMaxUpdatedAtRaw(
-  conn: Conn,
-): Promise<Date> {
+export async function getProjectListMaxUpdatedAtRaw(conn: Conn): Promise<Date> {
   const rows = await executeRaw<{ max_updated_at: string | Date | null }>(
     conn,
     sql`

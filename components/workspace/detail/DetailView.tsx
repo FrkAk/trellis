@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-import { useMemo } from 'react';
-import type { TaskEdge } from '@/lib/db/schema';
-import type { TaskFull, TaskGraphSlim, TaskLinkRef } from '@/lib/data/views';
-import type { TaskStatus } from '@/lib/types';
-import { BundlePreview } from '@/components/workspace/BundlePreview';
-import { DetailHeader } from './DetailHeader';
-import { DescriptionSection } from './DescriptionSection';
-import { CriteriaSection } from './CriteriaSection';
-import { DecisionsSection } from './DecisionsSection';
-import { LinksSection } from './LinksSection';
-import { RelationshipsSection } from './RelationshipsSection';
-import { ExecutionSection } from './ExecutionSection';
-import { ActivitySection } from './ActivitySection';
-import { SectionHeader } from './SectionHeader';
+import { useMemo } from "react";
+import type { TaskEdge } from "@/lib/db/schema";
+import type { TaskFull, TaskGraphSlim, TaskLinkRef } from "@/lib/data/views";
+import type { TaskStatus } from "@/lib/types";
+import { BundlePreview } from "@/components/workspace/BundlePreview";
+import { DetailHeader } from "./DetailHeader";
+import { DescriptionSection } from "./DescriptionSection";
+import { CriteriaSection } from "./CriteriaSection";
+import { DecisionsSection } from "./DecisionsSection";
+import { LinksSection } from "./LinksSection";
+import { RelationshipsSection } from "./RelationshipsSection";
+import { ExecutionSection } from "./ExecutionSection";
+import { ActivitySection } from "./ActivitySection";
+import { SectionHeader } from "./SectionHeader";
 
 interface DetailViewProps {
   /** Task UUID. */
@@ -93,12 +93,21 @@ export function DetailView({
     () => allTasks.find((t) => t.id === taskId)?.state,
     [allTasks, taskId],
   );
-  const ready = currentState === 'ready';
-  const plannable = currentState === 'plannable';
+  const ready = currentState === "ready";
+  const plannable = currentState === "plannable";
 
-  const prerequisites = useMemo(() => buildPrerequisites(taskId, allEdges, taskMap), [taskId, allEdges, taskMap]);
-  const neighbors = useMemo(() => buildNeighbors(taskId, allEdges, taskMap), [taskId, allEdges, taskMap]);
-  const downstream = useMemo(() => buildDownstream(taskId, allEdges, taskMap), [taskId, allEdges, taskMap]);
+  const prerequisites = useMemo(
+    () => buildPrerequisites(taskId, allEdges, taskMap),
+    [taskId, allEdges, taskMap],
+  );
+  const neighbors = useMemo(
+    () => buildNeighbors(taskId, allEdges, taskMap),
+    [taskId, allEdges, taskMap],
+  );
+  const downstream = useMemo(
+    () => buildDownstream(taskId, allEdges, taskMap),
+    [taskId, allEdges, taskMap],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -133,7 +142,16 @@ export function DetailView({
           />
 
           <section className="mb-7">
-            <SectionHeader label="Context bundle preview" badge={<BundleStageBadge status={task.status} isReady={ready} isPlannable={plannable} />} />
+            <SectionHeader
+              label="Context bundle preview"
+              badge={
+                <BundleStageBadge
+                  status={task.status}
+                  isReady={ready}
+                  isPlannable={plannable}
+                />
+              }
+            />
             <BundlePreview
               taskId={taskId}
               projectId={projectId}
@@ -193,14 +211,14 @@ interface BundleStageBadgeProps {
 
 /** Caption shown for each resolved lifecycle stage — matches the `lib/context` builder name used by BundlePreview. */
 const BUNDLE_BADGE_CAPTION: Record<string, string> = {
-  draft:       'planning',
-  plannable:   'planning',
-  planned:     'working',
-  ready:       'planning',
-  in_progress: 'agent',
-  in_review:   'execution',
-  done:        'execution',
-  cancelled:   'execution',
+  draft: "planning",
+  plannable: "planning",
+  planned: "working",
+  ready: "planning",
+  in_progress: "agent",
+  in_review: "execution",
+  done: "execution",
+  cancelled: "execution",
 };
 
 /**
@@ -212,13 +230,17 @@ const BUNDLE_BADGE_CAPTION: Record<string, string> = {
  * @param props - Badge props.
  * @returns Inline badge element.
  */
-function BundleStageBadge({ status, isReady, isPlannable }: BundleStageBadgeProps) {
+function BundleStageBadge({
+  status,
+  isReady,
+  isPlannable,
+}: BundleStageBadgeProps) {
   let stage: string = status;
-  if (status === 'draft' && isPlannable) stage = 'plannable';
-  else if (status === 'planned' && isReady) stage = 'ready';
+  if (status === "draft" && isPlannable) stage = "plannable";
+  else if (status === "planned" && isReady) stage = "ready";
   return (
     <span className="inline-flex items-center rounded-md border border-accent/25 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] font-medium lowercase tracking-wider text-accent-light">
-      {BUNDLE_BADGE_CAPTION[stage] ?? 'working'}
+      {BUNDLE_BADGE_CAPTION[stage] ?? "working"}
     </span>
   );
 }
@@ -249,10 +271,16 @@ function buildPrerequisites(
 ): BundleNeighbor[] {
   const out: BundleNeighbor[] = [];
   for (const edge of edges) {
-    if (edge.sourceTaskId !== taskId || edge.edgeType !== 'depends_on') continue;
+    if (edge.sourceTaskId !== taskId || edge.edgeType !== "depends_on")
+      continue;
     const info = taskMap.get(edge.targetTaskId);
     if (!info) continue;
-    out.push({ id: edge.targetTaskId, taskRef: info.taskRef, title: info.title, status: info.status });
+    out.push({
+      id: edge.targetTaskId,
+      taskRef: info.taskRef,
+      title: info.title,
+      status: info.status,
+    });
   }
   return out;
 }
@@ -273,17 +301,23 @@ function buildNeighbors(
   const out: BundleNeighbor[] = [];
   const seen = new Set<string>();
   for (const edge of edges) {
-    if (edge.edgeType !== 'relates_to') continue;
-    const otherId = edge.sourceTaskId === taskId
-      ? edge.targetTaskId
-      : edge.targetTaskId === taskId
-        ? edge.sourceTaskId
-        : null;
+    if (edge.edgeType !== "relates_to") continue;
+    const otherId =
+      edge.sourceTaskId === taskId
+        ? edge.targetTaskId
+        : edge.targetTaskId === taskId
+          ? edge.sourceTaskId
+          : null;
     if (!otherId || seen.has(otherId)) continue;
     const info = taskMap.get(otherId);
     if (!info) continue;
     seen.add(otherId);
-    out.push({ id: otherId, taskRef: info.taskRef, title: info.title, status: info.status });
+    out.push({
+      id: otherId,
+      taskRef: info.taskRef,
+      title: info.title,
+      status: info.status,
+    });
   }
   return out;
 }
@@ -303,10 +337,16 @@ function buildDownstream(
 ): BundleNeighbor[] {
   const out: BundleNeighbor[] = [];
   for (const edge of edges) {
-    if (edge.edgeType !== 'depends_on' || edge.targetTaskId !== taskId) continue;
+    if (edge.edgeType !== "depends_on" || edge.targetTaskId !== taskId)
+      continue;
     const info = taskMap.get(edge.sourceTaskId);
     if (!info) continue;
-    out.push({ id: edge.sourceTaskId, taskRef: info.taskRef, title: info.title, status: info.status });
+    out.push({
+      id: edge.sourceTaskId,
+      taskRef: info.taskRef,
+      title: info.title,
+      status: info.status,
+    });
   }
   return out;
 }

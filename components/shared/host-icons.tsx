@@ -1,4 +1,4 @@
-import type { IconProps } from './icons';
+import type { IconProps } from "./icons";
 
 // ---------------------------------------------------------------------------
 // Host glyphs — Links section.
@@ -16,7 +16,11 @@ import type { IconProps } from './icons';
  * @param props - IconProps plus the path elements that draw the glyph.
  * @returns A 24x24 filled SVG sized via `size`.
  */
-function HostIconBase({ size = 14, children, ...rest }: IconProps & { children: React.ReactNode }) {
+function HostIconBase({
+  size = 14,
+  children,
+  ...rest
+}: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       width={size}

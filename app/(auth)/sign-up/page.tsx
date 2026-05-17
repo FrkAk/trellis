@@ -1,9 +1,9 @@
-import Link from 'next/link';
-import { AuthShell } from '@/components/auth/AuthShell';
-import { AuthBrand } from '@/components/auth/AuthBrand';
-import { AuthHero } from '@/components/auth/AuthHero';
-import { SocialButtons } from '@/components/auth/SocialButtons';
-import { SignUpForm } from '@/components/auth/SignUpForm';
+import Link from "next/link";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthBrand } from "@/components/auth/AuthBrand";
+import { AuthHero } from "@/components/auth/AuthHero";
+import { SocialButtons } from "@/components/auth/SocialButtons";
+import { SignUpForm } from "@/components/auth/SignUpForm";
 
 /**
  * Sign-up page — mirrors the sign-in two-column shell with the
@@ -23,7 +23,7 @@ export default function SignUpPage() {
           <AuthBrand />
           <h1
             className="text-[26px] font-semibold text-text-primary"
-            style={{ letterSpacing: '-0.01em', lineHeight: 1.15 }}
+            style={{ letterSpacing: "-0.01em", lineHeight: 1.15 }}
           >
             Create an account.
           </h1>
@@ -31,19 +31,19 @@ export default function SignUpPage() {
             className="mb-7 mt-2.5 text-[13.5px] text-text-muted"
             style={{ lineHeight: 1.55 }}
           >
-            Your project graph and decision history live here. Connect
-            agents through MCP from your CLI once you&rsquo;re in.
+            Your project graph and decision history live here. Connect agents
+            through MCP from your CLI once you&rsquo;re in.
           </p>
 
           <SocialButtons />
           <SignUpForm />
 
           <p className="mt-3.5 text-center text-[12px] text-text-muted">
-            Already have an account?{' '}
+            Already have an account?{" "}
             <Link
               href="/sign-in"
               className="hover:underline"
-              style={{ color: 'var(--color-accent-light)' }}
+              style={{ color: "var(--color-accent-light)" }}
             >
               Sign in
             </Link>

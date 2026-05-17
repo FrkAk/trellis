@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 interface SectionHeaderProps {
   /** Mono uppercase label rendered on the left. */
@@ -19,14 +19,21 @@ interface SectionHeaderProps {
  * @param props - Header configuration.
  * @returns Header row above a section body.
  */
-export function SectionHeader({ label, count, badge, trailing }: SectionHeaderProps) {
+export function SectionHeader({
+  label,
+  count,
+  badge,
+  trailing,
+}: SectionHeaderProps) {
   return (
     <div className="mb-3 flex items-center gap-2">
       <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted">
         {label}
       </span>
       {count != null && (
-        <span className="font-mono text-[10px] tabular-nums text-text-faint">{count}</span>
+        <span className="font-mono text-[10px] tabular-nums text-text-faint">
+          {count}
+        </span>
       )}
       {badge}
       <span aria-hidden="true" className="h-px flex-1 bg-border" />

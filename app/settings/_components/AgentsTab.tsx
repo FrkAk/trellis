@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { useCallback, useMemo, useState, useTransition } from 'react';
+import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   listOAuthSessionsAction,
   type OAuthSessionView,
-} from '@/lib/actions/oauth-session';
-import { formatOAuthClientName } from '@/lib/ui/oauth-client-name';
-import { AgentSection } from './AgentSection';
+} from "@/lib/actions/oauth-session";
+import { formatOAuthClientName } from "@/lib/ui/oauth-client-name";
+import { AgentSection } from "./AgentSection";
 
 interface AgentsTabProps {
   /** Initial session list, hydrated from the server component. */
@@ -14,7 +14,7 @@ interface AgentsTabProps {
 }
 
 /** Canonical brands rendered as fixed sections, in display order. */
-const KNOWN_BRANDS = ['Claude Code', 'Codex', 'Cursor', 'Gemini'] as const;
+const KNOWN_BRANDS = ["Claude Code", "Codex", "Cursor", "Gemini"] as const;
 type KnownBrand = (typeof KNOWN_BRANDS)[number];
 const KNOWN_BRAND_SET: ReadonlySet<string> = new Set(KNOWN_BRANDS);
 
@@ -30,7 +30,7 @@ function groupSessions(sessions: OAuthSessionView[]): {
   otherSessions: OAuthSessionView[];
 } {
   const byBrand: Record<KnownBrand, OAuthSessionView[]> = {
-    'Claude Code': [],
+    "Claude Code": [],
     Codex: [],
     Cursor: [],
     Gemini: [],
@@ -110,7 +110,7 @@ export function AgentsTab({ initialSessions }: AgentsTabProps) {
             viewBox="0 0 16 16"
             fill="currentColor"
             aria-hidden="true"
-            className={`h-3.5 w-3.5 ${pending ? 'animate-spin' : ''}`}
+            className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`}
           >
             <path d="M8 3V1.5a.5.5 0 01.85-.36l2.5 2.5a.5.5 0 010 .72l-2.5 2.5A.5.5 0 018 6.5V5a3 3 0 100 6 .75.75 0 010 1.5A4.5 4.5 0 118 3z" />
           </svg>

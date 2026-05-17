@@ -634,12 +634,14 @@ export async function listProjectsSlim(
     ]);
 
     const orgsById = new Map(
-      orgRows.map((r) => ({
-        id: r.org_id,
-        name: r.name,
-        slug: r.slug,
-        memberRole: r.member_role,
-      })).map((o) => [o.id, o]),
+      orgRows
+        .map((r) => ({
+          id: r.org_id,
+          name: r.name,
+          slug: r.slug,
+          memberRole: r.member_role,
+        }))
+        .map((o) => [o.id, o]),
     );
 
     const hasMore = trimmedAll.length > limit;
@@ -1175,9 +1177,7 @@ export async function renameCategory(
     await tx
       .update(tasks)
       .set({ category: newName, updatedAt: new Date() })
-      .where(
-        and(eq(tasks.projectId, projectId), eq(tasks.category, oldName)),
-      );
+      .where(and(eq(tasks.projectId, projectId), eq(tasks.category, oldName)));
   });
   emitProjectEvent(projectId);
 }

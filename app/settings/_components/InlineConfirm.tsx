@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useTransition, type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { useState, useTransition, type ReactNode } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
 interface InlineConfirmProps {
   /** Trigger UI (typically a Button) rendered in the idle state. */
@@ -33,7 +33,7 @@ export function InlineConfirm({
   prompt,
   body,
   confirmLabel,
-  cancelLabel = 'Cancel',
+  cancelLabel = "Cancel",
   destructive,
   onConfirm,
 }: InlineConfirmProps) {
@@ -53,8 +53,8 @@ export function InlineConfirm({
   };
 
   const confirmClasses = destructive
-    ? 'border-cancelled/30 bg-cancelled/10 text-cancelled hover:bg-cancelled/15'
-    : 'border-border-strong bg-transparent text-text-primary hover:opacity-60';
+    ? "border-cancelled/30 bg-cancelled/10 text-cancelled hover:bg-cancelled/15"
+    : "border-border-strong bg-transparent text-text-primary hover:opacity-60";
 
   return (
     <AnimatePresence mode="wait" initial={false}>
@@ -70,7 +70,9 @@ export function InlineConfirm({
         >
           <div className="hidden text-right sm:block">
             <p className="text-xs font-medium text-text-primary">{prompt}</p>
-            {body ? <p className="text-[11px] text-text-muted">{body}</p> : null}
+            {body ? (
+              <p className="text-[11px] text-text-muted">{body}</p>
+            ) : null}
           </div>
           <button
             type="button"

@@ -11,14 +11,14 @@ export default function SettingsLoading() {
     <div className="flex h-[var(--viewport-height)] flex-col">
       <div
         className="flex flex-shrink-0 items-center border-b border-border bg-base/80 px-3 backdrop-blur-md"
-        style={{ height: 'var(--topbar-h)' }}
+        style={{ height: "var(--topbar-h)" }}
       >
         <div className="h-4 w-32 animate-pulse rounded bg-surface-raised" />
       </div>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside
           className="hidden w-60 shrink-0 flex-col gap-1 border-r border-border px-3 py-5 md:flex"
-          style={{ background: 'var(--color-base-2)' }}
+          style={{ background: "var(--color-base-2)" }}
           aria-hidden="true"
         >
           <div className="mb-2 ml-2 h-3 w-16 animate-pulse rounded bg-surface-raised/60" />

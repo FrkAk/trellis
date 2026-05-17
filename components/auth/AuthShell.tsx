@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 interface AuthShellProps {
   /** Left column content — branding, headline, and the form stack. */
@@ -27,7 +27,7 @@ export function AuthShell({ form, hero }: AuthShellProps) {
       <aside
         aria-hidden="true"
         className="relative hidden overflow-hidden border-l border-[var(--color-border)] lg:flex"
-        style={{ background: 'var(--color-base-2)' }}
+        style={{ background: "var(--color-base-2)" }}
       >
         {hero}
       </aside>

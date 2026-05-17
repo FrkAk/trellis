@@ -1,22 +1,22 @@
-'use server';
+"use server";
 
-import { revalidatePath } from 'next/cache';
-import { z } from 'zod/v4';
-import { requireSession } from '@/lib/auth/session';
-import { checkActionRateLimit } from '@/lib/actions/rate-limit-action';
+import { revalidatePath } from "next/cache";
+import { z } from "zod/v4";
+import { requireSession } from "@/lib/auth/session";
+import { checkActionRateLimit } from "@/lib/actions/rate-limit-action";
 import {
   parseOrFail,
   teamFail,
   type TeamActionResult,
-} from '@/lib/actions/team-errors';
-import type { OAuthSessionView } from '@/lib/actions/oauth-session-types';
+} from "@/lib/actions/team-errors";
+import type { OAuthSessionView } from "@/lib/actions/oauth-session-types";
 import {
   listActiveOAuthSessions,
   revokeOAuthSession,
   userOwnsActiveSession,
-} from '@/lib/data/oauth-session';
+} from "@/lib/data/oauth-session";
 
-export type { OAuthSessionView } from '@/lib/actions/oauth-session-types';
+export type { OAuthSessionView } from "@/lib/actions/oauth-session-types";
 
 /**
  * List all active OAuth refresh tokens (device sessions) the caller owns.
@@ -33,7 +33,7 @@ export async function listOAuthSessionsAction(): Promise<
     const session = await requireSession();
     userId = session.user.id;
   } catch {
-    return teamFail('unauthorized');
+    return teamFail("unauthorized");
   }
 
   try {
@@ -51,13 +51,13 @@ export async function listOAuthSessionsAction(): Promise<
     }));
     return { ok: true, data };
   } catch (err) {
-    console.error('listOAuthSessionsAction failed', err);
-    return teamFail('unknown');
+    console.error("listOAuthSessionsAction failed", err);
+    return teamFail("unknown");
   }
 }
 
 const revokeSessionSchema = z.object({
-  sessionId: z.uuid('Invalid session id'),
+  sessionId: z.uuid("Invalid session id"),
 });
 
 /**
@@ -76,28 +76,28 @@ export async function revokeOAuthSessionAction(input: {
     const session = await requireSession();
     userId = session.user.id;
   } catch {
-    return teamFail('unauthorized');
+    return teamFail("unauthorized");
   }
 
   const parsed = parseOrFail(revokeSessionSchema, input);
   if (!parsed.ok) return parsed;
 
   const limit = await checkActionRateLimit(
-    { action: 'oauth.revoke', windowSeconds: 60, perUserMax: 20, perIpMax: 60 },
+    { action: "oauth.revoke", windowSeconds: 60, perUserMax: 20, perIpMax: 60 },
     userId,
   );
-  if (!limit.ok) return teamFail('rate_limited');
+  if (!limit.ok) return teamFail("rate_limited");
 
   try {
     if (!(await userOwnsActiveSession(userId, parsed.data.sessionId))) {
-      return teamFail('not_found');
+      return teamFail("not_found");
     }
     await revokeOAuthSession(userId, parsed.data.sessionId);
 
-    revalidatePath('/settings');
+    revalidatePath("/settings");
     return { ok: true };
   } catch (err) {
-    console.error('revokeOAuthSessionAction failed', err);
-    return teamFail('unknown');
+    console.error("revokeOAuthSessionAction failed", err);
+    return teamFail("unknown");
   }
 }

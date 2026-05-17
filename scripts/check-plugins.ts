@@ -168,9 +168,15 @@ const fieldSyncs: FieldSync[] = [
     canonicalPath: "plugins/claude-code/.claude-plugin/plugin.json",
     canonicalJsonPath: ["version"],
     copies: [
-      { path: "plugins/codex/.codex-plugin/plugin.json", jsonPath: ["version"] },
+      {
+        path: "plugins/codex/.codex-plugin/plugin.json",
+        jsonPath: ["version"],
+      },
       { path: "plugins/gemini/gemini-extension.json", jsonPath: ["version"] },
-      { path: "plugins/cursor/.cursor-plugin/plugin.json", jsonPath: ["version"] },
+      {
+        path: "plugins/cursor/.cursor-plugin/plugin.json",
+        jsonPath: ["version"],
+      },
     ],
   },
   {
@@ -178,9 +184,18 @@ const fieldSyncs: FieldSync[] = [
     canonicalPath: "plugins/claude-code/.claude-plugin/plugin.json",
     canonicalJsonPath: ["description"],
     copies: [
-      { path: "plugins/codex/.codex-plugin/plugin.json", jsonPath: ["description"] },
-      { path: "plugins/gemini/gemini-extension.json", jsonPath: ["description"] },
-      { path: "plugins/cursor/.cursor-plugin/plugin.json", jsonPath: ["description"] },
+      {
+        path: "plugins/codex/.codex-plugin/plugin.json",
+        jsonPath: ["description"],
+      },
+      {
+        path: "plugins/gemini/gemini-extension.json",
+        jsonPath: ["description"],
+      },
+      {
+        path: "plugins/cursor/.cursor-plugin/plugin.json",
+        jsonPath: ["description"],
+      },
     ],
   },
 ];
@@ -251,7 +266,10 @@ function render(content: string, copyPath: string): string {
  * @returns The leaf value, or undefined if any segment is missing.
  */
 function getNested(obj: Record<string, unknown>, keys: string[]): unknown {
-  return keys.reduce<unknown>((acc, k) => (acc as Record<string, unknown> | undefined)?.[k], obj);
+  return keys.reduce<unknown>(
+    (acc, k) => (acc as Record<string, unknown> | undefined)?.[k],
+    obj,
+  );
 }
 
 /**
@@ -260,12 +278,18 @@ function getNested(obj: Record<string, unknown>, keys: string[]): unknown {
  * @param keys - Ordered list of property names; last is the field to set.
  * @param value - Value to assign.
  */
-function setNested(obj: Record<string, unknown>, keys: string[], value: unknown): void {
+function setNested(
+  obj: Record<string, unknown>,
+  keys: string[],
+  value: unknown,
+): void {
   const last = keys[keys.length - 1];
-  const parent = keys.slice(0, -1).reduce<Record<string, unknown>>(
-    (acc, k) => acc[k] as Record<string, unknown>,
-    obj,
-  );
+  const parent = keys
+    .slice(0, -1)
+    .reduce<Record<string, unknown>>(
+      (acc, k) => acc[k] as Record<string, unknown>,
+      obj,
+    );
   parent[last] = value;
 }
 
@@ -306,7 +330,9 @@ for (const group of shared) {
         changes++;
       } else {
         console.error(`[drift]   ${group.name}`);
-        console.error(`    ${renderedHash.slice(0, 8)}  ${group.canonical} (rendered for ${copy})`);
+        console.error(
+          `    ${renderedHash.slice(0, 8)}  ${group.canonical} (rendered for ${copy})`,
+        );
         console.error(`    ${copyHash.slice(0, 8)}  ${copy}`);
         failures++;
       }
@@ -317,17 +343,24 @@ for (const group of shared) {
 }
 
 for (const sync of fieldSyncs) {
-  const canonicalManifest = JSON.parse(readFileSync(sync.canonicalPath, "utf8")) as Record<string, unknown>;
+  const canonicalManifest = JSON.parse(
+    readFileSync(sync.canonicalPath, "utf8"),
+  ) as Record<string, unknown>;
   const canonicalValue = getNested(canonicalManifest, sync.canonicalJsonPath);
 
   if (typeof canonicalValue !== "string" || canonicalValue.length === 0) {
-    console.error(`[no ${sync.name}] ${sync.canonicalPath} is missing a string ${sync.name} field`);
+    console.error(
+      `[no ${sync.name}] ${sync.canonicalPath} is missing a string ${sync.name} field`,
+    );
     failures++;
     continue;
   }
 
   for (const target of sync.copies) {
-    const manifest = JSON.parse(readFileSync(target.path, "utf8")) as Record<string, unknown>;
+    const manifest = JSON.parse(readFileSync(target.path, "utf8")) as Record<
+      string,
+      unknown
+    >;
     const currentValue = getNested(manifest, target.jsonPath);
     if (currentValue === canonicalValue) {
       console.log(`[ok]      ${target.path} ${sync.name} ok`);
@@ -339,19 +372,27 @@ for (const sync of fieldSyncs) {
       console.log(`[synced]  ${target.path} ${sync.name} → ${canonicalValue}`);
       changes++;
     } else {
-      console.error(`[${sync.name} drift] ${target.path}: ${String(currentValue)} vs ${canonicalValue}`);
+      console.error(
+        `[${sync.name} drift] ${target.path}: ${String(currentValue)} vs ${canonicalValue}`,
+      );
       failures++;
     }
   }
 }
 
 if (fix) {
-  console.log(changes > 0 ? `\nSynced ${changes} file(s)/field(s).` : `\nNothing to sync.`);
+  console.log(
+    changes > 0
+      ? `\nSynced ${changes} file(s)/field(s).`
+      : `\nNothing to sync.`,
+  );
   process.exit(0);
 }
 
 if (failures > 0) {
-  console.error(`\n${failures} drift issue(s). Run \`bun run sync:plugins\` to auto-fix.`);
+  console.error(
+    `\n${failures} drift issue(s). Run \`bun run sync:plugins\` to auto-fix.`,
+  );
   process.exit(1);
 }
 

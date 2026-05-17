@@ -73,8 +73,9 @@ export function setTestSession(session: TestSession): void {
   currentTestSession = session;
 }
 
-(globalThis as unknown as { __setTestSession: typeof setTestSession })
-  .__setTestSession = setTestSession;
+(
+  globalThis as unknown as { __setTestSession: typeof setTestSession }
+).__setTestSession = setTestSession;
 
 // Stub Better Auth initialization to prevent URL-parse errors in test process.
 // The factory closes over `currentTestSession` so `setTestSession` updates

@@ -146,10 +146,9 @@ export default function ConsentPage() {
   useEffect(() => {
     if (!clientId) return;
     const controller = new AbortController();
-    fetch(
-      `/api/oauth/consent-meta?client_id=${encodeURIComponent(clientId)}`,
-      { signal: controller.signal },
-    )
+    fetch(`/api/oauth/consent-meta?client_id=${encodeURIComponent(clientId)}`, {
+      signal: controller.signal,
+    })
       .then(async (res) => {
         if (!res.ok) {
           setFetchError(
@@ -227,8 +226,8 @@ export default function ConsentPage() {
             Authorization sent
           </h1>
           <p className="text-sm text-text-muted">
-            Return to your application to finish signing in. You can close
-            this tab.
+            Return to your application to finish signing in. You can close this
+            tab.
           </p>
         </div>
       </div>

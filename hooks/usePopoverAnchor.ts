@@ -1,6 +1,12 @@
-'use client';
+"use client";
 
-import { type CSSProperties, type RefObject, useCallback, useEffect, useState } from 'react';
+import {
+  type CSSProperties,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
 /**
  * `position: fixed` coordinates for a portalled popover, keyed to one
@@ -9,10 +15,34 @@ import { type CSSProperties, type RefObject, useCallback, useEffect, useState } 
  * trigger's measured width so callers can opt into match-trigger-width.
  */
 export type PopoverAnchor =
-  | { vertical: 'below'; horizontal: 'start'; top: number; left: number; width: number }
-  | { vertical: 'below'; horizontal: 'end'; top: number; right: number; width: number }
-  | { vertical: 'above'; horizontal: 'start'; bottom: number; left: number; width: number }
-  | { vertical: 'above'; horizontal: 'end'; bottom: number; right: number; width: number };
+  | {
+      vertical: "below";
+      horizontal: "start";
+      top: number;
+      left: number;
+      width: number;
+    }
+  | {
+      vertical: "below";
+      horizontal: "end";
+      top: number;
+      right: number;
+      width: number;
+    }
+  | {
+      vertical: "above";
+      horizontal: "start";
+      bottom: number;
+      left: number;
+      width: number;
+    }
+  | {
+      vertical: "above";
+      horizontal: "end";
+      bottom: number;
+      right: number;
+      width: number;
+    };
 
 /**
  * Measure the trigger and decide where the panel should attach. Flips
@@ -27,42 +57,42 @@ export type PopoverAnchor =
  */
 function computeAnchor(
   rect: DOMRect,
-  align: 'start' | 'end',
+  align: "start" | "end",
   popoverHeight: number,
 ): PopoverAnchor {
   const spaceBelow = window.innerHeight - rect.bottom;
   const spaceAbove = rect.top;
   const flip = spaceBelow < popoverHeight && spaceAbove > spaceBelow;
   if (flip) {
-    if (align === 'end') {
+    if (align === "end") {
       return {
-        vertical: 'above',
-        horizontal: 'end',
+        vertical: "above",
+        horizontal: "end",
         bottom: window.innerHeight - rect.top + 4,
         right: window.innerWidth - rect.right,
         width: rect.width,
       };
     }
     return {
-      vertical: 'above',
-      horizontal: 'start',
+      vertical: "above",
+      horizontal: "start",
       bottom: window.innerHeight - rect.top + 4,
       left: rect.left,
       width: rect.width,
     };
   }
-  if (align === 'end') {
+  if (align === "end") {
     return {
-      vertical: 'below',
-      horizontal: 'end',
+      vertical: "below",
+      horizontal: "end",
       top: rect.bottom + 4,
       right: window.innerWidth - rect.right,
       width: rect.width,
     };
   }
   return {
-    vertical: 'below',
-    horizontal: 'start',
+    vertical: "below",
+    horizontal: "start",
     top: rect.bottom + 4,
     left: rect.left,
     width: rect.width,
@@ -76,7 +106,7 @@ interface UsePopoverAnchorOptions {
   /** Ref to the trigger element whose rect drives the anchor. */
   triggerRef: RefObject<HTMLElement | null>;
   /** Horizontal anchor edge of the panel relative to the trigger. */
-  align: 'start' | 'end';
+  align: "start" | "end";
   /** Worst-case popover height in pixels; drives the flip-above decision. */
   popoverHeight: number;
 }
@@ -128,12 +158,12 @@ export function usePopoverAnchor({
       frame = window.requestAnimationFrame(recompute);
     };
     recompute();
-    window.addEventListener('resize', schedule);
-    window.addEventListener('scroll', schedule, true);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, true);
     return () => {
       if (frame !== 0) window.cancelAnimationFrame(frame);
-      window.removeEventListener('resize', schedule);
-      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule, true);
     };
   }, [open, align, popoverHeight, triggerRef]);
 
@@ -150,8 +180,12 @@ export function usePopoverAnchor({
  */
 export function popoverFixedStyle(anchor: PopoverAnchor): CSSProperties {
   return {
-    position: 'fixed',
-    ...(anchor.vertical === 'below' ? { top: anchor.top } : { bottom: anchor.bottom }),
-    ...(anchor.horizontal === 'start' ? { left: anchor.left } : { right: anchor.right }),
+    position: "fixed",
+    ...(anchor.vertical === "below"
+      ? { top: anchor.top }
+      : { bottom: anchor.bottom }),
+    ...(anchor.horizontal === "start"
+      ? { left: anchor.left }
+      : { right: anchor.right }),
   };
 }

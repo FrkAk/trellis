@@ -2,7 +2,15 @@ import { test, expect, afterEach } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
 import { superuserPool } from "@/tests/setup/global";
 import { seedUserOrgProject } from "@/tests/setup/seed";
-import { createTask, deleteTask, updateTask, searchTasks, searchTasksPaged, getTaskSlim, getTaskFull } from "@/lib/data/task";
+import {
+  createTask,
+  deleteTask,
+  updateTask,
+  searchTasks,
+  searchTasksPaged,
+  getTaskSlim,
+  getTaskFull,
+} from "@/lib/data/task";
 import { getProjectMaxUpdatedAt } from "@/lib/data/project";
 import { makeAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";
@@ -172,7 +180,9 @@ test("append-mode dedup replaces same-id and same-text criterion entries", async
   const task = await createTask(ctx, {
     projectId: f.projectId,
     title: "T",
-    acceptanceCriteria: [{ id: "11111111-1111-4111-8111-111111111111", text: "X" }],
+    acceptanceCriteria: [
+      { id: "11111111-1111-4111-8111-111111111111", text: "X" },
+    ],
   });
 
   // Same id: row replaced in-place; text updated.
@@ -183,7 +193,9 @@ test("append-mode dedup replaces same-id and same-text criterion entries", async
   });
   let full = await getTaskFull(ctx, task.id);
   expect(full.acceptanceCriteria.length).toBe(1);
-  expect(full.acceptanceCriteria[0].id).toBe("11111111-1111-4111-8111-111111111111");
+  expect(full.acceptanceCriteria[0].id).toBe(
+    "11111111-1111-4111-8111-111111111111",
+  );
   expect(full.acceptanceCriteria[0].text).toBe("X-modified");
 
   // Same text, different id: the old id row is deleted (text-match dedup) and
@@ -195,7 +207,9 @@ test("append-mode dedup replaces same-id and same-text criterion entries", async
   });
   full = await getTaskFull(ctx, task.id);
   expect(full.acceptanceCriteria.length).toBe(1);
-  expect(full.acceptanceCriteria[0].id).toBe("22222222-2222-4222-8222-222222222222");
+  expect(full.acceptanceCriteria[0].id).toBe(
+    "22222222-2222-4222-8222-222222222222",
+  );
   expect(full.acceptanceCriteria[0].text).toBe("X-modified");
 });
 
@@ -216,7 +230,10 @@ test("searchTasksPaged paginates by (order, id) cursor", async () => {
     await sqlc.end({ timeout: 5 });
   }
 
-  const page1 = await searchTasksPaged(ctx, f.projectId, { tags: ["alpha"], limit: 3 });
+  const page1 = await searchTasksPaged(ctx, f.projectId, {
+    tags: ["alpha"],
+    limit: 3,
+  });
   expect(page1.rows.length).toBe(3);
   expect(page1.nextCursor).not.toBeNull();
 
@@ -280,7 +297,10 @@ test("getTaskSlim returns the slim shape", async () => {
 test("getTaskFull returns the full row with composed taskRef", async () => {
   const f = await seedUserOrgProject("taskfull");
   const ctx = makeAuthContext(f.userId);
-  const created = await createTask(ctx, { projectId: f.projectId, title: "T2" });
+  const created = await createTask(ctx, {
+    projectId: f.projectId,
+    title: "T2",
+  });
 
   const t = await getTaskFull(ctx, created.id);
 
@@ -300,7 +320,10 @@ test("deleteTask keeps the conditional-GET validator monotonic", async () => {
   const f = await seedUserOrgProject("delete-monotonic");
   const ctx = makeAuthContext(f.userId);
 
-  const created = await createTask(ctx, { projectId: f.projectId, title: "doomed" });
+  const created = await createTask(ctx, {
+    projectId: f.projectId,
+    title: "doomed",
+  });
   // Allow Postgres `now()` to advance past the seed project's `updated_at`
   // so the doomed task strictly holds the project-wide validator.
   await new Promise((r) => setTimeout(r, 50));
@@ -338,7 +361,9 @@ test("createTask with assigneeIds rejects non-team-member users", async () => {
 
   expect(err).toBeInstanceOf(ForbiddenError);
   const fe = err as ForbiddenError;
-  expect(fe.message).toBe("One or more assignees are not members of this team.");
+  expect(fe.message).toBe(
+    "One or more assignees are not members of this team.",
+  );
   expect(fe.resourceId).toBeUndefined();
   expect(fe.message).not.toContain(strangerId);
 });
@@ -478,7 +503,9 @@ test("concurrent same-text criterion appends collapse to one row via unique(task
   await Promise.all(calls);
 
   const final = await getTaskFull(ctx, task.id);
-  const sameText = final.acceptanceCriteria.filter((c) => c.text === "duplicate-X");
+  const sameText = final.acceptanceCriteria.filter(
+    (c) => c.text === "duplicate-X",
+  );
   expect(sameText.length).toBe(1);
 });
 
@@ -506,7 +533,12 @@ test("overwriteArrays clears all criteria when called with empty array", async (
     acceptanceCriteria: ["A", "B", "C"],
   });
 
-  const cleared = await updateTask(ctx, task.id, { acceptanceCriteria: [] }, true);
+  const cleared = await updateTask(
+    ctx,
+    task.id,
+    { acceptanceCriteria: [] },
+    true,
+  );
   expect((cleared.acceptanceCriteria ?? []).length).toBe(0);
 
   const reread = await getTaskFull(ctx, task.id);
@@ -564,7 +596,9 @@ test("decisions dedup replaces same-id and same-text entries (mirror of criteria
 
   // Same-id, different text.
   await updateTask(ctx, task.id, {
-    decisions: [{ id: idA, text: "chose Y", source: "review", date: "2026-02-01" }],
+    decisions: [
+      { id: idA, text: "chose Y", source: "review", date: "2026-02-01" },
+    ],
   });
   // Same-text, different id — last writer wins on metadata.
   await updateTask(ctx, task.id, {

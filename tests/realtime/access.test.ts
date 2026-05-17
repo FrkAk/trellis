@@ -103,9 +103,7 @@ test("grantOrgAccess registers project subs and dispatches project-list when con
 
   await grantOrgAccess(f.userId, f.organizationId);
 
-  expect([...broker.subscribers(`project:${f.projectId}`)]).toEqual([
-    f.userId,
-  ]);
+  expect([...broker.subscribers(`project:${f.projectId}`)]).toEqual([f.userId]);
   expect([...broker.subscribers(`project:${second}`)]).toEqual([f.userId]);
 
   const sent = conn.send.mock.calls.map((c) => c[0] as string);
@@ -146,9 +144,7 @@ test("grantOrgAccess swallows errors so caller mutations don't fail", async () =
   const conn = fakeConn();
   broker.attach(userId, conn);
 
-  await expect(
-    grantOrgAccess(userId, "not-a-uuid"),
-  ).resolves.toBeUndefined();
+  await expect(grantOrgAccess(userId, "not-a-uuid")).resolves.toBeUndefined();
 });
 
 test("revokeOrgAccess enumerates and unregisters subs for every project in the org after membership row is removed", async () => {

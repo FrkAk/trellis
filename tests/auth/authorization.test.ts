@@ -1,10 +1,7 @@
 import { test, expect, afterEach } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
 import { seedUserOrgProject } from "@/tests/setup/seed";
-import {
-  assertProjectAccess,
-  ForbiddenError,
-} from "@/lib/auth/authorization";
+import { assertProjectAccess, ForbiddenError } from "@/lib/auth/authorization";
 import { makeAuthContext } from "@/lib/auth/context";
 
 afterEach(async () => {
@@ -47,10 +44,7 @@ test("assertProjectAccess raises ForbiddenError when project does not exist", as
 
   let caught: unknown;
   try {
-    await assertProjectAccess(
-      "00000000-0000-0000-0000-000000000000",
-      ctx,
-    );
+    await assertProjectAccess("00000000-0000-0000-0000-000000000000", ctx);
   } catch (e) {
     caught = e;
   }
@@ -62,7 +56,7 @@ test("assertProjectAccess rejects malformed UUIDs without DB hit", async () => {
   const f = await seedUserOrgProject("d");
   const ctx = makeAuthContext(f.userId);
 
-  await expect(
-    assertProjectAccess("not-a-uuid", ctx),
-  ).rejects.toThrow(ForbiddenError);
+  await expect(assertProjectAccess("not-a-uuid", ctx)).rejects.toThrow(
+    ForbiddenError,
+  );
 });

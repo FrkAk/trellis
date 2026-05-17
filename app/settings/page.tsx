@@ -1,13 +1,13 @@
-import { redirect } from 'next/navigation';
-import { TopBar } from '@/components/layout/TopBar';
-import { AppShell } from '@/components/layout/AppShell';
-import { getSession } from '@/lib/auth/session';
-import { listOAuthSessionsAction } from '@/lib/actions/oauth-session';
-import { listUserTeamsAction } from '@/lib/actions/team-list';
-import { SettingsView } from './_components/SettingsView';
+import { redirect } from "next/navigation";
+import { TopBar } from "@/components/layout/TopBar";
+import { AppShell } from "@/components/layout/AppShell";
+import { getSession } from "@/lib/auth/session";
+import { listOAuthSessionsAction } from "@/lib/actions/oauth-session";
+import { listUserTeamsAction } from "@/lib/actions/team-list";
+import { SettingsView } from "./_components/SettingsView";
 
 /** Force dynamic rendering — this page reads the session and DB. */
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * Settings page — sub-shell with a 240px left rail (Account / Teams /
@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function SettingsPage() {
   const session = await getSession();
-  if (!session) redirect('/sign-in');
+  if (!session) redirect("/sign-in");
 
   const [sessionsResult, teamsResult] = await Promise.all([
     listOAuthSessionsAction(),

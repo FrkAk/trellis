@@ -298,7 +298,12 @@ test("listProjectsSlim aggregates statuses via grouped COUNT", async () => {
 
   const page = await listProjectsSlim(ctx);
   const row = page.rows.find((r) => r.id === f.projectId);
-  expect(row?.taskStats).toEqual({ total: 6, done: 3, inProgress: 2, cancelled: 1 });
+  expect(row?.taskStats).toEqual({
+    total: 6,
+    done: 3,
+    inProgress: 2,
+    cancelled: 1,
+  });
   expect(row?.progress).toBe(60);
 });
 
@@ -404,7 +409,12 @@ test("listProjectsForMcp aggregates task stats and progress like listProjectsSli
 
   const rows = await listProjectsForMcp(ctx);
   const row = rows.find((r) => r.id === f.projectId);
-  expect(row?.taskStats).toEqual({ total: 6, done: 3, inProgress: 2, cancelled: 1 });
+  expect(row?.taskStats).toEqual({
+    total: 6,
+    done: 3,
+    inProgress: 2,
+    cancelled: 1,
+  });
   expect(row?.progress).toBe(60);
 });
 
@@ -428,5 +438,7 @@ test("listProjectsForMcp skips teams with zero projects", async () => {
   }
 
   const rows = await listProjectsForMcp(ctx);
-  expect(rows.find((r) => r.organization.name === "Empty Team Mcp")).toBeUndefined();
+  expect(
+    rows.find((r) => r.organization.name === "Empty Team Mcp"),
+  ).toBeUndefined();
 });

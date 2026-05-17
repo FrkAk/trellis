@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { AnimatePresence } from 'motion/react';
-import { IconAgent } from '@/components/shared/icons';
-import type { OAuthSessionView } from '@/lib/actions/oauth-session';
-import { AgentSessionRow } from './AgentSessionRow';
+import { AnimatePresence } from "motion/react";
+import { IconAgent } from "@/components/shared/icons";
+import type { OAuthSessionView } from "@/lib/actions/oauth-session";
+import { AgentSessionRow } from "./AgentSessionRow";
 
 interface AgentSectionProps {
   /** Brand label rendered in the card header (e.g. "Claude Code"). */
@@ -29,7 +29,7 @@ interface AgentSectionProps {
 export function AgentSection({
   brand,
   sessions,
-  emptyBody = 'No sessions yet. Run `/mcp` in your CLI to authorize.',
+  emptyBody = "No sessions yet. Run `/mcp` in your CLI to authorize.",
   onRevoked,
   onError,
 }: AgentSectionProps) {
@@ -41,7 +41,7 @@ export function AgentSection({
         <span
           aria-hidden="true"
           className="flex h-7 w-7 items-center justify-center rounded-md"
-          style={{ background: 'var(--color-accent-grad)', color: '#0b0c10' }}
+          style={{ background: "var(--color-accent-grad)", color: "#0b0c10" }}
         >
           <IconAgent size={14} />
         </span>
@@ -49,7 +49,7 @@ export function AgentSection({
           {brand}
         </span>
         <span className="ml-auto font-mono text-[10.5px] uppercase tracking-[0.08em] text-text-muted">
-          {count} {count === 1 ? 'session' : 'sessions'}
+          {count} {count === 1 ? "session" : "sessions"}
         </span>
       </header>
 

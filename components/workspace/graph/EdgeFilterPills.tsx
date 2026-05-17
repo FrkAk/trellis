@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import type { EdgeType } from '@/lib/types';
+import type { EdgeType } from "@/lib/types";
 
 /** Active value for the edge filter pills. `all` shows every edge. */
-export type EdgeFilterValue = 'all' | 'depends_on' | 'relates_to';
+export type EdgeFilterValue = "all" | "depends_on" | "relates_to";
 
 interface EdgeFilterPillsProps {
   /** @param value - Currently active filter. */
@@ -22,9 +22,9 @@ interface PillItem {
 }
 
 const ITEMS: ReadonlyArray<PillItem> = [
-  { id: 'all',         label: 'All edges' },
-  { id: 'depends_on',  label: 'Depends on', tokenColor: 'var(--color-depends)' },
-  { id: 'relates_to',  label: 'Relates to', tokenColor: 'var(--color-relates)' },
+  { id: "all", label: "All edges" },
+  { id: "depends_on", label: "Depends on", tokenColor: "var(--color-depends)" },
+  { id: "relates_to", label: "Relates to", tokenColor: "var(--color-relates)" },
 ];
 
 /**
@@ -35,9 +35,9 @@ const ITEMS: ReadonlyArray<PillItem> = [
  * @returns Edge types to omit from the canvas.
  */
 export function edgeFilterToHidden(value: EdgeFilterValue): Set<EdgeType> {
-  if (value === 'all') return new Set();
-  if (value === 'depends_on') return new Set<EdgeType>(['relates_to']);
-  return new Set<EdgeType>(['depends_on']);
+  if (value === "all") return new Set();
+  if (value === "depends_on") return new Set<EdgeType>(["relates_to"]);
+  return new Set<EdgeType>(["depends_on"]);
 }
 
 /**
@@ -48,7 +48,11 @@ export function edgeFilterToHidden(value: EdgeFilterValue): Set<EdgeType> {
  * @param props - Active value + change callback.
  * @returns Inline pill row.
  */
-export function EdgeFilterPills({ value, onChange, className = '' }: EdgeFilterPillsProps) {
+export function EdgeFilterPills({
+  value,
+  onChange,
+  className = "",
+}: EdgeFilterPillsProps) {
   return (
     <div className={`flex items-center gap-1.5 ${className}`}>
       {ITEMS.map((item) => {
@@ -61,8 +65,8 @@ export function EdgeFilterPills({ value, onChange, className = '' }: EdgeFilterP
             aria-pressed={active}
             className={`inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-colors ${
               active
-                ? 'border-border-strong bg-surface-raised text-text-primary shadow-[var(--shadow-button)]'
-                : 'border-border-strong bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                ? "border-border-strong bg-surface-raised text-text-primary shadow-[var(--shadow-button)]"
+                : "border-border-strong bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
             }`}
           >
             {item.tokenColor && (

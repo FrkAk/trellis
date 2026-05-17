@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { Modal } from '@/components/shared/Modal';
-import { CopyButton } from '@/components/shared/CopyButton';
+import { Modal } from "@/components/shared/Modal";
+import { CopyButton } from "@/components/shared/CopyButton";
 
-export type CliManagedStatus = 'brainstorming' | 'decomposing';
+export type CliManagedStatus = "brainstorming" | "decomposing";
 
 interface ProjectStatusModalProps {
   /** @param open - Whether the modal is visible. */
@@ -30,33 +30,33 @@ interface StatusContent {
 
 const STATUS_CONTENT: Record<CliManagedStatus, StatusContent> = {
   brainstorming: {
-    modalTitle: 'Idea in progress',
-    label: 'Brainstorming',
+    modalTitle: "Idea in progress",
+    label: "Brainstorming",
     summary:
-      'Your coding agent is shaping the brief: goals, constraints, and what to scope first.',
+      "Your coding agent is shaping the brief: goals, constraints, and what to scope first.",
     whatHappens:
-      'Brainstorming captures decisions until the idea is concrete enough to break into tasks.',
-    prompt: 'Continue brainstorming the {identifier} project ({title}).',
+      "Brainstorming captures decisions until the idea is concrete enough to break into tasks.",
+    prompt: "Continue brainstorming the {identifier} project ({title}).",
     unlocks:
-      'Decomposition unlocks once the brief is solid; the workspace unlocks once the agent activates the project.',
-    accentClass: 'text-accent border-accent/25 bg-accent/15',
+      "Decomposition unlocks once the brief is solid; the workspace unlocks once the agent activates the project.",
+    accentClass: "text-accent border-accent/25 bg-accent/15",
   },
   decomposing: {
-    modalTitle: 'Structure in progress',
-    label: 'Decomposing',
+    modalTitle: "Structure in progress",
+    label: "Decomposing",
     summary:
-      'Your coding agent is turning the brief into tasks, criteria, and dependency edges.',
+      "Your coding agent is turning the brief into tasks, criteria, and dependency edges.",
     whatHappens:
-      'Decomposition writes the graph the workspace uses for planning, tracking, and execution context.',
-    prompt: 'Continue decomposing the {identifier} project ({title}).',
+      "Decomposition writes the graph the workspace uses for planning, tracking, and execution context.",
+    prompt: "Continue decomposing the {identifier} project ({title}).",
     unlocks:
-      'When the graph is ready, the agent activates the project, and that opens the workspace.',
-    accentClass: 'text-progress border-progress/25 bg-progress/15',
+      "When the graph is ready, the agent activates the project, and that opens the workspace.",
+    accentClass: "text-progress border-progress/25 bg-progress/15",
   },
 };
 
 const SECTION_LABEL_CLASS =
-  'font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted';
+  "font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted";
 
 /**
  * Status dialog for projects still owned by a CLI lifecycle phase. Shows what
@@ -73,11 +73,16 @@ export function ProjectStatusModal({
 }: ProjectStatusModalProps) {
   const content = STATUS_CONTENT[status];
   const promptText = content.prompt
-    .replace('{identifier}', identifier)
-    .replace('{title}', title);
+    .replace("{identifier}", identifier)
+    .replace("{title}", title);
 
   return (
-    <Modal open={open} onClose={onClose} title={content.modalTitle} maxWidth="md">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={content.modalTitle}
+      maxWidth="md"
+    >
       <div className="space-y-5">
         <div className="space-y-2">
           <div

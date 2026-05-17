@@ -1,9 +1,5 @@
 import { test, expect } from "bun:test";
-import {
-  buildCsp,
-  headerRules,
-  securityHeaders,
-} from "@/lib/security/headers";
+import { buildCsp, headerRules, securityHeaders } from "@/lib/security/headers";
 import nextConfig from "@/next.config";
 
 const REQUIRED_KEYS = [

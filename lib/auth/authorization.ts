@@ -19,7 +19,8 @@ import {
 export type ForbiddenResource = "project" | "task" | "edge" | "team";
 
 /** Strict UUID v1-v5 shape. */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Reject obviously malformed ids before issuing a parameterized SQL query.

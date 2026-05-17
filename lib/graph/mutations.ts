@@ -36,10 +36,7 @@ export type { CreateTaskInput, TaskUpdate } from "@/lib/data/task";
  * @param changes - Subset of project fields to update.
  * @returns The updated project row.
  */
-export async function updateProject(
-  projectId: string,
-  changes: ProjectUpdate,
-) {
+export async function updateProject(projectId: string, changes: ProjectUpdate) {
   const ctx = await getAuthContext();
   return coreUpdateProject(ctx, projectId, changes);
 }

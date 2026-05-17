@@ -1,24 +1,21 @@
-'use client';
+"use client";
 
 import {
   type Dispatch,
   type SetStateAction,
   useCallback,
   useState,
-} from 'react';
-import { useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'motion/react';
-import { Button } from '@/components/shared/Button';
-import { IconLink, IconPlus } from '@/components/shared/icons';
-import {
-  listUserTeamsAction,
-  type TeamView,
-} from '@/lib/actions/team-list';
-import { invalidateTeamManageCache } from './team-manage-cache';
-import { CreateTeamPanel } from './CreateTeamPanel';
-import { EmptyState } from './EmptyState';
-import { JoinTeamPanel } from './JoinTeamPanel';
-import { TeamCard } from './TeamCard';
+} from "react";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
+import { Button } from "@/components/shared/Button";
+import { IconLink, IconPlus } from "@/components/shared/icons";
+import { listUserTeamsAction, type TeamView } from "@/lib/actions/team-list";
+import { invalidateTeamManageCache } from "./team-manage-cache";
+import { CreateTeamPanel } from "./CreateTeamPanel";
+import { EmptyState } from "./EmptyState";
+import { JoinTeamPanel } from "./JoinTeamPanel";
+import { TeamCard } from "./TeamCard";
 
 interface TeamsTabProps {
   /** Live team list owned by the parent SettingsView. */
@@ -168,10 +165,10 @@ export function TeamsTab({
           <motion.div
             key="create-panel"
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
-            style={{ overflow: 'hidden' }}
+            style={{ overflow: "hidden" }}
           >
             <CreateTeamPanel
               onCancel={() => setCreating(false)}
@@ -184,10 +181,10 @@ export function TeamsTab({
           <motion.div
             key="join-panel"
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
-            style={{ overflow: 'hidden' }}
+            style={{ overflow: "hidden" }}
           >
             <JoinTeamPanel
               onCancel={() => setJoining(false)}
@@ -200,7 +197,12 @@ export function TeamsTab({
       {teams.length === 0 && !creating && !joining ? (
         <EmptyState
           icon={
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-6 w-6">
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+              className="h-6 w-6"
+            >
               <path d="M5.5 7a2.5 2.5 0 110-5 2.5 2.5 0 010 5zM2 13a3.5 3.5 0 117 0v.5a.5.5 0 01-.5.5h-6a.5.5 0 01-.5-.5V13zm9.5-6a2 2 0 110-4 2 2 0 010 4zM10 13a3 3 0 015.99-.176A.5.5 0 0115.5 13h-3.998A.5.5 0 0110 13z" />
             </svg>
           }

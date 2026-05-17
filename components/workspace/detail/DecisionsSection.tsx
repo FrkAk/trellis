@@ -1,21 +1,24 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { AutoGrowTextarea } from '@/components/shared/AutoGrowTextarea';
-import { Avatar } from '@/components/shared/Avatar';
-import { Markdown } from '@/components/shared/Markdown';
-import { useUndo, UndoButton } from '@/hooks/useUndo';
-import { updateTask } from '@/lib/graph/mutations';
-import { IconPlus, IconTrash } from '@/components/shared/icons';
-import type { Decision } from '@/lib/types';
-import { SectionHeader } from './SectionHeader';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { AutoGrowTextarea } from "@/components/shared/AutoGrowTextarea";
+import { Avatar } from "@/components/shared/Avatar";
+import { Markdown } from "@/components/shared/Markdown";
+import { useUndo, UndoButton } from "@/hooks/useUndo";
+import { updateTask } from "@/lib/graph/mutations";
+import { IconPlus, IconTrash } from "@/components/shared/icons";
+import type { Decision } from "@/lib/types";
+import { SectionHeader } from "./SectionHeader";
 
 /** Map a decision source to a display author (`user` vs `agent`). */
-const SOURCE_AUTHOR: Record<Decision['source'], { name: string; isAgent: boolean }> = {
-  brainstorm: { name: 'user', isAgent: false },
-  refinement: { name: 'user', isAgent: false },
-  planning:   { name: 'agent', isAgent: true },
-  execution:  { name: 'agent', isAgent: true },
+const SOURCE_AUTHOR: Record<
+  Decision["source"],
+  { name: string; isAgent: boolean }
+> = {
+  brainstorm: { name: "user", isAgent: false },
+  refinement: { name: "user", isAgent: false },
+  planning: { name: "agent", isAgent: true },
+  execution: { name: "agent", isAgent: true },
 };
 
 /**
@@ -26,7 +29,7 @@ const SOURCE_AUTHOR: Record<Decision['source'], { name: string; isAgent: boolean
  * @returns Pipe-joined text signature.
  */
 function signatureFor(items: Decision[] | undefined | null): string {
-  return (items ?? []).map((d) => d.text).join('||');
+  return (items ?? []).map((d) => d.text).join("||");
 }
 
 interface DecisionsSectionProps {
@@ -45,7 +48,11 @@ interface DecisionsSectionProps {
  * @param props - Section configuration.
  * @returns Decisions list plus add affordance.
  */
-export function DecisionsSection({ taskId, decisions, onGraphChange }: DecisionsSectionProps) {
+export function DecisionsSection({
+  taskId,
+  decisions,
+  onGraphChange,
+}: DecisionsSectionProps) {
   const [local, setLocal] = useState(() => decisions ?? []);
   const [syncedSig, setSyncedSig] = useState(() => signatureFor(decisions));
   const [prevTaskId, setPrevTaskId] = useState(taskId);
@@ -56,10 +63,16 @@ export function DecisionsSection({ taskId, decisions, onGraphChange }: Decisions
   const [adding, setAdding] = useState(false);
   const cancelRef = useRef(false);
 
-  useEffect(() => { localRef.current = local; }, [local]);
-  useEffect(() => () => {
-    if (suppressTimerRef.current !== null) window.clearTimeout(suppressTimerRef.current);
-  }, []);
+  useEffect(() => {
+    localRef.current = local;
+  }, [local]);
+  useEffect(
+    () => () => {
+      if (suppressTimerRef.current !== null)
+        window.clearTimeout(suppressTimerRef.current);
+    },
+    [],
+  );
 
   /**
    * Mark a 1-second window where SSE refreshes won't clobber the
@@ -67,7 +80,8 @@ export function DecisionsSection({ taskId, decisions, onGraphChange }: Decisions
    */
   const markMutation = () => {
     setSuppressing(true);
-    if (suppressTimerRef.current !== null) window.clearTimeout(suppressTimerRef.current);
+    if (suppressTimerRef.current !== null)
+      window.clearTimeout(suppressTimerRef.current);
     suppressTimerRef.current = window.setTimeout(() => {
       setSuppressing(false);
       suppressTimerRef.current = null;
@@ -86,59 +100,86 @@ export function DecisionsSection({ taskId, decisions, onGraphChange }: Decisions
     setAdding(false);
   }
 
-  const handleRename = useCallback(async (id: string, text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) { setEditingId(null); return; }
-    const target = localRef.current.find((d) => d.id === id);
-    if (target && trimmed === target.text) { setEditingId(null); return; }
-    const next = localRef.current.map((d) => (d.id === id ? { ...d, text: trimmed } : d));
-    setLocal(next);
-    setEditingId(null);
-    markMutation();
-    await updateTask(taskId, { decisions: next }, true);
-  }, [taskId]);
+  const handleRename = useCallback(
+    async (id: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        setEditingId(null);
+        return;
+      }
+      const target = localRef.current.find((d) => d.id === id);
+      if (target && trimmed === target.text) {
+        setEditingId(null);
+        return;
+      }
+      const next = localRef.current.map((d) =>
+        d.id === id ? { ...d, text: trimmed } : d,
+      );
+      setLocal(next);
+      setEditingId(null);
+      markMutation();
+      await updateTask(taskId, { decisions: next }, true);
+    },
+    [taskId],
+  );
 
-  const handleRestore = useCallback(async (item: { decision: Decision; index: number }) => {
-    const next = [...localRef.current];
-    next.splice(item.index, 0, item.decision);
-    setLocal(next);
-    markMutation();
-    await updateTask(taskId, { decisions: next }, true);
-  }, [taskId]);
+  const handleRestore = useCallback(
+    async (item: { decision: Decision; index: number }) => {
+      const next = [...localRef.current];
+      next.splice(item.index, 0, item.decision);
+      setLocal(next);
+      markMutation();
+      await updateTask(taskId, { decisions: next }, true);
+    },
+    [taskId],
+  );
 
-  const { canUndo, push: pushUndo, undo } = useUndo<{ decision: Decision; index: number }>({
+  const {
+    canUndo,
+    push: pushUndo,
+    undo,
+  } = useUndo<{ decision: Decision; index: number }>({
     onUndo: handleRestore,
     resetOn: taskId,
   });
 
-  const handleDelete = useCallback(async (id: string) => {
-    const index = localRef.current.findIndex((d) => d.id === id);
-    if (index === -1) return;
-    const removed = localRef.current[index];
-    const next = localRef.current.filter((d) => d.id !== id);
-    setLocal(next);
-    setEditingId(null);
-    pushUndo({ decision: removed, index });
-    markMutation();
-    await updateTask(taskId, { decisions: next }, true);
-  }, [taskId, pushUndo]);
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const index = localRef.current.findIndex((d) => d.id === id);
+      if (index === -1) return;
+      const removed = localRef.current[index];
+      const next = localRef.current.filter((d) => d.id !== id);
+      setLocal(next);
+      setEditingId(null);
+      pushUndo({ decision: removed, index });
+      markMutation();
+      await updateTask(taskId, { decisions: next }, true);
+    },
+    [taskId, pushUndo],
+  );
 
-  const handleAdd = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) { setAdding(false); return; }
-    const newDecision: Decision = {
-      id: crypto.randomUUID(),
-      text: trimmed,
-      date: new Date().toISOString().slice(0, 10),
-      source: 'refinement',
-    };
-    const next = [...localRef.current, newDecision];
-    setLocal(next);
-    setAdding(false);
-    markMutation();
-    await updateTask(taskId, { decisions: next }, true);
-    onGraphChange?.();
-  }, [taskId, onGraphChange]);
+  const handleAdd = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        setAdding(false);
+        return;
+      }
+      const newDecision: Decision = {
+        id: crypto.randomUUID(),
+        text: trimmed,
+        date: new Date().toISOString().slice(0, 10),
+        source: "refinement",
+      };
+      const next = [...localRef.current, newDecision];
+      setLocal(next);
+      setAdding(false);
+      markMutation();
+      await updateTask(taskId, { decisions: next }, true);
+      onGraphChange?.();
+    },
+    [taskId, onGraphChange],
+  );
 
   return (
     <section className="mb-7">
@@ -170,7 +211,10 @@ export function DecisionsSection({ taskId, decisions, onGraphChange }: Decisions
             editing={editingId === d.id}
             onStartEdit={() => setEditingId(d.id)}
             onCommit={(text) => handleRename(d.id, text)}
-            onCancel={() => { cancelRef.current = false; setEditingId(null); }}
+            onCancel={() => {
+              cancelRef.current = false;
+              setEditingId(null);
+            }}
             onDelete={() => handleDelete(d.id)}
             cancelRef={cancelRef}
           />
@@ -203,11 +247,14 @@ interface DecisionAddFormProps {
  * @returns Form element.
  */
 function DecisionAddForm({ onSubmit, onCancel }: DecisionAddFormProps) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState("");
 
   const submit = () => {
     const trimmed = text.trim();
-    if (!trimmed) { onCancel(); return; }
+    if (!trimmed) {
+      onCancel();
+      return;
+    }
     onSubmit(trimmed);
   };
 
@@ -220,8 +267,14 @@ function DecisionAddForm({ onSubmit, onCancel }: DecisionAddFormProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-            if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
           }}
           placeholder="What did you decide, and why?"
           className="w-full resize-none rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent"
@@ -271,20 +324,32 @@ interface DecisionCardProps {
  * @param props - Card configuration.
  * @returns Card element.
  */
-function DecisionCard({ decision, editing, onStartEdit, onCommit, onCancel, onDelete, cancelRef }: DecisionCardProps) {
+function DecisionCard({
+  decision,
+  editing,
+  onStartEdit,
+  onCommit,
+  onCancel,
+  onDelete,
+  cancelRef,
+}: DecisionCardProps) {
   const author = SOURCE_AUTHOR[decision.source] ?? SOURCE_AUTHOR.refinement;
   return (
     <div
       className="group/decision rounded-lg border border-border bg-surface-raised/40 py-3 px-3.5 transition-colors"
-      style={{ borderLeft: '2px solid var(--color-accent)' }}
+      style={{ borderLeft: "2px solid var(--color-accent)" }}
     >
       <div className="mb-1.5 flex items-center gap-2">
         <Avatar name={author.name} size={16} accent={author.isAgent} />
         <span className="text-[12px] font-medium text-text-primary">
-          {author.isAgent ? `agent: ${decision.source}` : `user: ${decision.source}`}
+          {author.isAgent
+            ? `agent: ${decision.source}`
+            : `user: ${decision.source}`}
         </span>
         <span className="text-text-faint">·</span>
-        <span className="font-mono text-[10px] tabular-nums text-text-muted">{decision.date}</span>
+        <span className="font-mono text-[10px] tabular-nums text-text-muted">
+          {decision.date}
+        </span>
         <span className="flex-1" />
         <span className="rounded border border-accent/20 bg-accent/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-accent-light">
           {decision.source}
@@ -304,18 +369,28 @@ function DecisionCard({ decision, editing, onStartEdit, onCommit, onCancel, onDe
           autoFocus
           rows={1}
           onBlur={(e) => {
-            if (cancelRef.current) { cancelRef.current = false; onCancel(); }
-            else onCommit(e.target.value);
+            if (cancelRef.current) {
+              cancelRef.current = false;
+              onCancel();
+            } else onCommit(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
-            if (e.key === 'Escape') { cancelRef.current = true; e.currentTarget.blur(); }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+            if (e.key === "Escape") {
+              cancelRef.current = true;
+              e.currentTarget.blur();
+            }
           }}
           className="w-full resize-none rounded-md border border-border-strong bg-surface px-2 py-1 text-[13px] text-text-primary outline-none transition-colors focus:border-accent"
         />
       ) : (
         <div onClick={onStartEdit} className="cursor-text">
-          <Markdown className="text-[12.5px] leading-snug text-text-secondary">{decision.text}</Markdown>
+          <Markdown className="text-[12.5px] leading-snug text-text-secondary">
+            {decision.text}
+          </Markdown>
         </div>
       )}
     </div>

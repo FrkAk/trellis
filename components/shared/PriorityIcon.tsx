@@ -1,4 +1,4 @@
-import type { Priority as SchemaPriority } from '@/lib/types';
+import type { Priority as SchemaPriority } from "@/lib/types";
 
 /** Re-export the schema priority type, including the unset case. */
 export type Priority = SchemaPriority | null;
@@ -26,46 +26,46 @@ interface PriorityIconProps {
  */
 export function PriorityIcon({ priority, className }: PriorityIconProps) {
   const filled =
-    priority === 'urgent'
+    priority === "urgent"
       ? 4
-      : priority === 'core'
+      : priority === "core"
         ? 3
-        : priority === 'normal'
+        : priority === "normal"
           ? 2
-          : priority === 'backlog'
+          : priority === "backlog"
             ? 1
             : 0;
 
   const color =
-    priority === 'urgent'
-      ? 'var(--color-danger)'
-      : priority === 'core'
-        ? 'var(--color-glyph-progress)'
-        : priority === 'normal'
-          ? 'var(--color-accent)'
-          : priority === 'backlog'
-            ? 'var(--color-text-muted)'
-            : 'var(--color-border-strong)';
+    priority === "urgent"
+      ? "var(--color-danger)"
+      : priority === "core"
+        ? "var(--color-glyph-progress)"
+        : priority === "normal"
+          ? "var(--color-accent)"
+          : priority === "backlog"
+            ? "var(--color-text-muted)"
+            : "var(--color-border-strong)";
 
   return (
     <span
-      className={`inline-flex items-end gap-[2px] ${className ?? ''}`}
+      className={`inline-flex items-end gap-[2px] ${className ?? ""}`}
       style={{ height: 12 }}
-      aria-label={priority ? `Priority: ${priority}` : 'Priority: none'}
+      aria-label={priority ? `Priority: ${priority}` : "Priority: none"}
     >
       {[1, 2, 3, 4].map((i) => {
-        const glow = priority === 'urgent' && i === 4;
+        const glow = priority === "urgent" && i === 4;
         return (
           <span
             key={i}
             style={{
               width: 2,
               height: i * 3,
-              background: i <= filled ? color : 'var(--color-border-strong)',
+              background: i <= filled ? color : "var(--color-border-strong)",
               borderRadius: 1,
               opacity: i <= filled ? 1 : 0.6,
               boxShadow: glow
-                ? '0 0 4px color-mix(in srgb, var(--color-danger) 90%, transparent), 0 0 10px color-mix(in srgb, var(--color-danger) 55%, transparent)'
+                ? "0 0 4px color-mix(in srgb, var(--color-danger) 90%, transparent), 0 0 10px color-mix(in srgb, var(--color-danger) 55%, transparent)"
                 : undefined,
             }}
           />

@@ -70,7 +70,8 @@ export function decodeOrderCursor(
   try {
     const json = Buffer.from(cursor, "base64url").toString("utf8");
     const parsed = JSON.parse(json) as { o?: unknown; i?: unknown };
-    if (typeof parsed.o !== "number" || typeof parsed.i !== "string") return null;
+    if (typeof parsed.o !== "number" || typeof parsed.i !== "string")
+      return null;
     return { order: parsed.o, id: parsed.i };
   } catch {
     return null;

@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { MotionConfig } from 'motion/react';
+import { MotionConfig } from "motion/react";
 
 /**
  * Wraps children with MotionConfig to respect OS reduced-motion preference.

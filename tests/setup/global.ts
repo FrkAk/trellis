@@ -162,10 +162,7 @@ export async function setup(): Promise<void> {
   await waitForPostgres(url);
   globalThis.__mymirTestUrl = url;
   const rewriteRole = (role: string) =>
-    url.replace(
-      /^(postgres(?:ql)?):\/\/[^:]+:[^@]+@/,
-      `$1://${role}:${role}@`,
-    );
+    url.replace(/^(postgres(?:ql)?):\/\/[^:]+:[^@]+@/, `$1://${role}:${role}@`);
   await applyMigrations(url);
   process.env.DATABASE_URL = rewriteRole("app_user");
   process.env.DATABASE_AUTH_URL = rewriteRole("auth_role");

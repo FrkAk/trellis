@@ -94,7 +94,12 @@ const slugSchema = z
 const updateTeamSchema = z
   .object({
     organizationId: uuidSchema,
-    name: z.string().trim().min(1, "Team name is required").max(TEAM_NAME_MAX).optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, "Team name is required")
+      .max(TEAM_NAME_MAX)
+      .optional(),
     slug: slugSchema.optional(),
   })
   .refine((data) => data.name !== undefined || data.slug !== undefined, {
@@ -342,7 +347,8 @@ export async function updateMemberRoleAction(input: {
     return teamFail("unknown");
   }
   if (!preRead) return teamFail("not_found");
-  if (preRead.organizationId !== parsed.data.organizationId) return teamFail("forbidden");
+  if (preRead.organizationId !== parsed.data.organizationId)
+    return teamFail("forbidden");
 
   const reqHeaders = await headers();
   const outcome = await demoteMemberWithGuard(

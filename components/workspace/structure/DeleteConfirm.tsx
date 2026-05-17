@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { IconX } from '@/components/shared/icons';
+import { IconX } from "@/components/shared/icons";
 
 interface DeleteConfirmProps {
   /** @param onConfirm - Permanently delete the task. */
@@ -20,14 +20,20 @@ export function DeleteConfirm({ onConfirm, onCancel }: DeleteConfirmProps) {
     <span className="flex items-center gap-1">
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onConfirm(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onConfirm();
+        }}
         className="cursor-pointer rounded px-1.5 py-px font-mono text-[10px] font-semibold text-danger hover:bg-danger/15"
       >
         Delete
       </button>
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onCancel(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onCancel();
+        }}
         className="cursor-pointer rounded p-1 text-text-muted hover:text-text-secondary"
         aria-label="Cancel delete"
       >

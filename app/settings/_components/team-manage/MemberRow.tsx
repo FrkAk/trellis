@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, useTransition } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { initials } from '@/lib/ui/initials';
-import { teamAvatarGradient } from '@/lib/ui/team-avatar';
-import { formatAbsolute } from '@/lib/ui/relative-time';
-import { roleStyle } from '@/lib/ui/role-badge';
-import { removeMemberAction, updateMemberRoleAction } from '@/lib/actions/team';
-import type { MemberView } from '@/lib/actions/team-members-map';
+import { useEffect, useRef, useState, useTransition } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { initials } from "@/lib/ui/initials";
+import { teamAvatarGradient } from "@/lib/ui/team-avatar";
+import { formatAbsolute } from "@/lib/ui/relative-time";
+import { roleStyle } from "@/lib/ui/role-badge";
+import { removeMemberAction, updateMemberRoleAction } from "@/lib/actions/team";
+import type { MemberView } from "@/lib/actions/team-members-map";
 
 interface MemberRowProps {
   /** Team UUID this row belongs to — required by role/remove actions. */
@@ -23,7 +23,10 @@ interface MemberRowProps {
   /** Total members in the team — for sole-member safeguard. */
   totalMemberCount: number;
   /** Called after a successful role change with `(memberId, newRole)`. */
-  onRoleChanged: (memberId: string, newRole: 'member' | 'admin' | 'owner') => void;
+  onRoleChanged: (
+    memberId: string,
+    newRole: "member" | "admin" | "owner",
+  ) => void;
   /** Called after a successful remove with the member id. */
   onRemoved: (memberId: string) => void;
   /** Surface a transient error message above the list. */
@@ -33,8 +36,8 @@ interface MemberRowProps {
 }
 
 type MenuAction =
-  | { kind: 'role'; role: 'member' | 'admin' | 'owner'; label: string }
-  | { kind: 'remove'; label: string };
+  | { kind: "role"; role: "member" | "admin" | "owner"; label: string }
+  | { kind: "remove"; label: string };
 
 /**
  * Decide which actions the viewer may perform on this target member.
@@ -52,29 +55,29 @@ function resolveActions(args: {
   totalMemberCount: number;
 }): MenuAction[] {
   const { target, viewerRole, isSelf, ownerCount, totalMemberCount } = args;
-  const isAdminViewer = viewerRole === 'admin' || viewerRole === 'owner';
+  const isAdminViewer = viewerRole === "admin" || viewerRole === "owner";
   if (!isAdminViewer) return [];
 
   const actions: MenuAction[] = [];
 
-  if (target.role === 'member') {
-    actions.push({ kind: 'role', role: 'admin', label: 'Promote to admin' });
-    if (viewerRole === 'owner') {
-      actions.push({ kind: 'role', role: 'owner', label: 'Promote to owner' });
+  if (target.role === "member") {
+    actions.push({ kind: "role", role: "admin", label: "Promote to admin" });
+    if (viewerRole === "owner") {
+      actions.push({ kind: "role", role: "owner", label: "Promote to owner" });
     }
-  } else if (target.role === 'admin') {
-    actions.push({ kind: 'role', role: 'member', label: 'Demote to member' });
-    if (viewerRole === 'owner') {
-      actions.push({ kind: 'role', role: 'owner', label: 'Promote to owner' });
+  } else if (target.role === "admin") {
+    actions.push({ kind: "role", role: "member", label: "Demote to member" });
+    if (viewerRole === "owner") {
+      actions.push({ kind: "role", role: "owner", label: "Promote to owner" });
     }
-  } else if (target.role === 'owner') {
-    if (viewerRole === 'owner' && ownerCount > 1) {
-      actions.push({ kind: 'role', role: 'admin', label: 'Demote to admin' });
+  } else if (target.role === "owner") {
+    if (viewerRole === "owner" && ownerCount > 1) {
+      actions.push({ kind: "role", role: "admin", label: "Demote to admin" });
     }
   }
 
   if (!isSelf && totalMemberCount > 1) {
-    actions.push({ kind: 'remove', label: 'Remove from team' });
+    actions.push({ kind: "remove", label: "Remove from team" });
   }
 
   return actions;
@@ -125,20 +128,20 @@ export function MemberRow({
       }
     }
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         setMenuOpen(false);
         setConfirmingRemove(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [menuOpen]);
 
-  const handleRoleChange = (next: 'member' | 'admin' | 'owner') => {
+  const handleRoleChange = (next: "member" | "admin" | "owner") => {
     setMenuOpen(false);
     startTransition(async () => {
       const result = await updateMemberRoleAction({
@@ -179,7 +182,11 @@ export function MemberRow({
           ? {
               opacity: 1,
               y: 0,
-              boxShadow: ['var(--shadow-card)', 'var(--shadow-glow-accent)', 'var(--shadow-card)'],
+              boxShadow: [
+                "var(--shadow-card)",
+                "var(--shadow-glow-accent)",
+                "var(--shadow-card)",
+              ],
             }
           : { opacity: 1, y: 0 }
       }
@@ -189,7 +196,9 @@ export function MemberRow({
     >
       <div
         aria-hidden="true"
-        style={{ background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})` }}
+        style={{
+          background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`,
+        }}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold text-white shadow-[var(--shadow-card)]"
       >
         {initials({ name: member.name, email: member.email })}
@@ -200,13 +209,17 @@ export function MemberRow({
           <p className="truncate text-sm font-medium text-text-primary">
             {member.name}
             {isSelf ? (
-              <span className="ml-1.5 text-xs font-normal text-text-muted">(you)</span>
+              <span className="ml-1.5 text-xs font-normal text-text-muted">
+                (you)
+              </span>
             ) : null}
           </p>
           <span
             className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${role.bg} ${role.text}`}
           >
-            {role.dot ? <span className={`h-1.5 w-1.5 rounded-full ${role.dot}`} /> : null}
+            {role.dot ? (
+              <span className={`h-1.5 w-1.5 rounded-full ${role.dot}`} />
+            ) : null}
             {role.label}
           </span>
         </div>
@@ -231,7 +244,12 @@ export function MemberRow({
             aria-label={`Actions for ${member.name}`}
             className="cursor-pointer rounded-md p-2 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+              className="h-4 w-4"
+            >
               <path d="M3.5 8a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM9.5 8a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM14 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
             </svg>
           </button>
@@ -247,7 +265,7 @@ export function MemberRow({
                 className="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-lg border border-border bg-surface p-1 shadow-[var(--shadow-float)]"
               >
                 {actions.map((action) => {
-                  if (action.kind === 'role') {
+                  if (action.kind === "role") {
                     return (
                       <button
                         key={action.label}

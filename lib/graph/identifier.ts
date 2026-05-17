@@ -25,7 +25,10 @@ const IDENTIFIER_PATTERN = /^[A-Z0-9]{2,12}$/;
 /** Zod schema for a project identifier (2-12 uppercase letters or digits). */
 export const identifierSchema = z
   .string()
-  .regex(IDENTIFIER_PATTERN, "Identifier must be 2-12 uppercase letters or digits");
+  .regex(
+    IDENTIFIER_PATTERN,
+    "Identifier must be 2-12 uppercase letters or digits",
+  );
 
 /**
  * Parse a candidate project identifier.
@@ -38,7 +41,10 @@ export function parseIdentifier(raw: string): ParseResult<Identifier> {
     return { ok: false, error: "Identifier must be 2-12 characters" };
   }
   if (!/^[A-Z0-9]+$/.test(raw)) {
-    return { ok: false, error: "Identifier must be uppercase alphanumeric only" };
+    return {
+      ok: false,
+      error: "Identifier must be uppercase alphanumeric only",
+    };
   }
   return { ok: true, value: raw as Identifier };
 }
@@ -62,8 +68,12 @@ export function deriveIdentifier(title: string): Identifier {
   const words = cleaned.split(/\s+/).filter(Boolean);
   const candidate =
     words.length >= 2
-      ? words.map((w) => w[0]).join("").toUpperCase().slice(0, 12)
-      : words[0]?.toUpperCase().slice(0, 12) ?? "";
+      ? words
+          .map((w) => w[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 12)
+      : (words[0]?.toUpperCase().slice(0, 12) ?? "");
   const parsed = parseIdentifier(candidate);
   return parsed.ok ? parsed.value : ("PROJECT" as Identifier);
 }
@@ -95,7 +105,9 @@ export function composeTaskRef(
 }
 
 /** A task enriched with its composed taskRef. */
-export type TaskWithRef<T = { sequenceNumber: number }> = T & { taskRef: TaskRef };
+export type TaskWithRef<T = { sequenceNumber: number }> = T & {
+  taskRef: TaskRef;
+};
 
 /**
  * Attach a composed taskRef to each task in a list sharing one project identifier.

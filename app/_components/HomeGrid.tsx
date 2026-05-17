@@ -204,7 +204,9 @@ function GroupedGrid({ projects, teams }: GroupedGridProps) {
                     totalTasks={project.taskStats.total}
                     cancelledTasks={project.taskStats.cancelled}
                     tasksInProgress={project.taskStats.inProgress}
-                    lastActive={dateFormatter.format(new Date(project.updatedAt))}
+                    lastActive={dateFormatter.format(
+                      new Date(project.updatedAt),
+                    )}
                     canDelete={roleHasProjectPermission(project.memberRole, [
                       "delete",
                     ])}
@@ -241,7 +243,9 @@ interface EmptyFilterHintProps {
 
 /** Hint shown when the current filter has no matches. */
 function EmptyFilterHint({ teamFilter, teams }: EmptyFilterHintProps) {
-  const filteredTeam = teamFilter ? teams.find((t) => t.id === teamFilter) : undefined;
+  const filteredTeam = teamFilter
+    ? teams.find((t) => t.id === teamFilter)
+    : undefined;
   return (
     <EmptyHint
       title={

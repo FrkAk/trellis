@@ -26,7 +26,11 @@ export type RateLimitRule = {
  * Backend interface — both in-memory and CF Workers implement this.
  */
 export interface RateLimitBackend {
-  check(key: string, max: number, windowSeconds: number): Promise<RateLimitResult>;
+  check(
+    key: string,
+    max: number,
+    windowSeconds: number,
+  ): Promise<RateLimitResult>;
 }
 
 /**
@@ -34,8 +38,8 @@ export interface RateLimitBackend {
  * matchRule returns the first match.
  */
 export const RATE_LIMIT_RULES: RateLimitRule[] = [
-  { pattern: "/api/mcp", max: 60,  window: 60, keyStrategy: "apikey" },
-  { pattern: "/api/*",   max: 100, window: 60, keyStrategy: "session" },
+  { pattern: "/api/mcp", max: 60, window: 60, keyStrategy: "apikey" },
+  { pattern: "/api/*", max: 100, window: 60, keyStrategy: "session" },
 ];
 
 /** SSE path pattern — excluded from request rate limiting (single per-user
@@ -127,7 +131,7 @@ export function rateLimitHeaders(
 ): Record<string, string> {
   const headers: Record<string, string> = {
     "RateLimit-Policy": `${rule.max};w=${rule.window}`,
-    "RateLimit": `limit=${result.limit}, remaining=${result.remaining}, reset=${result.resetIn}`,
+    RateLimit: `limit=${result.limit}, remaining=${result.remaining}, reset=${result.resetIn}`,
   };
   if (!result.allowed) {
     headers["Retry-After"] = String(result.resetIn);
@@ -137,8 +141,7 @@ export function rateLimitHeaders(
 
 let _backend: RateLimitBackend | null = null;
 
-const MAX_WINDOW_MS =
-  Math.max(...RATE_LIMIT_RULES.map((r) => r.window)) * 1000;
+const MAX_WINDOW_MS = Math.max(...RATE_LIMIT_RULES.map((r) => r.window)) * 1000;
 
 /**
  * Get the singleton rate limit backend.

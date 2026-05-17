@@ -8,12 +8,7 @@
  */
 import "server-only";
 import { eq, sql } from "drizzle-orm";
-import {
-  projects,
-  tasks,
-  type Project,
-  type Task,
-} from "@/lib/db/schema";
+import { projects, tasks, type Project, type Task } from "@/lib/db/schema";
 import { executeRaw } from "@/lib/db/raw";
 import { withUserContext, type Tx } from "@/lib/db/rls";
 import type { ProjectListOrganization } from "@/lib/data/views";

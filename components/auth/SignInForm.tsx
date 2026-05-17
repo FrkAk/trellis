@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import { signIn } from '@/lib/auth-client';
-import { AuthInput } from './AuthInput';
-import { AuthSubmit } from './AuthSubmit';
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "@/lib/auth-client";
+import { AuthInput } from "./AuthInput";
+import { AuthSubmit } from "./AuthSubmit";
 
 /**
  * Email/password sign-in form.
@@ -19,8 +19,8 @@ import { AuthSubmit } from './AuthSubmit';
  */
 export function SignInForm() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -39,12 +39,12 @@ export function SignInForm() {
     const { error: authError } = await signIn.email({ email, password });
 
     if (authError) {
-      setError(authError.message ?? 'Sign in failed');
+      setError(authError.message ?? "Sign in failed");
       setLoading(false);
       return;
     }
 
-    router.push('/');
+    router.push("/");
     router.refresh();
   }
 
@@ -87,9 +87,10 @@ export function SignInForm() {
           role="alert"
           className="rounded-md border px-3 py-2 text-[12px] text-danger"
           style={{
-            background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)',
+            background:
+              "color-mix(in srgb, var(--color-danger) 10%, transparent)",
             borderColor:
-              'color-mix(in srgb, var(--color-danger) 24%, transparent)',
+              "color-mix(in srgb, var(--color-danger) 24%, transparent)",
           }}
         >
           {error}

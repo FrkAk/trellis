@@ -75,11 +75,7 @@ import {
   formatCriticalPath,
   formatPlannableTasks,
 } from "./format-responses";
-import {
-  WORK_TYPE_TAGS,
-  findVariant,
-  normalizeTags,
-} from "./tag-similarity";
+import { WORK_TYPE_TAGS, findVariant, normalizeTags } from "./tag-similarity";
 import type { Priority, Estimate } from "@/lib/types";
 import type { AuthContext } from "@/lib/auth/context";
 import {
@@ -298,7 +294,11 @@ function overwriteShrinkHints(
       );
     }
   };
-  check("acceptanceCriteria", payload.acceptanceCriteria, prior.acceptanceCriteria);
+  check(
+    "acceptanceCriteria",
+    payload.acceptanceCriteria,
+    prior.acceptanceCriteria,
+  );
   check("decisions", payload.decisions, prior.decisions);
   check("files", payload.files, prior.files);
   check("assigneeIds", payload.assigneeIds, prior.assigneeIds);
@@ -353,7 +353,10 @@ function cancelledStatusHints(
       "Missing cancellation rationale (lifecycle §1). Add it to executionRecord: why abandoned + what approaches were tried, so downstream tasks (and future revisits) understand the decision.",
     );
   }
-  if (!payload.decisions && (!persisted.decisions || persisted.decisions.length === 0)) {
+  if (
+    !payload.decisions &&
+    (!persisted.decisions || persisted.decisions.length === 0)
+  ) {
     hints.push(
       "Missing decisions. Record technical choices made before cancelling (CHOICE + WHY); preserves what was learned for any future revisit.",
     );
@@ -394,7 +397,10 @@ function doneStatusHints(
       "Missing executionRecord (lifecycle §1). Add 3-5 sentences on HOW it was built: function names, file paths, endpoints. Distinct from description (scope). Downstream tasks depend on this for context.",
     );
   }
-  if (!payload.decisions && (!persisted.decisions || persisted.decisions.length === 0)) {
+  if (
+    !payload.decisions &&
+    (!persisted.decisions || persisted.decisions.length === 0)
+  ) {
     hints.push(
       "Missing decisions (lifecycle §1). Record technical choices (CHOICE + WHY); downstream tasks need them.",
     );
@@ -460,7 +466,10 @@ function inReviewStatusHints(
       "Missing executionRecord (lifecycle §1). Add 3-5 sentences on HOW it was built: function names, file paths, endpoints. Distinct from description (scope). Downstream tasks depend on this for context.",
     );
   }
-  if (!payload.decisions && (!persisted.decisions || persisted.decisions.length === 0)) {
+  if (
+    !payload.decisions &&
+    (!persisted.decisions || persisted.decisions.length === 0)
+  ) {
     hints.push(
       "Missing decisions (lifecycle §1). Record technical choices (CHOICE + WHY); downstream tasks need them.",
     );
@@ -738,7 +747,13 @@ export type TaskParams = {
   taskId?: string;
   title?: string;
   description?: string;
-  status?: "draft" | "planned" | "in_progress" | "in_review" | "done" | "cancelled";
+  status?:
+    | "draft"
+    | "planned"
+    | "in_progress"
+    | "in_review"
+    | "done"
+    | "cancelled";
   acceptanceCriteria?: unknown[];
   decisions?: unknown[];
   tags?: string[];
@@ -832,10 +847,17 @@ export async function handleProject(
             `Auto-derived identifier '${project.identifier}' from title. Pass identifier='...' to override (2-12 chars, uppercase alphanumeric, unique per team).`,
           );
         }
-        return ok(createHints.length > 0 ? { ...project, _hints: createHints } : project);
+        return ok(
+          createHints.length > 0
+            ? { ...project, _hints: createHints }
+            : project,
+        );
       }
       case "update": {
-        if (!p.projectId) return fail("projectId required for update. Run mymir_project action='list' to find it.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for update. Run mymir_project action='list' to find it.",
+          );
         if (
           p.title === undefined &&
           p.description === undefined &&
@@ -857,7 +879,11 @@ export async function handleProject(
         if (p.identifier !== undefined) {
           const parsed = parseIdentifier(p.identifier);
           if (!parsed.ok) return fail(parsed.error);
-          project = await renameProjectIdentifier(ctx, p.projectId, parsed.value);
+          project = await renameProjectIdentifier(
+            ctx,
+            p.projectId,
+            parsed.value,
+          );
         }
         if (Object.keys(changes).length > 0) {
           project = await updateProject(ctx, p.projectId, changes);
@@ -895,7 +921,9 @@ export async function handleTask(
     switch (p.action) {
       case "create": {
         if (!p.projectId)
-          return fail("projectId required for create. Run mymir_project action='list' or 'select' first.");
+          return fail(
+            "projectId required for create. Run mymir_project action='list' or 'select' first.",
+          );
         if (!p.title)
           return fail(
             "title required for create. Verb+noun, imperative (e.g. 'Implement JWT auth', not 'Auth'). Artifacts §1.",
@@ -1056,8 +1084,7 @@ export async function handleTask(
             // explicitly when the shrink check needs the prior values.
             if (
               willOverwriteShrinkable &&
-              (p.acceptanceCriteria !== undefined ||
-                p.decisions !== undefined)
+              (p.acceptanceCriteria !== undefined || p.decisions !== undefined)
             ) {
               const persisted = await getTaskFull(ctx, p.taskId);
               if (p.acceptanceCriteria !== undefined) {
@@ -1087,7 +1114,12 @@ export async function handleTask(
         if (p.executionRecord !== undefined)
           changes.executionRecord = p.executionRecord;
         if (p.prUrl !== undefined) changes.prUrl = p.prUrl;
-        const result = await updateTask(ctx, p.taskId, changes, !!p.overwriteArrays);
+        const result = await updateTask(
+          ctx,
+          p.taskId,
+          changes,
+          !!p.overwriteArrays,
+        );
 
         const updateHints: string[] = [];
         // Required-field-shaped hints first
@@ -1095,7 +1127,9 @@ export async function handleTask(
           updateHints.push(
             ...overwriteShrinkHints(
               {
-                acceptanceCriteria: p.acceptanceCriteria as unknown[] | undefined,
+                acceptanceCriteria: p.acceptanceCriteria as
+                  | unknown[]
+                  | undefined,
                 decisions: p.decisions as unknown[] | undefined,
                 files: p.files,
                 assigneeIds: p.assigneeIds,
@@ -1319,11 +1353,16 @@ export async function handleQuery(
   try {
     switch (p.type) {
       case "search": {
-        if (!p.projectId) return fail("projectId required for search. Run mymir_project action='list' first.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for search. Run mymir_project action='list' first.",
+          );
         const hasQuery = (p.query?.trim() ?? "").length > 0;
         const tagFilter = normalizeTags(p.tags);
         if (!hasQuery && tagFilter.length === 0) {
-          return fail("query or tags required for search. Pass `query` (taskRef, title or tag substring) or `tags=[...]` (exact tag, OR-within).");
+          return fail(
+            "query or tags required for search. Pass `query` (taskRef, title or tag substring) or `tags=[...]` (exact tag, OR-within).",
+          );
         }
 
         const variantHints =
@@ -1341,7 +1380,10 @@ export async function handleQuery(
         return ok(formatSearchResults(results, hint));
       }
       case "list": {
-        if (!p.projectId) return fail("projectId required for list. Run mymir_project action='list' first.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for list. Run mymir_project action='list' first.",
+          );
         return ok(formatTaskList(await getProjectTasksSlim(ctx, p.projectId)));
       }
       case "edges": {
@@ -1349,14 +1391,22 @@ export async function handleQuery(
           return fail(
             "taskId required for edges. Use type='search' to find task IDs.",
           );
-        return ok(formatDetailedEdges(await getTaskEdgesDetailed(ctx, p.taskId)));
+        return ok(
+          formatDetailedEdges(await getTaskEdgesDetailed(ctx, p.taskId)),
+        );
       }
       case "meta": {
-        if (!p.projectId) return fail("projectId required for meta. Run mymir_project action='list' first.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for meta. Run mymir_project action='list' first.",
+          );
         return ok(formatProjectMeta(await getProjectMeta(ctx, p.projectId)));
       }
       case "overview": {
-        if (!p.projectId) return fail("projectId required for overview. Run mymir_project action='list' first.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for overview. Run mymir_project action='list' first.",
+          );
         const overview = await buildProjectOverview(ctx, p.projectId);
         return ok(overview ? formatOverview(overview) : "Project not found.");
       }
@@ -1383,7 +1433,9 @@ export async function handleContext(
         return ok(formatSummary(await buildSummaryContext(ctx, p.taskId)));
       case "working": {
         if (!p.projectId)
-          return fail("projectId required for working depth. Run mymir_project action='list' or pass the projectId you already have.");
+          return fail(
+            "projectId required for working depth. Run mymir_project action='list' or pass the projectId you already have.",
+          );
         // assertTaskAccess gates on membership; the projectId comparison protects
         // against passing a different project's UUID alongside our own task.
         const task = await assertTaskAccess(p.taskId, ctx);
@@ -1420,11 +1472,17 @@ export async function handleAnalyze(
   try {
     switch (p.type) {
       case "ready": {
-        if (!p.projectId) return fail("projectId required for ready. Run mymir_project action='list' first.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for ready. Run mymir_project action='list' first.",
+          );
         return ok(formatReadyTasks(await getReadyTasks(ctx, p.projectId)));
       }
       case "blocked": {
-        if (!p.projectId) return fail("projectId required for blocked. Run mymir_project action='list' first.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for blocked. Run mymir_project action='list' first.",
+          );
         return ok(formatBlockedTasks(await getBlockedTasks(ctx, p.projectId)));
       }
       case "downstream": {
@@ -1435,11 +1493,17 @@ export async function handleAnalyze(
         return ok(formatDownstream(await getDownstream(ctx, p.taskId)));
       }
       case "critical_path": {
-        if (!p.projectId) return fail("projectId required for critical_path. Run mymir_project action='list' first.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for critical_path. Run mymir_project action='list' first.",
+          );
         return ok(formatCriticalPath(await getCriticalPath(ctx, p.projectId)));
       }
       case "plannable": {
-        if (!p.projectId) return fail("projectId required for plannable. Run mymir_project action='list' first.");
+        if (!p.projectId)
+          return fail(
+            "projectId required for plannable. Run mymir_project action='list' first.",
+          );
         return ok(
           formatPlannableTasks(await getPlannableTasks(ctx, p.projectId)),
         );

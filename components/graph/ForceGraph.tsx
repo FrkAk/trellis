@@ -1,6 +1,13 @@
 "use client";
 
-import { useRef, useEffect, useLayoutEffect, useCallback, useState, useMemo } from "react";
+import {
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useState,
+  useMemo,
+} from "react";
 import { quadtree } from "d3-quadtree";
 import type { TaskEdge } from "@/lib/db/schema";
 import type { TaskGraphSlim } from "@/lib/data/views";
@@ -111,7 +118,10 @@ function fitTransform(
   rightInset: number,
 ): { x: number; y: number; scale: number } | null {
   if (nodesArr.length === 0) return null;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const n of nodesArr) {
     const x = n.x ?? 0;
     const y = n.y ?? 0;
@@ -271,7 +281,9 @@ export function ForceGraph({
   });
   const hoveredRef = useRef<string | null>(null);
   const hoveredEdgeRef = useRef<GraphLink | null>(null);
-  const tooltipRef = useRef<{ text: string; x: number; y: number } | null>(null);
+  const tooltipRef = useRef<{ text: string; x: number; y: number } | null>(
+    null,
+  );
   const needsRedrawRef = useRef(true);
   /**
    * Set when the user pans, zooms, or drag-rejigs a node — suppresses the
@@ -282,9 +294,14 @@ export function ForceGraph({
 
   // --- Animated transform transitions ---
   const animRef = useRef<{
-    startX: number; startY: number; startScale: number;
-    endX: number; endY: number; endScale: number;
-    startTime: number; duration: number;
+    startX: number;
+    startY: number;
+    startScale: number;
+    endX: number;
+    endY: number;
+    endScale: number;
+    startTime: number;
+    duration: number;
   } | null>(null);
 
   /**
@@ -296,9 +313,14 @@ export function ForceGraph({
     (target: { x: number; y: number; scale: number }, duration = 500) => {
       const cur = transformRef.current;
       animRef.current = {
-        startX: cur.x, startY: cur.y, startScale: cur.scale,
-        endX: target.x, endY: target.y, endScale: target.scale,
-        startTime: performance.now(), duration,
+        startX: cur.x,
+        startY: cur.y,
+        startScale: cur.scale,
+        endX: target.x,
+        endY: target.y,
+        endScale: target.scale,
+        startTime: performance.now(),
+        duration,
       };
       needsRedrawRef.current = true;
     },
@@ -312,15 +334,16 @@ export function ForceGraph({
     needsRedrawRef.current = true;
   }, []);
 
-  const { nodes, links, state, topologyVersion, reheat, reset } = useForceSimulation(
-    projectId,
-    filteredTasks,
-    filteredEdges,
-    size.width,
-    size.height,
-    selectedNodeId,
-    handleSimTick,
-  );
+  const { nodes, links, state, topologyVersion, reheat, reset } =
+    useForceSimulation(
+      projectId,
+      filteredTasks,
+      filteredEdges,
+      size.width,
+      size.height,
+      selectedNodeId,
+      handleSimTick,
+    );
 
   const ticking = state === "settling";
 
@@ -345,16 +368,20 @@ export function ForceGraph({
   const parallelMeta = useMemo(() => {
     const counts = new Map<string, number>();
     for (const l of links) {
-      const srcId = typeof l.source === "string" ? l.source : (l.source as GraphNode).id;
-      const tgtId = typeof l.target === "string" ? l.target : (l.target as GraphNode).id;
+      const srcId =
+        typeof l.source === "string" ? l.source : (l.source as GraphNode).id;
+      const tgtId =
+        typeof l.target === "string" ? l.target : (l.target as GraphNode).id;
       const key = srcId < tgtId ? `${srcId}|${tgtId}` : `${tgtId}|${srcId}`;
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     const seen = new Map<string, number>();
     const meta = new Map<GraphLink, { count: number; idx: number }>();
     for (const l of links) {
-      const srcId = typeof l.source === "string" ? l.source : (l.source as GraphNode).id;
-      const tgtId = typeof l.target === "string" ? l.target : (l.target as GraphNode).id;
+      const srcId =
+        typeof l.source === "string" ? l.source : (l.source as GraphNode).id;
+      const tgtId =
+        typeof l.target === "string" ? l.target : (l.target as GraphNode).id;
       const key = srcId < tgtId ? `${srcId}|${tgtId}` : `${tgtId}|${srcId}`;
       const idx = seen.get(key) ?? 0;
       meta.set(l, { count: counts.get(key) ?? 1, idx });
@@ -472,10 +499,13 @@ export function ForceGraph({
   }, []);
 
   // Coordinate transforms
-  const screenToWorld = useCallback((sx: number, sy: number): [number, number] => {
-    const t = transformRef.current;
-    return [(sx - t.x) / t.scale, (sy - t.y) / t.scale];
-  }, []);
+  const screenToWorld = useCallback(
+    (sx: number, sy: number): [number, number] => {
+      const t = transformRef.current;
+      return [(sx - t.x) / t.scale, (sy - t.y) / t.scale];
+    },
+    [],
+  );
 
   // Quadtree-based hit testing — collect every node whose validated radius
   // covers the click point, then return the visually-closest one. The naive
@@ -523,7 +553,12 @@ export function ForceGraph({
             leaf = leaf.next;
           }
         }
-        return x0 > wx + searchR || x1 < wx - searchR || y0 > wy + searchR || y1 < wy - searchR;
+        return (
+          x0 > wx + searchR ||
+          x1 < wx - searchR ||
+          y0 > wy + searchR ||
+          y1 < wy - searchR
+        );
       });
       return best;
     },
@@ -537,7 +572,8 @@ export function ForceGraph({
       for (const l of links) {
         const src = l.source as GraphNode;
         const tgt = l.target as GraphNode;
-        if (src.x == null || src.y == null || tgt.x == null || tgt.y == null) continue;
+        if (src.x == null || src.y == null || tgt.x == null || tgt.y == null)
+          continue;
         const mx = (src.x + tgt.x) / 2;
         const my = (src.y + tgt.y) / 2;
         const dx = mx - wx;
@@ -655,7 +691,7 @@ export function ForceGraph({
         n._dimT += (dimTarget - n._dimT) * 0.085;
 
         const glowTarget = n.id === selectedNodeId ? 1 : 0;
-        n._selectGlow += (glowTarget - n._selectGlow) * 0.10;
+        n._selectGlow += (glowTarget - n._selectGlow) * 0.1;
 
         // Hover/focus scale — fires for both pointer hover and selection so the
         // selected node carries the same lift visual without an instant snap.
@@ -676,7 +712,8 @@ export function ForceGraph({
     for (const l of links) {
       const src = l.source as GraphNode;
       const tgt = l.target as GraphNode;
-      if (src.x == null || src.y == null || tgt.x == null || tgt.y == null) continue;
+      if (src.x == null || src.y == null || tgt.x == null || tgt.y == null)
+        continue;
 
       // Off-screen cull — skip edges whose bounding box doesn't intersect
       // the padded viewport. Cheap pre-check that buys back the gradient,
@@ -685,15 +722,26 @@ export function ForceGraph({
       const eMaxX = src.x > tgt.x ? src.x : tgt.x;
       const eMinY = src.y < tgt.y ? src.y : tgt.y;
       const eMaxY = src.y > tgt.y ? src.y : tgt.y;
-      if (eMaxX < viewLeft || eMinX > viewRight || eMaxY < viewTop || eMinY > viewBottom) continue;
+      if (
+        eMaxX < viewLeft ||
+        eMinX > viewRight ||
+        eMaxY < viewTop ||
+        eMinY > viewBottom
+      )
+        continue;
 
-      const linkDimmed = hasSelection && !connected.has(src.id) && !connected.has(tgt.id);
-      const enterAlpha = Math.min(easeOutCubic(src._enterT), easeOutCubic(tgt._enterT));
+      const linkDimmed =
+        hasSelection && !connected.has(src.id) && !connected.has(tgt.id);
+      const enterAlpha = Math.min(
+        easeOutCubic(src._enterT),
+        easeOutCubic(tgt._enterT),
+      );
       const dimAlpha = Math.max(src._dimT, tgt._dimT);
 
       const isRelates = l.type === "relates_to";
       const edgeColor = EDGE_COLOR[l.type] ?? "#6b7280";
-      const baseAlpha = (1 - dimAlpha * 0.85) * enterAlpha * (isRelates ? RELATES_OPACITY : 1);
+      const baseAlpha =
+        (1 - dimAlpha * 0.85) * enterAlpha * (isRelates ? RELATES_OPACITY : 1);
       ctx.globalAlpha = linkDimmed ? baseAlpha * 0.05 : baseAlpha;
       ctx.lineWidth = isRelates ? 1.5 : 2;
 
@@ -740,8 +788,14 @@ export function ForceGraph({
           ctx.fillStyle = edgeColor;
           ctx.beginPath();
           ctx.moveTo(ax, ay);
-          ctx.lineTo(ax - arrowLen * Math.cos(angle - 0.5), ay - arrowLen * Math.sin(angle - 0.5));
-          ctx.lineTo(ax - arrowLen * Math.cos(angle + 0.5), ay - arrowLen * Math.sin(angle + 0.5));
+          ctx.lineTo(
+            ax - arrowLen * Math.cos(angle - 0.5),
+            ay - arrowLen * Math.sin(angle - 0.5),
+          );
+          ctx.lineTo(
+            ax - arrowLen * Math.cos(angle + 0.5),
+            ay - arrowLen * Math.sin(angle + 0.5),
+          );
           ctx.closePath();
           ctx.fill();
         }
@@ -797,8 +851,14 @@ export function ForceGraph({
           ctx.fillStyle = edgeColor;
           ctx.beginPath();
           ctx.moveTo(ax, ay);
-          ctx.lineTo(ax - arrowLen * Math.cos(angle - 0.5), ay - arrowLen * Math.sin(angle - 0.5));
-          ctx.lineTo(ax - arrowLen * Math.cos(angle + 0.5), ay - arrowLen * Math.sin(angle + 0.5));
+          ctx.lineTo(
+            ax - arrowLen * Math.cos(angle - 0.5),
+            ay - arrowLen * Math.sin(angle - 0.5),
+          );
+          ctx.lineTo(
+            ax - arrowLen * Math.cos(angle + 0.5),
+            ay - arrowLen * Math.sin(angle + 0.5),
+          );
           ctx.closePath();
           ctx.fill();
         }
@@ -817,8 +877,14 @@ export function ForceGraph({
           for (let i = 0; i < dotCount; i++) {
             const phase = (now * speed + i / dotCount) % 1;
             const ct = startT + phase * (endT - startT);
-            const px = (1 - ct) * (1 - ct) * src.x + 2 * (1 - ct) * ct * cpx + ct * ct * tgt.x;
-            const py = (1 - ct) * (1 - ct) * src.y + 2 * (1 - ct) * ct * cpy + ct * ct * tgt.y;
+            const px =
+              (1 - ct) * (1 - ct) * src.x +
+              2 * (1 - ct) * ct * cpx +
+              ct * ct * tgt.x;
+            const py =
+              (1 - ct) * (1 - ct) * src.y +
+              2 * (1 - ct) * ct * cpy +
+              ct * ct * tgt.y;
             const dotAlpha = Math.sin(phase * Math.PI) * baseAlpha * 0.8;
             ctx.globalAlpha = dotAlpha;
             ctx.beginPath();
@@ -837,7 +903,12 @@ export function ForceGraph({
     if (hovEdge) {
       const hSrc = hovEdge.source as GraphNode;
       const hTgt = hovEdge.target as GraphNode;
-      if (hSrc.x != null && hSrc.y != null && hTgt.x != null && hTgt.y != null) {
+      if (
+        hSrc.x != null &&
+        hSrc.y != null &&
+        hTgt.x != null &&
+        hTgt.y != null
+      ) {
         const emx = (hSrc.x + hTgt.x) / 2;
         const emy = (hSrc.y + hTgt.y) / 2;
         const label = hovEdge.type === "depends_on" ? "depends" : "relates";
@@ -882,7 +953,8 @@ export function ForceGraph({
         n.x - haloR > viewRight ||
         n.y + haloR < viewTop ||
         n.y - haloR > viewBottom
-      ) continue;
+      )
+        continue;
 
       // Display stage — `plannable` / `ready` are derived sub-stages the
       // parent computes from edges + criteria. They paint with the planned
@@ -953,7 +1025,7 @@ export function ForceGraph({
       ctx.lineWidth = isSelected ? 2.5 : isHollowStage ? 2 : 1.5;
       ctx.strokeStyle = isSelected
         ? ACCENT
-        : `rgba(${sr},${sg},${sb},${(isSelected || isHovered || isHollowStage) ? 1.0 : 0.8})`;
+        : `rgba(${sr},${sg},${sb},${isSelected || isHovered || isHollowStage ? 1.0 : 0.8})`;
 
       switch (stage) {
         case "done":
@@ -1038,8 +1110,9 @@ export function ForceGraph({
       const isHub = edgeCount >= 5;
       const isMidHub = edgeCount >= 3;
       const showLabel =
-        isSelected || isHovered ||
-        (zoomScale >= 0.85 * labelScale) ||
+        isSelected ||
+        isHovered ||
+        zoomScale >= 0.85 * labelScale ||
         (zoomScale >= 0.55 * labelScale && isMidHub) ||
         (zoomScale >= 0.3 * labelScale && isHub);
 
@@ -1047,16 +1120,16 @@ export function ForceGraph({
         const labelAlpha = nodeAlpha * Math.min(1, (enterProgress - 0.5) * 2);
         ctx.globalAlpha = labelAlpha;
 
-        const label = n.title.length > 18
-          ? n.title.slice(0, 17) + "…"
-          : n.title;
+        const label =
+          n.title.length > 18 ? n.title.slice(0, 17) + "…" : n.title;
         ctx.font = `500 12px "Inter Variable", "Inter", sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
 
         const metrics = ctx.measureText(label);
         const ly = n.y + sz * finalScale + 8;
-        const pw = 5, ph = 3;
+        const pw = 5,
+          ph = 3;
         const lw = metrics.width + pw * 2;
         const lh = 14 + ph * 2;
 
@@ -1101,7 +1174,19 @@ export function ForceGraph({
       ctx.fillText(tip.text, tx + pw, ty + th / 2);
       ctx.restore();
     }
-  }, [nodes, links, size, selectedNodeId, theme, linkCounts, parallelMeta, hoveredIdHint, tier, labelScale, stageMap]);
+  }, [
+    nodes,
+    links,
+    size,
+    selectedNodeId,
+    theme,
+    linkCounts,
+    parallelMeta,
+    hoveredIdHint,
+    tier,
+    labelScale,
+    stageMap,
+  ]);
 
   // Redraw whenever the external hint changes so the highlight is responsive.
   useEffect(() => {
@@ -1236,7 +1321,11 @@ export function ForceGraph({
       } else if (fps < 40 && p.level < 1) {
         p.level = 1;
         p.lastChangeAt = now;
-      } else if (fps > 55 && p.level > 0 && sinceChange > RECOVERY_DEBOUNCE_MS) {
+      } else if (
+        fps > 55 &&
+        p.level > 0 &&
+        sinceChange > RECOVERY_DEBOUNCE_MS
+      ) {
         p.level = (p.level - 1) as 0 | 1;
         p.lastChangeAt = now;
       }
@@ -1258,11 +1347,7 @@ export function ForceGraph({
         setZoomLevel(transformRef.current.scale);
         needsRedrawRef.current = true;
         if (raw >= 1) animRef.current = null;
-      } else if (
-        ticking &&
-        !userOverrideRef.current &&
-        nodes.length > 0
-      ) {
+      } else if (ticking && !userOverrideRef.current && nodes.length > 0) {
         // Chase camera — during settling, lerp the transform toward the
         // current fit-bbox each frame. Combined with the close-in initial
         // snap, this produces a cinematic zoom-out reveal: start tight on
@@ -1278,7 +1363,11 @@ export function ForceGraph({
             const ds = target.scale - tr.scale;
             // Skip the lerp if we're effectively at the target — avoids
             // micro-jitter once the chase converges.
-            if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5 || Math.abs(ds) > 0.001) {
+            if (
+              Math.abs(dx) > 0.5 ||
+              Math.abs(dy) > 0.5 ||
+              Math.abs(ds) > 0.001
+            ) {
               tr.x += dx * lerp;
               tr.y += dy * lerp;
               tr.scale += ds * lerp;
@@ -1298,18 +1387,23 @@ export function ForceGraph({
       const pulseOn = lvl < 2;
       const lerpsOn = lvl < 2;
 
-      const hasInProgress = pulseOn && nodes.some((n) => n.status === "in_progress");
+      const hasInProgress =
+        pulseOn && nodes.some((n) => n.status === "in_progress");
       const hoveredId = hoveredRef.current ?? hoveredIdHint;
-      const hasAnimating = lerpsOn && nodes.some((n) => {
-        if (n._enterT < 0.99) return true;
-        const dimTarget = selectedNodeId && !connectedSetRef.current.has(n.id) ? 1 : 0;
-        if (Math.abs(n._dimT - dimTarget) > 0.01) return true;
-        const glowTarget = n.id === selectedNodeId ? 1 : 0;
-        if (Math.abs(n._selectGlow - glowTarget) > 0.01) return true;
-        const focusTarget = n.id === hoveredId || n.id === selectedNodeId ? 1 : 0;
-        if (Math.abs(n._hoverT - focusTarget) > 0.01) return true;
-        return false;
-      });
+      const hasAnimating =
+        lerpsOn &&
+        nodes.some((n) => {
+          if (n._enterT < 0.99) return true;
+          const dimTarget =
+            selectedNodeId && !connectedSetRef.current.has(n.id) ? 1 : 0;
+          if (Math.abs(n._dimT - dimTarget) > 0.01) return true;
+          const glowTarget = n.id === selectedNodeId ? 1 : 0;
+          if (Math.abs(n._selectGlow - glowTarget) > 0.01) return true;
+          const focusTarget =
+            n.id === hoveredId || n.id === selectedNodeId ? 1 : 0;
+          if (Math.abs(n._hoverT - focusTarget) > 0.01) return true;
+          return false;
+        });
       const hasFlowDots = flowOn && links.some((l) => l.type === "depends_on");
       if (
         needsRedrawRef.current ||
@@ -1330,7 +1424,16 @@ export function ForceGraph({
       running = false;
       cancelAnimationFrame(raf);
     };
-  }, [draw, ticking, nodes, links, selectedNodeId, hoveredIdHint, tier, rightInset]);
+  }, [
+    draw,
+    ticking,
+    nodes,
+    links,
+    selectedNodeId,
+    hoveredIdHint,
+    tier,
+    rightInset,
+  ]);
 
   // --- Pointer events ---
   const handlePointerDown = useCallback(
@@ -1374,7 +1477,8 @@ export function ForceGraph({
       const drag = dragRef.current;
 
       if (drag.active && drag.nodeId) {
-        if (!drag.moved && Math.hypot(sx - drag.originX, sy - drag.originY) < 4) return;
+        if (!drag.moved && Math.hypot(sx - drag.originX, sy - drag.originY) < 4)
+          return;
         drag.moved = true;
         const [wx, wy] = screenToWorld(sx, sy);
         const node = nodes.find((n) => n.id === drag.nodeId);
@@ -1387,7 +1491,8 @@ export function ForceGraph({
         }
         needsRedrawRef.current = true;
       } else if (drag.active && drag.panning) {
-        if (!drag.moved && Math.hypot(sx - drag.originX, sy - drag.originY) < 2) return;
+        if (!drag.moved && Math.hypot(sx - drag.originX, sy - drag.originY) < 2)
+          return;
         drag.moved = true;
         animRef.current = null;
         userOverrideRef.current = true;
@@ -1413,7 +1518,8 @@ export function ForceGraph({
           if (!hit) {
             const prevEdge = hoveredEdgeRef.current;
             hoveredEdgeRef.current = edgeHitTest(wx, wy);
-            if (prevEdge !== hoveredEdgeRef.current) needsRedrawRef.current = true;
+            if (prevEdge !== hoveredEdgeRef.current)
+              needsRedrawRef.current = true;
           } else {
             if (hoveredEdgeRef.current) {
               hoveredEdgeRef.current = null;
@@ -1422,9 +1528,14 @@ export function ForceGraph({
           }
 
           if (hit) {
-            const isPinned = hit.fx != null && hit.fy != null && hit.id !== selectedNodeId;
+            const isPinned =
+              hit.fx != null && hit.fy != null && hit.id !== selectedNodeId;
             const suffix = isPinned ? " (dbl-click to unpin)" : "";
-            tooltipRef.current = { text: `${hit.taskRef} · ${hit.title}${suffix}`, x: sx, y: sy };
+            tooltipRef.current = {
+              text: `${hit.taskRef} · ${hit.title}${suffix}`,
+              x: sx,
+              y: sy,
+            };
           } else {
             tooltipRef.current = null;
           }
@@ -1432,7 +1543,16 @@ export function ForceGraph({
         });
       }
     },
-    [screenToWorld, hitTest, edgeHitTest, nodes, reheat, ticking, onHoverNode, selectedNodeId],
+    [
+      screenToWorld,
+      hitTest,
+      edgeHitTest,
+      nodes,
+      reheat,
+      ticking,
+      onHoverNode,
+      selectedNodeId,
+    ],
   );
 
   const handlePointerUp = useCallback(
@@ -1469,7 +1589,10 @@ export function ForceGraph({
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const [wx, wy] = screenToWorld(
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      );
       const hit = hitTest(wx, wy);
       if (hit && hit.fx != null) {
         hit.fx = null;
@@ -1568,12 +1691,18 @@ export function ForceGraph({
       {isEmpty ? (
         <div className="flex h-full w-full flex-col items-center justify-center p-8">
           <p className="text-sm text-text-secondary">No tasks to visualize</p>
-          <p className="mt-1 text-xs text-text-muted">Add tasks to see your project graph.</p>
+          <p className="mt-1 text-xs text-text-muted">
+            Add tasks to see your project graph.
+          </p>
         </div>
       ) : allFiltered ? (
         <div className="flex h-full w-full flex-col items-center justify-center p-8">
-          <p className="text-sm text-text-secondary">All tasks are hidden by filters</p>
-          <p className="mt-1 text-xs text-text-muted">Toggle status filters to show tasks.</p>
+          <p className="text-sm text-text-secondary">
+            All tasks are hidden by filters
+          </p>
+          <p className="mt-1 text-xs text-text-muted">
+            Toggle status filters to show tasks.
+          </p>
         </div>
       ) : (
         <>

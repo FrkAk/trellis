@@ -152,6 +152,7 @@ export function parseOrFail<T>(
   return {
     ok: false,
     code: "invalid_input",
-    message: parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
+    message:
+      parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
   };
 }

@@ -63,7 +63,8 @@ describe("no set_config('app.user_id', ...) outside lib/db/rls.ts", () => {
     const offenders: string[] = [];
     function walk(dir: string): void {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        if (entry.name === "node_modules" || entry.name.startsWith("."))
+          continue;
         const p = join(dir, entry.name);
         if (entry.isDirectory()) {
           walk(p);
@@ -72,7 +73,8 @@ describe("no set_config('app.user_id', ...) outside lib/db/rls.ts", () => {
         if (!/\.(ts|tsx|js|mjs|cjs)$/.test(entry.name)) continue;
         if (p.endsWith("/lib/db/rls.ts")) continue;
         // The grep test itself contains the literal string; skip.
-        if (p.endsWith("/tests/security/no-set-config-in-sdfs.test.ts")) continue;
+        if (p.endsWith("/tests/security/no-set-config-in-sdfs.test.ts"))
+          continue;
         const content = readFileSync(p, "utf8");
         if (re.test(content)) offenders.push(p);
       }

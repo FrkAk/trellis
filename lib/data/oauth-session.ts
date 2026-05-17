@@ -155,10 +155,7 @@ export async function userHasConsentedTo(
     .select({ id: oauthConsent.id })
     .from(oauthConsent)
     .where(
-      and(
-        eq(oauthConsent.userId, userId),
-        eq(oauthConsent.clientId, clientId),
-      ),
+      and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)),
     )
     .limit(1);
   return existing.length > 0;

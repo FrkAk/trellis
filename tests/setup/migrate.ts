@@ -65,7 +65,9 @@ async function applyGrants(sql: ReturnType<typeof postgres>): Promise<void> {
  *
  * @param sql - Active postgres client (uses superuser or service_role).
  */
-async function applyRlsPolicies(sql: ReturnType<typeof postgres>): Promise<void> {
+async function applyRlsPolicies(
+  sql: ReturnType<typeof postgres>,
+): Promise<void> {
   const content = readFileSync(
     join(process.cwd(), "docker", "rls-policies.sql"),
     "utf8",
@@ -93,7 +95,9 @@ async function applyRlsPolicies(sql: ReturnType<typeof postgres>): Promise<void>
  *
  * @param sql - Active postgres client (uses superuser).
  */
-async function applyRlsFunctions(sql: ReturnType<typeof postgres>): Promise<void> {
+async function applyRlsFunctions(
+  sql: ReturnType<typeof postgres>,
+): Promise<void> {
   const content = readFileSync(
     join(process.cwd(), "docker", "rls-functions.sql"),
     "utf8",

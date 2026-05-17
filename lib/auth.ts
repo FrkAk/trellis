@@ -26,7 +26,7 @@ export const auth = betterAuth({
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24,      // 1 day
+    updateAge: 60 * 60 * 24, // 1 day
   },
   rateLimit: {
     enabled: true,
@@ -118,7 +118,10 @@ export const auth = betterAuth({
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
       validAudiences: process.env.BETTER_AUTH_URL
-        ? [process.env.BETTER_AUTH_URL, `${process.env.BETTER_AUTH_URL}/api/mcp`]
+        ? [
+            process.env.BETTER_AUTH_URL,
+            `${process.env.BETTER_AUTH_URL}/api/mcp`,
+          ]
         : ["http://localhost:3000", "http://localhost:3000/api/mcp"],
       // MCP tokens are intentionally org-agnostic. Team scope is resolved
       // per request: read paths span every team the caller belongs to,

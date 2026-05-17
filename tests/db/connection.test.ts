@@ -1,11 +1,4 @@
-import {
-  test,
-  expect,
-  describe,
-  it,
-  beforeEach,
-  afterEach,
-} from "bun:test";
+import { test, expect, describe, it, beforeEach, afterEach } from "bun:test";
 import { superuserPool } from "@/tests/setup/global";
 
 test("container is reachable and migrations applied", async () => {

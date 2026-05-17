@@ -80,7 +80,13 @@ test("unknown NODE_ENV (e.g. 'staging', typos, undefined) stays generic — fail
   // Whitelist guard: anything other than the literal `"development"` —
   // including future Next.js renames or operator typos — must NOT enable
   // verbose mode. Defending against silent value changes.
-  for (const value of ["staging", "DEVELOPMENT", "dev", "production ", undefined]) {
+  for (const value of [
+    "staging",
+    "DEVELOPMENT",
+    "dev",
+    "production ",
+    undefined,
+  ]) {
     setNodeEnv(value);
     const res = internalError(
       "projects",

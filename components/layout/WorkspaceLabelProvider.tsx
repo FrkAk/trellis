@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from "react";
 
 const WorkspaceLabelContext = createContext<string | null>(null);
 
@@ -19,8 +19,13 @@ interface WorkspaceLabelProviderProps {
  * @param props - Provider configuration.
  * @returns Context provider element.
  */
-export function WorkspaceLabelProvider({ value, children }: WorkspaceLabelProviderProps) {
-  return <WorkspaceLabelContext value={value}>{children}</WorkspaceLabelContext>;
+export function WorkspaceLabelProvider({
+  value,
+  children,
+}: WorkspaceLabelProviderProps) {
+  return (
+    <WorkspaceLabelContext value={value}>{children}</WorkspaceLabelContext>
+  );
 }
 
 /**

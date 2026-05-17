@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { motion } from 'motion/react';
-import { IconAgent, IconArrowRight } from '@/components/shared/icons';
+import Link from "next/link";
+import { motion } from "motion/react";
+import { IconAgent, IconArrowRight } from "@/components/shared/icons";
 
 interface ContinueBannerProps {
   /** @param projectId - UUID or stub ID of the project. */
@@ -38,18 +38,19 @@ export function ContinueBanner({
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
         className="group relative mb-8 flex items-center gap-4 overflow-hidden rounded-xl border bg-surface px-5 py-4 shadow-[var(--shadow-card)] transition-all hover:shadow-[var(--shadow-card-hover)]"
         style={{
-          borderColor: 'color-mix(in srgb, var(--color-accent) 18%, var(--color-border))',
+          borderColor:
+            "color-mix(in srgb, var(--color-accent) 18%, var(--color-border))",
           background:
-            'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) 0%, color-mix(in srgb, var(--color-accent-2) 4%, var(--color-surface)) 100%)',
+            "linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) 0%, color-mix(in srgb, var(--color-accent-2) 4%, var(--color-surface)) 100%)",
         }}
       >
         <span
           aria-hidden="true"
           className="absolute inset-y-0 left-0 w-[3px]"
-          style={{ background: 'var(--color-accent-grad)' }}
+          style={{ background: "var(--color-accent-grad)" }}
         />
 
         <span

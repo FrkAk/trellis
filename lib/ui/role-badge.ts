@@ -28,9 +28,24 @@ export type RoleBadgeStyle = {
 
 /** Closed map keyed by Better Auth's role strings. */
 export const ROLE_BADGE: Record<string, RoleBadgeStyle> = {
-  owner: { bg: 'bg-accent/15', text: 'text-accent-light', dot: 'bg-accent', label: 'Owner' },
-  admin: { bg: 'bg-accent/8', text: 'text-accent-light', dot: 'bg-accent/60', label: 'Admin' },
-  member: { bg: 'bg-surface-raised', text: 'text-text-muted', dot: null, label: 'Member' },
+  owner: {
+    bg: "bg-accent/15",
+    text: "text-accent-light",
+    dot: "bg-accent",
+    label: "Owner",
+  },
+  admin: {
+    bg: "bg-accent/8",
+    text: "text-accent-light",
+    dot: "bg-accent/60",
+    label: "Admin",
+  },
+  member: {
+    bg: "bg-surface-raised",
+    text: "text-text-muted",
+    dot: null,
+    label: "Member",
+  },
 };
 
 /** Look up role badge style; falls back to `member` for unknown input. */

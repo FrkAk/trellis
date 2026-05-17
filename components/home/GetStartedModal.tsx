@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { Modal } from '@/components/shared/Modal';
-import { CopyButton } from '@/components/shared/CopyButton';
+import { Modal } from "@/components/shared/Modal";
+import { CopyButton } from "@/components/shared/CopyButton";
 
 interface GetStartedModalProps {
   /** @param open - Whether the modal is visible. */
@@ -20,36 +20,36 @@ interface CliInstall {
 
 const CLI_INSTALLS: readonly CliInstall[] = [
   {
-    name: 'Claude Code',
+    name: "Claude Code",
     install:
-      'claude plugin marketplace add ./plugins/claude-code\nclaude plugin install mymir@mymir-local',
+      "claude plugin marketplace add ./plugins/claude-code\nclaude plugin install mymir@mymir-local",
     setupNote:
-      'Authenticate with /mcp, select mymir, and complete the browser sign-in. The mymir skill auto-invokes when you talk about projects.',
+      "Authenticate with /mcp, select mymir, and complete the browser sign-in. The mymir skill auto-invokes when you talk about projects.",
   },
   {
-    name: 'Codex',
-    install: 'codex plugin marketplace add ./plugins',
+    name: "Codex",
+    install: "codex plugin marketplace add ./plugins",
     setupNote:
-      'Run /plugin, search for mymir, install, then restart Codex. Invoke the skill explicitly with $mymir.',
+      "Run /plugin, search for mymir, install, then restart Codex. Invoke the skill explicitly with $mymir.",
   },
   {
-    name: 'Gemini',
-    install: 'gemini extensions install ./plugins/gemini',
+    name: "Gemini",
+    install: "gemini extensions install ./plugins/gemini",
     setupNote:
-      'Authenticate with /mcp auth mymir and complete the browser sign-in.',
+      "Authenticate with /mcp auth mymir and complete the browser sign-in.",
   },
   {
-    name: 'Cursor',
+    name: "Cursor",
     install: 'ln -s "$(pwd)/plugins/cursor" ~/.cursor/plugins/local/mymir',
     setupNote:
-      'Restart Cursor. The MCP server and skills load automatically; the first MCP tool call triggers OAuth.',
+      "Restart Cursor. The MCP server and skills load automatically; the first MCP tool call triggers OAuth.",
   },
 ];
 
-const README_SETUP_URL = 'https://github.com/FrkAk/mymir#how-to-set-it-up';
+const README_SETUP_URL = "https://github.com/FrkAk/mymir#how-to-set-it-up";
 
 const SECTION_LABEL_CLASS =
-  'font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted';
+  "font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted";
 
 const MULTI_TEAM_HINT =
   "If you belong to more than one team, your coding agent will ask which team a new project belongs to before creating it.";
@@ -64,8 +64,8 @@ function FirstTimeBody() {
     <>
       <p className="text-sm leading-relaxed text-text-secondary">
         mymir runs in your coding agent, which has the file context an in-app
-        chat never will. Install the plugin for your tool, then describe
-        what you&apos;re building.
+        chat never will. Install the plugin for your tool, then describe what
+        you&apos;re building.
       </p>
 
       <ol className="space-y-4">
@@ -90,11 +90,13 @@ function FirstTimeBody() {
         <p className="font-mono text-xs leading-relaxed text-text-primary">
           ❯ Describe what you are building. The mymir skill picks up from there.
         </p>
-        <p className="text-xs leading-relaxed text-text-muted">{MULTI_TEAM_HINT}</p>
+        <p className="text-xs leading-relaxed text-text-muted">
+          {MULTI_TEAM_HINT}
+        </p>
       </section>
 
       <p className="text-xs leading-relaxed text-text-muted">
-        Full setup details (auth, updates, self-hosting) in the{' '}
+        Full setup details (auth, updates, self-hosting) in the{" "}
         <a
           href={README_SETUP_URL}
           target="_blank"
@@ -118,8 +120,8 @@ function ReturningBody() {
   return (
     <>
       <p className="text-sm leading-relaxed text-text-secondary">
-        mymir projects start in your coding agent. Open it and describe
-        what you&apos;re building. The mymir skill creates the project, and
+        mymir projects start in your coding agent. Open it and describe what
+        you&apos;re building. The mymir skill creates the project, and
         it&apos;ll show up here once it&apos;s active.
       </p>
 
@@ -128,12 +130,14 @@ function ReturningBody() {
         <p className="font-mono text-xs leading-relaxed text-text-primary">
           ❯ I want to build a real-time dashboard for server metrics
         </p>
-        <p className="text-xs leading-relaxed text-text-muted">{MULTI_TEAM_HINT}</p>
+        <p className="text-xs leading-relaxed text-text-muted">
+          {MULTI_TEAM_HINT}
+        </p>
       </section>
 
       <p className="text-xs leading-relaxed text-text-muted">
         Setting up another tool, or starting from a fresh machine? Install
-        commands live in the{' '}
+        commands live in the{" "}
         <a
           href={README_SETUP_URL}
           target="_blank"
@@ -155,12 +159,16 @@ function ReturningBody() {
  * @param props - Modal configuration.
  * @returns Get-started modal rendered via {@link Modal}.
  */
-export function GetStartedModal({ open, onClose, hasProjects = false }: GetStartedModalProps) {
+export function GetStartedModal({
+  open,
+  onClose,
+  hasProjects = false,
+}: GetStartedModalProps) {
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={hasProjects ? 'Start a new project' : 'Get started'}
+      title={hasProjects ? "Start a new project" : "Get started"}
       maxWidth="lg"
     >
       <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">

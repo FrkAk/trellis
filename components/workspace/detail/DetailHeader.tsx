@@ -1,11 +1,16 @@
-'use client';
+"use client";
 
-import { motion } from 'motion/react';
-import { useState, useRef, useEffect } from 'react';
-import { MonoId } from '@/components/shared/MonoId';
-import { IconPanelLeft, IconPanelRight, IconSettings, IconX } from '@/components/shared/icons';
-import { updateTask } from '@/lib/graph/mutations';
-import type { TaskStatus } from '@/lib/types';
+import { motion } from "motion/react";
+import { useState, useRef, useEffect } from "react";
+import { MonoId } from "@/components/shared/MonoId";
+import {
+  IconPanelLeft,
+  IconPanelRight,
+  IconSettings,
+  IconX,
+} from "@/components/shared/icons";
+import { updateTask } from "@/lib/graph/mutations";
+import type { TaskStatus } from "@/lib/types";
 
 interface DetailHeaderProps {
   /** Task UUID. */
@@ -79,13 +84,17 @@ export function DetailHeader({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== "Escape") return;
       if (editing) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
       onClose();
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
   }, [editing, onClose]);
 
   /** Save the title if it changed; restore on Esc. */
@@ -108,7 +117,9 @@ export function DetailHeader({
         <div className="flex items-center gap-2.5">
           <MonoId id={taskRef} hintOnMount />
           <span className="text-text-faint">·</span>
-          <span className="truncate text-[12px] text-text-muted">{projectName}</span>
+          <span className="truncate text-[12px] text-text-muted">
+            {projectName}
+          </span>
 
           <span className="flex-1" />
 
@@ -117,12 +128,16 @@ export function DetailHeader({
               type="button"
               onClick={onToggleNavigator}
               aria-pressed={navigatorClosed}
-              aria-label={navigatorClosed ? 'Show structure' : 'Hide structure'}
-              title={navigatorClosed ? 'Show structure — slide back' : 'Hide structure — focus on task'}
+              aria-label={navigatorClosed ? "Show structure" : "Hide structure"}
+              title={
+                navigatorClosed
+                  ? "Show structure — slide back"
+                  : "Hide structure — focus on task"
+              }
               className={`hidden h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors xl:inline-flex ${
                 navigatorClosed
-                  ? 'border-accent/30 bg-accent/10 text-accent-light'
-                  : 'border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+                  ? "border-accent/30 bg-accent/10 text-accent-light"
+                  : "border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary"
               }`}
             >
               <IconPanelLeft size={13} />
@@ -134,12 +149,16 @@ export function DetailHeader({
               type="button"
               onClick={onTogglePropRail}
               aria-pressed={!propRailOpen}
-              aria-label={propRailOpen ? 'Hide properties' : 'Show properties'}
-              title={propRailOpen ? 'Hide properties — give the canvas more room' : 'Show properties'}
+              aria-label={propRailOpen ? "Hide properties" : "Show properties"}
+              title={
+                propRailOpen
+                  ? "Hide properties — give the canvas more room"
+                  : "Show properties"
+              }
               className={`hidden h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors xl:inline-flex ${
                 !propRailOpen
-                  ? 'border-accent/30 bg-accent/10 text-accent-light'
-                  : 'border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+                  ? "border-accent/30 bg-accent/10 text-accent-light"
+                  : "border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary"
               }`}
             >
               <IconPanelRight size={13} />
@@ -150,12 +169,12 @@ export function DetailHeader({
             type="button"
             onClick={onToggleDrawer}
             aria-pressed={drawerOpen}
-            aria-label={drawerOpen ? 'Hide properties' : 'Show properties'}
-            title={drawerOpen ? 'Hide properties' : 'Show properties'}
+            aria-label={drawerOpen ? "Hide properties" : "Show properties"}
+            title={drawerOpen ? "Hide properties" : "Show properties"}
             className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors xl:hidden ${
               drawerOpen
-                ? 'border-accent/30 bg-accent/10 text-accent-light'
-                : 'border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+                ? "border-accent/30 bg-accent/10 text-accent-light"
+                : "border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary"
             }`}
           >
             <IconSettings size={13} />
@@ -189,18 +208,24 @@ export function DetailHeader({
                 }
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-                if (e.key === 'Escape') { cancelledRef.current = true; e.currentTarget.blur(); }
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+                if (e.key === "Escape") {
+                  cancelledRef.current = true;
+                  e.currentTarget.blur();
+                }
               }}
               className="-mx-1 w-[calc(100%+0.5rem)] rounded bg-transparent px-1 text-[22px] font-semibold leading-[1.25] text-text-primary outline-none ring-1 ring-accent/40 transition focus:ring-accent/70"
-              style={{ letterSpacing: '-0.005em' }}
+              style={{ letterSpacing: "-0.005em" }}
             />
           ) : (
             <motion.h1
               onClick={() => setEditing(true)}
               initial={false}
               className="-mx-1 cursor-text rounded px-1 text-[22px] font-semibold leading-[1.25] text-text-primary transition-colors hover:bg-surface-raised/40"
-              style={{ letterSpacing: '-0.005em' }}
+              style={{ letterSpacing: "-0.005em" }}
             >
               {title}
             </motion.h1>

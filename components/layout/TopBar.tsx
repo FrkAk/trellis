@@ -1,14 +1,10 @@
-'use client';
+"use client";
 
-import { usePathname } from 'next/navigation';
-import { useTheme } from '@/components/layout/ThemeProvider';
-import { ProjectBreadcrumb } from '@/components/layout/ProjectBreadcrumb';
-import { Kbd } from '@/components/shared/Kbd';
-import {
-  IconMoon,
-  IconSearch,
-  IconSun,
-} from '@/components/shared/icons';
+import { usePathname } from "next/navigation";
+import { useTheme } from "@/components/layout/ThemeProvider";
+import { ProjectBreadcrumb } from "@/components/layout/ProjectBreadcrumb";
+import { Kbd } from "@/components/shared/Kbd";
+import { IconMoon, IconSearch, IconSun } from "@/components/shared/icons";
 
 interface TopBarProps {
   /** @param projectName - Optional project crumb label. When set, renders the project breadcrumb pill. */
@@ -43,23 +39,30 @@ export function TopBar({
   pageLabel,
 }: TopBarProps) {
   const { theme, setTheme } = useTheme();
-  const pathname = usePathname() ?? '/';
+  const pathname = usePathname() ?? "/";
 
-  const derivedPageLabel = derivePageLabel({ projectName, pageLabel, pathname });
+  const derivedPageLabel = derivePageLabel({
+    projectName,
+    pageLabel,
+    pathname,
+  });
 
   /** Toggle between light and dark theme and persist the choice. */
   const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
+    setTheme(theme === "dark" ? "light" : "dark");
   };
 
   return (
     <header
       className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-base/80 px-3 backdrop-blur-md"
-      style={{ height: 'var(--topbar-h)' }}
+      style={{ height: "var(--topbar-h)" }}
     >
-      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5">
-        {projectName && (
-          projectId && onOpenProjectSettings ? (
+      <nav
+        aria-label="Breadcrumb"
+        className="flex min-w-0 flex-1 items-center gap-1.5"
+      >
+        {projectName &&
+          (projectId && onOpenProjectSettings ? (
             <ProjectBreadcrumb
               projectName={projectName}
               projectStatus={projectStatus}
@@ -70,8 +73,7 @@ export function TopBar({
             <span className="truncate text-[13px] font-semibold text-text-primary">
               {projectName}
             </span>
-          )
-        )}
+          ))}
         {!projectName && derivedPageLabel && (
           <span className="truncate text-[13px] font-semibold text-text-primary">
             {derivedPageLabel}
@@ -91,15 +93,22 @@ export function TopBar({
           <span className="hidden sm:inline">Jump</span>
           <Kbd dim>⌘K</Kbd>
         </button>
-        <span aria-hidden="true" className="mx-1 hidden h-4 w-px bg-border md:inline-block" />
+        <span
+          aria-hidden="true"
+          className="mx-1 hidden h-4 w-px bg-border md:inline-block"
+        />
         <button
           type="button"
           onClick={toggleTheme}
-          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={
+            theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+          }
+          title={
+            theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+          }
           className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
         >
-          {theme === 'dark' ? <IconMoon size={14} /> : <IconSun size={14} />}
+          {theme === "dark" ? <IconMoon size={14} /> : <IconSun size={14} />}
         </button>
       </div>
     </header>
@@ -117,11 +126,15 @@ interface DerivePageLabelInput {
  * @param input - Project name override, explicit page label, current path.
  * @returns Crumb label or null when nothing should render.
  */
-function derivePageLabel({ projectName, pageLabel, pathname }: DerivePageLabelInput): string | null {
+function derivePageLabel({
+  projectName,
+  pageLabel,
+  pathname,
+}: DerivePageLabelInput): string | null {
   if (projectName) return null;
   if (pageLabel) return pageLabel;
-  if (pathname === '/') return 'Projects';
-  if (pathname.startsWith('/settings')) return 'Settings';
+  if (pathname === "/") return "Projects";
+  if (pathname.startsWith("/settings")) return "Settings";
   return null;
 }
 

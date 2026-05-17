@@ -1,20 +1,24 @@
-'use client';
+"use client";
 
-import dynamic from 'next/dynamic';
-import { AnimatePresence, motion } from 'motion/react';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { ViewTabs } from '@/components/shared/ViewTabs';
-import { IconGraph, IconList } from '@/components/shared/icons';
-import type { TaskEdge } from '@/lib/db/schema';
-import type { TaskGraphSlim } from '@/lib/data/views';
-import { MiniTaskRail } from './MiniTaskRail';
-import { GraphHoverCard } from './GraphHoverCard';
-import { EdgeFilterPills, edgeFilterToHidden, type EdgeFilterValue } from './EdgeFilterPills';
-import { StatusLegend } from './StatusLegend';
+import dynamic from "next/dynamic";
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { ViewTabs } from "@/components/shared/ViewTabs";
+import { IconGraph, IconList } from "@/components/shared/icons";
+import type { TaskEdge } from "@/lib/db/schema";
+import type { TaskGraphSlim } from "@/lib/data/views";
+import { MiniTaskRail } from "./MiniTaskRail";
+import { GraphHoverCard } from "./GraphHoverCard";
+import {
+  EdgeFilterPills,
+  edgeFilterToHidden,
+  type EdgeFilterValue,
+} from "./EdgeFilterPills";
+import { StatusLegend } from "./StatusLegend";
 
 /** Dynamic import — the canvas-based ForceGraph is client-only. */
 const ForceGraph = dynamic(
-  () => import('@/components/graph/ForceGraph').then((m) => m.ForceGraph),
+  () => import("@/components/graph/ForceGraph").then((m) => m.ForceGraph),
   { ssr: false },
 );
 
@@ -89,10 +93,15 @@ export function WorkspaceGraphView({
 }: WorkspaceGraphViewProps) {
   const [hoveredFromRail, setHoveredFromRail] = useState<string | null>(null);
   const [hoveredOnCanvas, setHoveredOnCanvas] = useState<string | null>(null);
-  const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(() => new Set());
-  const [edgeFilter, setEdgeFilter] = useState<EdgeFilterValue>('all');
+  const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [edgeFilter, setEdgeFilter] = useState<EdgeFilterValue>("all");
 
-  const hiddenEdgeTypes = useMemo(() => edgeFilterToHidden(edgeFilter), [edgeFilter]);
+  const hiddenEdgeTypes = useMemo(
+    () => edgeFilterToHidden(edgeFilter),
+    [edgeFilter],
+  );
 
   const toggleStatus = useCallback((status: string) => {
     setHiddenStatuses((prev) => {
@@ -116,7 +125,7 @@ export function WorkspaceGraphView({
   const stageMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const t of tasks) {
-      if (t.state === 'plannable' || t.state === 'ready') m.set(t.id, t.state);
+      if (t.state === "plannable" || t.state === "ready") m.set(t.id, t.state);
     }
     return m;
   }, [tasks]);
@@ -126,7 +135,7 @@ export function WorkspaceGraphView({
   const hoveredId = hoveredFromRail ?? hoveredOnCanvas;
   const showHoverCard = !selectedNodeId && hoveredId !== null;
   const hoveredTask = showHoverCard
-    ? tasks.find((t) => t.id === hoveredId) ?? null
+    ? (tasks.find((t) => t.id === hoveredId) ?? null)
     : null;
 
   const hoverCounts = useMemo(() => {
@@ -179,11 +188,15 @@ export function WorkspaceGraphView({
           <ViewTabs
             activeId="graph"
             onChange={(id) => {
-              if (id === 'structure') onSwitchToStructure();
+              if (id === "structure") onSwitchToStructure();
             }}
             tabs={[
-              { id: 'structure', label: 'Structure', icon: <IconList size={11} /> },
-              { id: 'graph',     label: 'Graph',     icon: <IconGraph size={11} /> },
+              {
+                id: "structure",
+                label: "Structure",
+                icon: <IconList size={11} />,
+              },
+              { id: "graph", label: "Graph", icon: <IconGraph size={11} /> },
             ]}
           />
         </div>
@@ -196,7 +209,7 @@ export function WorkspaceGraphView({
           className="absolute top-3 z-10"
           style={{
             right: 12 + rightInset,
-            transition: 'right 240ms cubic-bezier(0.16, 1, 0.3, 1)',
+            transition: "right 240ms cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
           {showHoverCard && hoveredTask ? (
@@ -213,7 +226,10 @@ export function WorkspaceGraphView({
         </div>
 
         {/* Bottom-left: status legend (toggle filters) */}
-        <StatusLegend hiddenStatuses={hiddenStatuses} onToggleStatus={toggleStatus} />
+        <StatusLegend
+          hiddenStatuses={hiddenStatuses}
+          onToggleStatus={toggleStatus}
+        />
 
         {/* Detail slide-over — pinned right; canvas underneath stays at full
             width so the graph remains the primary surface. The slide-over's
@@ -224,9 +240,9 @@ export function WorkspaceGraphView({
           {overlayOpen && (
             <motion.div
               key="graph-detail-overlay"
-              initial={{ x: '100%', width: overlayWidth }}
+              initial={{ x: "100%", width: overlayWidth }}
               animate={{ x: 0, width: overlayWidth }}
-              exit={{ x: '100%' }}
+              exit={{ x: "100%" }}
               transition={OVERLAY_TRANSITION}
               className="absolute right-0 top-0 bottom-0 z-20 flex bg-base shadow-[var(--shadow-float)]"
               role="region"

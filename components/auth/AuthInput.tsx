@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { forwardRef, type InputHTMLAttributes, useId } from 'react';
+import { forwardRef, type InputHTMLAttributes, useId } from "react";
 
 interface AuthInputProps extends InputHTMLAttributes<HTMLInputElement> {
   /** Visible label text rendered above the input. */
@@ -22,10 +22,7 @@ interface AuthInputProps extends InputHTMLAttributes<HTMLInputElement> {
  * @returns Vertical stack of label + input + (hint or error).
  */
 export const AuthInput = forwardRef<HTMLInputElement, AuthInputProps>(
-  function AuthInput(
-    { label, hint, error, id, className = '', ...rest },
-    ref,
-  ) {
+  function AuthInput({ label, hint, error, id, className = "", ...rest }, ref) {
     const fallbackId = useId();
     const inputId = id ?? fallbackId;
     const messageId = hint || error ? `${inputId}-message` : undefined;
@@ -36,8 +33,8 @@ export const AuthInput = forwardRef<HTMLInputElement, AuthInputProps>(
           htmlFor={inputId}
           className="block text-[11px] font-medium uppercase text-text-secondary"
           style={{
-            fontFamily: 'var(--font-mono)',
-            letterSpacing: '0.08em',
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "0.08em",
           }}
         >
           {label}
@@ -52,17 +49,13 @@ export const AuthInput = forwardRef<HTMLInputElement, AuthInputProps>(
             height: 38,
             borderRadius: 8,
             border: error
-              ? '1px solid var(--color-danger)'
-              : '1px solid var(--color-border-strong)',
+              ? "1px solid var(--color-danger)"
+              : "1px solid var(--color-border-strong)",
           }}
           {...rest}
         />
         {error ? (
-          <p
-            id={messageId}
-            role="alert"
-            className="text-[11.5px] text-danger"
-          >
+          <p id={messageId} role="alert" className="text-[11.5px] text-danger">
             {error}
           </p>
         ) : hint ? (

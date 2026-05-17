@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { TeamChip } from '@/components/shared/TeamChip';
+import { TeamChip } from "@/components/shared/TeamChip";
 
 interface TeamSectionProps {
   /** @param team - Team that owns this project. Read-only display. */
@@ -8,7 +8,7 @@ interface TeamSectionProps {
 }
 
 const SECTION_LABEL_CLASS =
-  'font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted';
+  "font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted";
 
 /**
  * Read-only owning-team indicator for the project settings modal. Mirrors

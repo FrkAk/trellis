@@ -1,9 +1,6 @@
 import "server-only";
 
-import {
-  getDependencyChain,
-  getDownstreamTx,
-} from "@/lib/data/traversal";
+import { getDependencyChain, getDownstreamTx } from "@/lib/data/traversal";
 import {
   fetchDependencyTasks,
   fetchEdgeNotesBySource,
@@ -65,7 +62,11 @@ export async function buildAgentContext(
 
     const parts: string[] = [headerLines.join("\n")];
 
-    if (task.implementationPlan && status !== "done" && status !== "cancelled") {
+    if (
+      task.implementationPlan &&
+      status !== "done" &&
+      status !== "cancelled"
+    ) {
       parts.push(
         section("Implementation Plan") + "\n" + task.implementationPlan,
       );
@@ -112,7 +113,9 @@ export async function buildAgentContext(
     }
 
     if (task.decisions.length > 0) {
-      parts.push(section("Constraints") + "\n" + formatDecisions(task.decisions));
+      parts.push(
+        section("Constraints") + "\n" + formatDecisions(task.decisions),
+      );
     }
 
     parts.push(

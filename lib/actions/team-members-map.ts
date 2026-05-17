@@ -46,6 +46,7 @@ export function toMemberView(row: BetterAuthMemberRow): MemberView {
     name: row.user.name,
     email: row.user.email,
     role: row.role,
-    joinedAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+    joinedAt:
+      row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
   };
 }

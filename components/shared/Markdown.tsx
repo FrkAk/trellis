@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 
 const schema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    code: [...(defaultSchema.attributes?.code ?? []), 'className'],
-    pre: [...(defaultSchema.attributes?.pre ?? []), 'className'],
-    a: [...(defaultSchema.attributes?.a ?? []), 'target', 'rel'],
+    code: [...(defaultSchema.attributes?.code ?? []), "className"],
+    pre: [...(defaultSchema.attributes?.pre ?? []), "className"],
+    a: [...(defaultSchema.attributes?.a ?? []), "target", "rel"],
   },
 };
 
@@ -18,7 +18,7 @@ const EXTERNAL_URL = /^https?:\/\//i;
 
 const components: Components = {
   a({ href, target, rel, children }) {
-    const external = typeof href === 'string' && EXTERNAL_URL.test(href);
+    const external = typeof href === "string" && EXTERNAL_URL.test(href);
     if (external) {
       return (
         <a href={href} target="_blank" rel="noopener noreferrer">
@@ -46,8 +46,8 @@ export interface MarkdownProps {
  * @param props - Markdown configuration.
  * @returns A prose-styled div wrapping sanitized, GFM-enabled markdown.
  */
-export function Markdown({ children, className = '' }: MarkdownProps) {
-  const wrapperClass = className ? `prose-spec ${className}` : 'prose-spec';
+export function Markdown({ children, className = "" }: MarkdownProps) {
+  const wrapperClass = className ? `prose-spec ${className}` : "prose-spec";
   return (
     <div className={wrapperClass}>
       <ReactMarkdown

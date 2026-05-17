@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { motion } from 'motion/react';
-import { type ReactNode, type KeyboardEvent } from 'react';
+import { motion } from "motion/react";
+import { type ReactNode, type KeyboardEvent } from "react";
 
 interface CardProps {
   /** @param hover - Enable border + shadow + accent glow on hover. */
@@ -18,8 +18,10 @@ interface CardProps {
   onClick?: () => void;
 }
 
-const baseClasses = 'bg-surface border border-border rounded-lg shadow-[var(--shadow-card)] transition-all';
-const hoverClasses = 'hover:border-border-strong hover:shadow-[var(--shadow-card-hover)] glow-card';
+const baseClasses =
+  "bg-surface border border-border rounded-lg shadow-[var(--shadow-card)] transition-all";
+const hoverClasses =
+  "hover:border-border-strong hover:shadow-[var(--shadow-card-hover)] glow-card";
 
 /**
  * Card container with optional accent-tinted glow hover and entrance animation.
@@ -30,24 +32,30 @@ export function Card({
   hover = false,
   animated = false,
   padded = false,
-  className = '',
+  className = "",
   children,
   onClick,
 }: CardProps) {
-  const padClass = padded ? 'p-4' : '';
-  const cursorClass = onClick ? 'cursor-pointer' : '';
-  const classes = `${baseClasses} ${hover ? hoverClasses : ''} ${padClass} ${cursorClass} ${className}`.trim();
+  const padClass = padded ? "p-4" : "";
+  const cursorClass = onClick ? "cursor-pointer" : "";
+  const classes =
+    `${baseClasses} ${hover ? hoverClasses : ""} ${padClass} ${cursorClass} ${className}`.trim();
   const interactive = !!onClick;
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+    if (onClick && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
       onClick();
     }
   };
 
   const a11yProps = interactive
-    ? { role: 'button' as const, tabIndex: 0, onKeyDown: handleKeyDown, 'aria-label': 'Interactive card' }
+    ? {
+        role: "button" as const,
+        tabIndex: 0,
+        onKeyDown: handleKeyDown,
+        "aria-label": "Interactive card",
+      }
     : {};
 
   if (animated) {
@@ -55,7 +63,7 @@ export function Card({
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
         className={classes}
         onClick={onClick}
         {...a11yProps}

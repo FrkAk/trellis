@@ -49,10 +49,9 @@ test("GET /api/task/[id]/context — 404 for cross-team task access", async () =
   const taskId = await addTask(owner.projectId, "ctx-cross");
 
   setSession({ user: { id: stranger.userId } });
-  const res = await GET(
-    new Request(`http://test/api/task/${taskId}/context`),
-    { params: Promise.resolve({ taskId }) },
-  );
+  const res = await GET(new Request(`http://test/api/task/${taskId}/context`), {
+    params: Promise.resolve({ taskId }),
+  });
   expect(res.status).toBe(404);
 });
 
@@ -61,10 +60,9 @@ test("GET /api/task/[id]/context — 200 with body and ETag for the owner", asyn
   const taskId = await addTask(f.projectId, "ctx-ok");
 
   setSession({ user: { id: f.userId } });
-  const res = await GET(
-    new Request(`http://test/api/task/${taskId}/context`),
-    { params: Promise.resolve({ taskId }) },
-  );
+  const res = await GET(new Request(`http://test/api/task/${taskId}/context`), {
+    params: Promise.resolve({ taskId }),
+  });
 
   expect(res.status).toBe(200);
   expect(res.headers.get("ETag")).toMatch(/^"\d+"$/);

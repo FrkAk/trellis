@@ -12,7 +12,7 @@ test("LinksSection anchor opens in a new tab with noopener/noreferrer", async ()
     "components/workspace/detail/LinksSection.tsx",
   ).text();
 
-  expect(src).toContain('href={link.url}');
+  expect(src).toContain("href={link.url}");
   expect(src).toContain('target="_blank"');
   expect(src).toContain('rel="noopener noreferrer"');
 });

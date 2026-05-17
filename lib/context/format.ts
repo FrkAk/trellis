@@ -1,7 +1,4 @@
-import type {
-  Decision,
-  AcceptanceCriterion,
-} from "@/lib/types";
+import type { Decision, AcceptanceCriterion } from "@/lib/types";
 
 /**
  * Format a section header for structured text output.
@@ -40,7 +37,8 @@ export function formatCriteria(criteria: AcceptanceCriterion[]): string {
 
   const remaining = criteria.filter((c) => !c.checked);
   const done = criteria.filter((c) => c.checked);
-  const renderRemaining = () => remaining.map((c) => `- [ ] ${c.text}`).join("\n");
+  const renderRemaining = () =>
+    remaining.map((c) => `- [ ] ${c.text}`).join("\n");
   const renderDone = () => done.map((c) => `- [x] ${c.text}`).join("\n");
 
   if (done.length === 0) return renderRemaining();
@@ -58,5 +56,3 @@ export function compress(text: string, max = 200): string {
   if (text.length <= max) return text;
   return text.slice(0, max - 3) + "...";
 }
-
-

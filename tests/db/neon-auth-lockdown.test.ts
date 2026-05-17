@@ -87,7 +87,9 @@ describe("app_user neon_auth lockdown", () => {
         const rows = await tx<{ current_user_org_ids: string[] }[]>`
           SELECT public.current_user_org_ids()
         `;
-        expect(rows[0].current_user_org_ids).not.toContain(teamA.organizationId);
+        expect(rows[0].current_user_org_ids).not.toContain(
+          teamA.organizationId,
+        );
       });
     } finally {
       await c.end({ timeout: 5 });
@@ -181,10 +183,18 @@ describe("auth_role public.* lockdown", () => {
             has_table_privilege('auth_role', 'public.' || ${t}, 'UPDATE') AS upd,
             has_table_privilege('auth_role', 'public.' || ${t}, 'DELETE') AS del
         `;
-        expect(row.sel, `auth_role must NOT have SELECT on public.${t}`).toBe(false);
-        expect(row.ins, `auth_role must NOT have INSERT on public.${t}`).toBe(false);
-        expect(row.upd, `auth_role must NOT have UPDATE on public.${t}`).toBe(false);
-        expect(row.del, `auth_role must NOT have DELETE on public.${t}`).toBe(false);
+        expect(row.sel, `auth_role must NOT have SELECT on public.${t}`).toBe(
+          false,
+        );
+        expect(row.ins, `auth_role must NOT have INSERT on public.${t}`).toBe(
+          false,
+        );
+        expect(row.upd, `auth_role must NOT have UPDATE on public.${t}`).toBe(
+          false,
+        );
+        expect(row.del, `auth_role must NOT have DELETE on public.${t}`).toBe(
+          false,
+        );
       }
     } finally {
       await c.end({ timeout: 5 });
@@ -229,7 +239,7 @@ describe("service_role neon_auth grants pin the call-site contract", () => {
           const [row] = await c<Array<{ has: boolean }>>`
             SELECT has_table_privilege(
               'service_role',
-              ${"neon_auth.\"" + table + "\""},
+              ${'neon_auth."' + table + '"'},
               ${priv}
             ) AS has
           `;

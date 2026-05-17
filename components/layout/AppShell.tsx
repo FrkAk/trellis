@@ -1,15 +1,20 @@
-import { type ReactNode } from 'react';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth/session';
-import { listProjectsSlim } from '@/lib/graph/queries';
-import { listUserTeamsAction } from '@/lib/actions/team-list';
-import { Sidebar, type SidebarProject, type SidebarTeam, type SidebarUser } from '@/components/layout/Sidebar';
-import { WorkspaceLabelProvider } from '@/components/layout/WorkspaceLabelProvider';
-import { SidebarCollapseProvider } from '@/components/layout/SidebarCollapseProvider';
+import { type ReactNode } from "react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth/session";
+import { listProjectsSlim } from "@/lib/graph/queries";
+import { listUserTeamsAction } from "@/lib/actions/team-list";
+import {
+  Sidebar,
+  type SidebarProject,
+  type SidebarTeam,
+  type SidebarUser,
+} from "@/components/layout/Sidebar";
+import { WorkspaceLabelProvider } from "@/components/layout/WorkspaceLabelProvider";
+import { SidebarCollapseProvider } from "@/components/layout/SidebarCollapseProvider";
 
 /** Cookie that persists the sidebar collapse preference. Mirrors the constant in `SidebarCollapseProvider`. */
-const SIDEBAR_COLLAPSE_COOKIE = 'mymir-sidebar-collapsed';
+const SIDEBAR_COLLAPSE_COOKIE = "mymir-sidebar-collapsed";
 
 interface AppShellProps {
   /** @param children - Page content rendered inside the main column. */
@@ -31,7 +36,7 @@ interface AppShellProps {
  */
 export async function AppShell({ children }: AppShellProps) {
   const session = await getSession();
-  if (!session) redirect('/sign-in');
+  if (!session) redirect("/sign-in");
 
   const [projects, teamsResult, cookieStore] = await Promise.all([
     listProjectsSlim(),
@@ -39,7 +44,7 @@ export async function AppShell({ children }: AppShellProps) {
     cookies(),
   ]);
   const initialSidebarCollapsed =
-    cookieStore.get(SIDEBAR_COLLAPSE_COOKIE)?.value === '1';
+    cookieStore.get(SIDEBAR_COLLAPSE_COOKIE)?.value === "1";
 
   const teams = teamsResult.ok ? teamsResult.data : [];
   const sidebarProjects: SidebarProject[] = projects.map((p) => ({
@@ -48,7 +53,10 @@ export async function AppShell({ children }: AppShellProps) {
     title: p.title,
     organizationId: p.organizationId,
   }));
-  const sidebarTeams: SidebarTeam[] = teams.map((t) => ({ id: t.id, name: t.name }));
+  const sidebarTeams: SidebarTeam[] = teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+  }));
 
   const user: SidebarUser = {
     id: session.user.id,
@@ -57,13 +65,21 @@ export async function AppShell({ children }: AppShellProps) {
     image: session.user.image ?? null,
   };
 
-  const workspaceLabel = teams.length === 1 ? teams[0].name : (session.user.name?.trim() || session.user.email);
+  const workspaceLabel =
+    teams.length === 1
+      ? teams[0].name
+      : session.user.name?.trim() || session.user.email;
 
   return (
     <WorkspaceLabelProvider value={workspaceLabel}>
       <SidebarCollapseProvider initialCollapsed={initialSidebarCollapsed}>
         <div className="flex h-[var(--viewport-height)] overflow-hidden">
-          <Sidebar user={user} workspaceLabel={workspaceLabel} projects={sidebarProjects} teams={sidebarTeams} />
+          <Sidebar
+            user={user}
+            workspaceLabel={workspaceLabel}
+            projects={sidebarProjects}
+            teams={sidebarTeams}
+          />
           <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
             {children}
           </main>

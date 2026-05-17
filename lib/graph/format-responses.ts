@@ -16,7 +16,14 @@ import type { ProjectOverview } from "@/lib/context/_core/overview";
 import type { SummaryContext } from "@/lib/context/_core/summary";
 import type { ProjectMeta } from "@/lib/data/views";
 
-const STATUS_ORDER = ["in_progress", "in_review", "planned", "draft", "done", "cancelled"] as const;
+const STATUS_ORDER = [
+  "in_progress",
+  "in_review",
+  "planned",
+  "draft",
+  "done",
+  "cancelled",
+] as const;
 
 /**
  * Format a task as a compact single line.
@@ -50,7 +57,10 @@ function taskLine(t: {
  * @param renderLine - Function to render each task.
  * @returns Formatted sections joined by newlines.
  */
-function renderGrouped<T extends { status: string }>(tasks: T[], renderLine: (t: T) => string): string {
+function renderGrouped<T extends { status: string }>(
+  tasks: T[],
+  renderLine: (t: T) => string,
+): string {
   const groups = new Map<string, T[]>();
   for (const t of tasks) {
     const list = groups.get(t.status) ?? [];
@@ -81,9 +91,14 @@ export function formatSummary(ctx: SummaryContext): string {
   if (ctx.node.description) parts.push(`\n${ctx.node.description}`);
 
   const stats: string[] = [];
-  if (ctx.edgeCount.depends_on > 0) stats.push(`${ctx.edgeCount.depends_on} depends_on`);
-  if (ctx.edgeCount.relates_to > 0) stats.push(`${ctx.edgeCount.relates_to} relates_to`);
-  stats.push(`${ctx.acceptanceCriteriaCount} criteria`, `${ctx.decisionsCount} decisions`);
+  if (ctx.edgeCount.depends_on > 0)
+    stats.push(`${ctx.edgeCount.depends_on} depends_on`);
+  if (ctx.edgeCount.relates_to > 0)
+    stats.push(`${ctx.edgeCount.relates_to} relates_to`);
+  stats.push(
+    `${ctx.acceptanceCriteriaCount} criteria`,
+    `${ctx.decisionsCount} decisions`,
+  );
   if (ctx.node.priority) stats.push(`priority: ${ctx.node.priority}`);
   if (ctx.node.estimate) stats.push(`${ctx.node.estimate}pts`);
   if (ctx.assigneeCount > 0) stats.push(`${ctx.assigneeCount} assigned`);
@@ -109,7 +124,10 @@ export function formatSummary(ctx: SummaryContext): string {
  * @param hint - Optional state hint for single-result searches.
  * @returns Formatted text with one result per line.
  */
-export function formatSearchResults(results: SearchResult[], hint?: string): string {
+export function formatSearchResults(
+  results: SearchResult[],
+  hint?: string,
+): string {
   const parts: string[] =
     results.length === 0
       ? ["No results found."]
@@ -150,7 +168,9 @@ export function formatTaskList(tasks: TaskSlim[]): string {
  */
 export function formatDetailedEdges(edges: DetailedEdge[]): string {
   if (edges.length === 0) return "No edges.";
-  const parts: string[] = [`${edges.length} edge${edges.length > 1 ? "s" : ""}:`];
+  const parts: string[] = [
+    `${edges.length} edge${edges.length > 1 ? "s" : ""}:`,
+  ];
   for (const e of edges) {
     const arrow = e.direction === "outgoing" ? "\u2192" : "\u2190";
     let line = `- ${e.edgeType} ${arrow} \`${e.connectedTask.taskRef}\` "${e.connectedTask.title}" [${e.connectedTask.status}] \`${e.edgeId}\``;
@@ -197,20 +217,24 @@ export function formatOverview(overview: ProjectOverview): string {
     `# \`${overview.identifier}\` "${overview.title}" [${overview.status}]`,
     `Progress: ${overview.doneTasks}/${denominator} done (${overview.progress}%) | ${overview.inProgressTasks} in_progress | ${overview.cancelledTasks} cancelled`,
   ];
-  if (overview.categories.length > 0) parts.push(`Categories: ${overview.categories.join(", ")}`);
-  if (overview.tagVocabulary.length > 0) parts.push(`Tags: ${overview.tagVocabulary.join(", ")}`);
+  if (overview.categories.length > 0)
+    parts.push(`Categories: ${overview.categories.join(", ")}`);
+  if (overview.tagVocabulary.length > 0)
+    parts.push(`Tags: ${overview.tagVocabulary.join(", ")}`);
   if (overview.description) parts.push(`\n${overview.description}`);
 
   if (overview.tasks.length > 0) {
-    parts.push(renderGrouped(overview.tasks, (t) => {
-      let line = `- \`${t.taskRef}\` "${t.title}" \`${t.id}\``;
-      if (t.category) line += ` | ${t.category}`;
-      if (t.priority) line += ` | ${t.priority}`;
-      if (t.estimate) line += ` | ${t.estimate}pts`;
-      if (t.assigneeCount && t.assigneeCount > 0)
-        line += ` | ${t.assigneeCount} assigned`;
-      return line;
-    }));
+    parts.push(
+      renderGrouped(overview.tasks, (t) => {
+        let line = `- \`${t.taskRef}\` "${t.title}" \`${t.id}\``;
+        if (t.category) line += ` | ${t.category}`;
+        if (t.priority) line += ` | ${t.priority}`;
+        if (t.estimate) line += ` | ${t.estimate}pts`;
+        if (t.assigneeCount && t.assigneeCount > 0)
+          line += ` | ${t.assigneeCount} assigned`;
+        return line;
+      }),
+    );
   }
 
   if (overview.edges.length > 0) {
@@ -244,11 +268,15 @@ export function formatReadyTasks(tasks: ReadyTask[]): string {
  */
 export function formatBlockedTasks(tasks: BlockedTask[]): string {
   if (tasks.length === 0) return "No blocked tasks.";
-  const parts: string[] = [`${tasks.length} blocked task${tasks.length > 1 ? "s" : ""}:`];
+  const parts: string[] = [
+    `${tasks.length} blocked task${tasks.length > 1 ? "s" : ""}:`,
+  ];
   for (const t of tasks) {
     parts.push(`- \`${t.taskRef}\` "${t.title}" [${t.status}] \`${t.id}\``);
     for (const b of t.blockedBy)
-      parts.push(`  blocked by: \`${b.taskRef}\` "${b.title}" [${b.status}] \`${b.id}\``);
+      parts.push(
+        `  blocked by: \`${b.taskRef}\` "${b.title}" [${b.status}] \`${b.id}\``,
+      );
   }
   return parts.join("\n");
 }
@@ -260,8 +288,11 @@ export function formatBlockedTasks(tasks: BlockedTask[]): string {
  */
 export function formatDownstream(nodes: DownstreamNode[]): string {
   if (nodes.length === 0) return "No downstream tasks.";
-  const parts = [`${nodes.length} downstream task${nodes.length > 1 ? "s" : ""}:`];
-  for (const n of nodes) parts.push(`- depth ${n.depth}: \`${n.taskRef}\` "${n.title}" \`${n.id}\``);
+  const parts = [
+    `${nodes.length} downstream task${nodes.length > 1 ? "s" : ""}:`,
+  ];
+  for (const n of nodes)
+    parts.push(`- depth ${n.depth}: \`${n.taskRef}\` "${n.title}" \`${n.id}\``);
   return parts.join("\n");
 }
 
@@ -271,11 +302,16 @@ export function formatDownstream(nodes: DownstreamNode[]): string {
  * @returns Formatted numbered list.
  */
 export function formatCriticalPath(tasks: CriticalPathTask[]): string {
-  if (tasks.length === 0) return "No critical path found (no dependency chains).";
-  const parts = [`Critical path (${tasks.length} task${tasks.length > 1 ? "s" : ""}):`,];
+  if (tasks.length === 0)
+    return "No critical path found (no dependency chains).";
+  const parts = [
+    `Critical path (${tasks.length} task${tasks.length > 1 ? "s" : ""}):`,
+  ];
   for (let i = 0; i < tasks.length; i++) {
     const t = tasks[i];
-    parts.push(`${i + 1}. \`${t.taskRef}\` "${t.title}" [${t.status}] \`${t.id}\``);
+    parts.push(
+      `${i + 1}. \`${t.taskRef}\` "${t.title}" [${t.status}] \`${t.id}\``,
+    );
   }
   return parts.join("\n");
 }
@@ -288,7 +324,9 @@ export function formatCriticalPath(tasks: CriticalPathTask[]): string {
 export function formatPlannableTasks(tasks: PlannableTask[]): string {
   if (tasks.length === 0)
     return "No plannable tasks.\n\n> Drafts must have description, acceptance criteria, AND every effective dep done. Run type='blocked' to see what's gating drafts.";
-  const parts = [`${tasks.length} plannable task${tasks.length > 1 ? "s" : ""}:`];
+  const parts = [
+    `${tasks.length} plannable task${tasks.length > 1 ? "s" : ""}:`,
+  ];
   for (const t of tasks) parts.push(taskLine(t));
   return parts.join("\n");
 }

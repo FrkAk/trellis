@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { motion } from 'motion/react';
+import { motion } from "motion/react";
 
 interface CheckboxProps {
   /** @param checked - Whether the checkbox is checked. */
@@ -20,14 +20,22 @@ interface CheckboxProps {
  * @param props - Checkbox configuration props.
  * @returns A styled checkbox element.
  */
-export function Checkbox({ checked, onChange, label, className = '', size = 16 }: CheckboxProps) {
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  className = "",
+  size = 16,
+}: CheckboxProps) {
   return (
-    <label className={`group inline-flex cursor-pointer select-none items-center gap-2 ${className}`}>
+    <label
+      className={`group inline-flex cursor-pointer select-none items-center gap-2 ${className}`}
+    >
       <motion.button
         type="button"
         role="checkbox"
         aria-checked={checked}
-        aria-label={label || 'Toggle checkbox'}
+        aria-label={label || "Toggle checkbox"}
         onClick={(e) => {
           e.preventDefault();
           onChange(!checked);
@@ -37,8 +45,10 @@ export function Checkbox({ checked, onChange, label, className = '', size = 16 }
         style={{
           width: size,
           height: size,
-          background: checked ? 'var(--color-accent-grad)' : 'transparent',
-          border: checked ? '1px solid transparent' : '1.5px solid var(--color-border-strong)',
+          background: checked ? "var(--color-accent-grad)" : "transparent",
+          border: checked
+            ? "1px solid transparent"
+            : "1.5px solid var(--color-border-strong)",
         }}
       >
         <motion.svg
@@ -47,7 +57,7 @@ export function Checkbox({ checked, onChange, label, className = '', size = 16 }
           height={Math.round(size * 0.7)}
           initial={false}
           animate={{ scale: checked ? 1 : 0, opacity: checked ? 1 : 0 }}
-          transition={{ duration: 0.14, ease: 'easeOut' }}
+          transition={{ duration: 0.14, ease: "easeOut" }}
           aria-hidden="true"
         >
           <path
@@ -64,8 +74,10 @@ export function Checkbox({ checked, onChange, label, className = '', size = 16 }
         <span
           className="text-sm leading-snug transition-colors"
           style={{
-            color: checked ? 'var(--color-text-muted)' : 'var(--color-text-secondary)',
-            textDecoration: checked ? 'line-through' : undefined,
+            color: checked
+              ? "var(--color-text-muted)"
+              : "var(--color-text-secondary)",
+            textDecoration: checked ? "line-through" : undefined,
           }}
         >
           {label}

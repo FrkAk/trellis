@@ -68,7 +68,10 @@ export const MAX_ZOOM = 5;
  * @param linkCounts - Map of node ID to edge count.
  * @returns Pixel radius for the node.
  */
-export function getNodeSize(nodeId: string, linkCounts: Map<string, number>): number {
+export function getNodeSize(
+  nodeId: string,
+  linkCounts: Map<string, number>,
+): number {
   const count = linkCounts.get(nodeId) ?? 0;
   if (count >= 7) return 22;
   if (count >= 4) return 18;
@@ -165,7 +168,7 @@ export const LIGHT_THEME: ThemeColors = {
   isLight: true,
   haloAlpha: 0.22,
   fillInnerAlpha: 0.85,
-  fillOuterAlpha: 0.20,
+  fillOuterAlpha: 0.2,
 };
 
 /**
@@ -216,16 +219,20 @@ export function getCanvasTheme(): ThemeColors {
  */
 export function statusColor(stage: string, t: ThemeColors): string {
   switch (stage) {
-    case "done": return t.statusDone;
+    case "done":
+      return t.statusDone;
     case "planned":
     case "plannable":
       return t.statusPlanned;
     case "ready":
     case "in_progress":
       return t.statusInProgress;
-    case "in_review": return t.statusInReview;
-    case "cancelled": return t.statusCancelled;
-    default: return t.statusDraft;
+    case "in_review":
+      return t.statusInReview;
+    case "cancelled":
+      return t.statusCancelled;
+    default:
+      return t.statusDraft;
   }
 }
 
@@ -236,7 +243,11 @@ export function statusColor(stage: string, t: ThemeColors): string {
  */
 export function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
 }
 
 /**
@@ -272,9 +283,30 @@ export interface GraphTierConfig {
 }
 
 const TIER_CONFIG: Record<GraphTier, GraphTierConfig> = {
-  high: { preTickN: 320, alphaDecay: 0.022, linkIterations: 3, maxDpr: 2, flowDots: true,  halo: true  },
-  mid:  { preTickN: 220, alphaDecay: 0.040, linkIterations: 2, maxDpr: 2, flowDots: true,  halo: true  },
-  low:  { preTickN: 120, alphaDecay: 0.060, linkIterations: 1, maxDpr: 1, flowDots: false, halo: false },
+  high: {
+    preTickN: 320,
+    alphaDecay: 0.022,
+    linkIterations: 3,
+    maxDpr: 2,
+    flowDots: true,
+    halo: true,
+  },
+  mid: {
+    preTickN: 220,
+    alphaDecay: 0.04,
+    linkIterations: 2,
+    maxDpr: 2,
+    flowDots: true,
+    halo: true,
+  },
+  low: {
+    preTickN: 120,
+    alphaDecay: 0.06,
+    linkIterations: 1,
+    maxDpr: 1,
+    flowDots: false,
+    halo: false,
+  },
 };
 
 /**
@@ -285,7 +317,8 @@ const TIER_CONFIG: Record<GraphTier, GraphTierConfig> = {
 export function getDeviceTier(): GraphTier {
   if (typeof navigator === "undefined") return "mid";
   const cores = navigator.hardwareConcurrency ?? 4;
-  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
+  const memory =
+    (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
   if (cores >= 8 && memory >= 8) return "high";
   if (cores >= 4 && memory >= 2) return "mid";
   return "low";

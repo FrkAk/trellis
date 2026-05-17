@@ -1,22 +1,22 @@
-'use server';
+"use server";
 
-import { headers } from 'next/headers';
-import { revalidatePath } from 'next/cache';
-import { z } from 'zod/v4';
-import { auth } from '@/lib/auth';
-import { requireSession } from '@/lib/auth/session';
-import { checkActionRateLimit } from '@/lib/actions/rate-limit-action';
+import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
+import { z } from "zod/v4";
+import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/session";
+import { checkActionRateLimit } from "@/lib/actions/rate-limit-action";
 import {
   mapBetterAuthError,
   parseOrFail,
   teamFail,
   type TeamActionResult,
-} from '@/lib/actions/team-errors';
+} from "@/lib/actions/team-errors";
 
 const NAME_MAX = 80;
 
 const updateProfileSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required').max(NAME_MAX),
+  name: z.string().trim().min(1, "Name is required").max(NAME_MAX),
 });
 
 /**
@@ -35,17 +35,22 @@ export async function updateProfileAction(input: {
     const session = await requireSession();
     userId = session.user.id;
   } catch {
-    return teamFail('unauthorized');
+    return teamFail("unauthorized");
   }
 
   const parsed = parseOrFail(updateProfileSchema, input);
   if (!parsed.ok) return parsed;
 
   const limit = await checkActionRateLimit(
-    { action: 'profile.update', windowSeconds: 60, perUserMax: 10, perIpMax: 30 },
+    {
+      action: "profile.update",
+      windowSeconds: 60,
+      perUserMax: 10,
+      perIpMax: 30,
+    },
     userId,
   );
-  if (!limit.ok) return teamFail('rate_limited');
+  if (!limit.ok) return teamFail("rate_limited");
 
   try {
     await auth.api.updateUser({
@@ -54,12 +59,12 @@ export async function updateProfileAction(input: {
     });
   } catch (err) {
     const code = mapBetterAuthError(err);
-    if (code === 'unknown') {
-      console.error('updateProfileAction failed', err);
+    if (code === "unknown") {
+      console.error("updateProfileAction failed", err);
     }
     return teamFail(code);
   }
 
-  revalidatePath('/settings');
+  revalidatePath("/settings");
   return { ok: true };
 }

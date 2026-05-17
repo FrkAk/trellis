@@ -18,18 +18,24 @@ function baError(code: string): unknown {
 describe("mapBetterAuthError — switch-case branches", () => {
   test("USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION → already_member", () => {
     expect(
-      mapBetterAuthError(baError("USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION")),
+      mapBetterAuthError(
+        baError("USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION"),
+      ),
     ).toBe("already_member");
   });
 
   test("USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION → already_invited", () => {
     expect(
-      mapBetterAuthError(baError("USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION")),
+      mapBetterAuthError(
+        baError("USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION"),
+      ),
     ).toBe("already_invited");
   });
 
   test("INVITATION_NOT_FOUND → not_found", () => {
-    expect(mapBetterAuthError(baError("INVITATION_NOT_FOUND"))).toBe("not_found");
+    expect(mapBetterAuthError(baError("INVITATION_NOT_FOUND"))).toBe(
+      "not_found",
+    );
   });
 
   test("MEMBER_NOT_FOUND → not_found", () => {
@@ -37,7 +43,9 @@ describe("mapBetterAuthError — switch-case branches", () => {
   });
 
   test("ORGANIZATION_NOT_FOUND → not_found", () => {
-    expect(mapBetterAuthError(baError("ORGANIZATION_NOT_FOUND"))).toBe("not_found");
+    expect(mapBetterAuthError(baError("ORGANIZATION_NOT_FOUND"))).toBe(
+      "not_found",
+    );
   });
 
   test("USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION → not_found", () => {
@@ -48,7 +56,9 @@ describe("mapBetterAuthError — switch-case branches", () => {
 
   test("YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION → wrong_recipient", () => {
     expect(
-      mapBetterAuthError(baError("YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION")),
+      mapBetterAuthError(
+        baError("YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION"),
+      ),
     ).toBe("wrong_recipient");
   });
 
@@ -138,9 +148,9 @@ describe("mapBetterAuthError — FORBIDDEN_CODES allowlist", () => {
 
 describe("mapBetterAuthError — heuristic fallback for unknown authz codes", () => {
   test("YOU_ARE_NOT_ALLOWED_TO_FROBNICATE → forbidden (heuristic)", () => {
-    expect(mapBetterAuthError(baError("YOU_ARE_NOT_ALLOWED_TO_FROBNICATE"))).toBe(
-      "forbidden",
-    );
+    expect(
+      mapBetterAuthError(baError("YOU_ARE_NOT_ALLOWED_TO_FROBNICATE")),
+    ).toBe("forbidden");
   });
 
   test("totally novel YOU_ARE_NOT_ALLOWED_TO_* code falls through to forbidden", () => {

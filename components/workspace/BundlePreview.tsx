@@ -1,31 +1,39 @@
-'use client';
+"use client";
 
-import { useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Markdown } from '@/components/shared/Markdown';
-import { MonoId } from '@/components/shared/MonoId';
-import { StatusGlyph } from '@/components/shared/StatusGlyph';
-import { CopyButton } from '@/components/shared/CopyButton';
-import { IconBundle, IconChevronRight } from '@/components/shared/icons';
-import type { AcceptanceCriterion, Decision, TaskStatus } from '@/lib/types';
-import { taskKeys } from '@/lib/query/keys';
-import { fetchTaskContext } from '@/lib/query/queries';
+import { useMemo, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Markdown } from "@/components/shared/Markdown";
+import { MonoId } from "@/components/shared/MonoId";
+import { StatusGlyph } from "@/components/shared/StatusGlyph";
+import { CopyButton } from "@/components/shared/CopyButton";
+import { IconBundle, IconChevronRight } from "@/components/shared/icons";
+import type { AcceptanceCriterion, Decision, TaskStatus } from "@/lib/types";
+import { taskKeys } from "@/lib/query/keys";
+import { fetchTaskContext } from "@/lib/query/queries";
 
 /** Resolved bundle stage — adds derived `plannable` and `ready` sub-stages. */
-type BundleStage = 'draft' | 'plannable' | 'planned' | 'ready' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
+type BundleStage =
+  | "draft"
+  | "plannable"
+  | "planned"
+  | "ready"
+  | "in_progress"
+  | "in_review"
+  | "done"
+  | "cancelled";
 
 /** Section identifiers — also used as React keys. */
 type SectionId =
-  | 'spec'
-  | 'criteria'
-  | 'plan'
-  | 'prerequisites'
-  | 'neighbors'
-  | 'decisions'
-  | 'files'
-  | 'downstream'
-  | 'execution';
+  | "spec"
+  | "criteria"
+  | "plan"
+  | "prerequisites"
+  | "neighbors"
+  | "decisions"
+  | "files"
+  | "downstream"
+  | "execution";
 
 interface BundleSectionMeta {
   /** Stable identifier. */
@@ -38,15 +46,39 @@ interface BundleSectionMeta {
 
 /** Section metadata table — color cues match DESIGN.md §3.9. */
 const SECTION_META: Record<SectionId, BundleSectionMeta> = {
-  spec:          { id: 'spec',          label: 'spec',          color: 'var(--color-accent-light)' },
-  criteria:      { id: 'criteria',      label: 'criteria',      color: 'var(--color-accent-light)' },
-  plan:          { id: 'plan',          label: 'plan',          color: 'var(--color-accent)' },
-  prerequisites: { id: 'prerequisites', label: 'prerequisites', color: 'var(--color-done)' },
-  neighbors:     { id: 'neighbors',     label: 'neighbors',     color: 'var(--color-accent-2)' },
-  decisions:     { id: 'decisions',     label: 'decisions',     color: 'var(--color-accent)' },
-  files:         { id: 'files',         label: 'files',         color: 'var(--color-progress)' },
-  downstream:    { id: 'downstream',    label: 'downstream',    color: 'var(--color-relates)' },
-  execution:     { id: 'execution',     label: 'execution',     color: 'var(--color-done)' },
+  spec: { id: "spec", label: "spec", color: "var(--color-accent-light)" },
+  criteria: {
+    id: "criteria",
+    label: "criteria",
+    color: "var(--color-accent-light)",
+  },
+  plan: { id: "plan", label: "plan", color: "var(--color-accent)" },
+  prerequisites: {
+    id: "prerequisites",
+    label: "prerequisites",
+    color: "var(--color-done)",
+  },
+  neighbors: {
+    id: "neighbors",
+    label: "neighbors",
+    color: "var(--color-accent-2)",
+  },
+  decisions: {
+    id: "decisions",
+    label: "decisions",
+    color: "var(--color-accent)",
+  },
+  files: { id: "files", label: "files", color: "var(--color-progress)" },
+  downstream: {
+    id: "downstream",
+    label: "downstream",
+    color: "var(--color-relates)",
+  },
+  execution: {
+    id: "execution",
+    label: "execution",
+    color: "var(--color-done)",
+  },
 };
 
 /**
@@ -63,38 +95,56 @@ const SECTION_META: Record<SectionId, BundleSectionMeta> = {
  * - `done` / `cancelled` → execution record on top, artefacts below
  */
 const SHAPE_BY_STAGE: Record<BundleStage, readonly SectionId[]> = {
-  draft:       ['spec', 'criteria'],
-  plannable:   ['spec', 'criteria', 'prerequisites', 'decisions', 'downstream'],
-  planned:     ['spec', 'criteria', 'decisions', 'prerequisites', 'neighbors'],
-  ready:       ['spec', 'criteria', 'plan', 'prerequisites', 'decisions', 'downstream'],
-  in_progress: ['spec', 'plan', 'prerequisites', 'decisions', 'criteria', 'files', 'downstream'],
-  in_review:   ['execution', 'spec', 'criteria', 'files', 'downstream'],
-  done:        ['execution', 'spec', 'criteria', 'files', 'downstream'],
-  cancelled:   ['execution'],
+  draft: ["spec", "criteria"],
+  plannable: ["spec", "criteria", "prerequisites", "decisions", "downstream"],
+  planned: ["spec", "criteria", "decisions", "prerequisites", "neighbors"],
+  ready: [
+    "spec",
+    "criteria",
+    "plan",
+    "prerequisites",
+    "decisions",
+    "downstream",
+  ],
+  in_progress: [
+    "spec",
+    "plan",
+    "prerequisites",
+    "decisions",
+    "criteria",
+    "files",
+    "downstream",
+  ],
+  in_review: ["execution", "spec", "criteria", "files", "downstream"],
+  done: ["execution", "spec", "criteria", "files", "downstream"],
+  cancelled: ["execution"],
 };
 
 /** Bundle name shown in the preview header — matches the `lib/context` builder that runs at this stage. */
 const BUNDLE_NAME: Record<BundleStage, string> = {
-  draft:       'planning bundle',
-  plannable:   'planning bundle',
-  planned:     'working bundle',
-  ready:       'planning bundle',
-  in_progress: 'agent bundle',
-  in_review:   'execution record',
-  done:        'execution record',
-  cancelled:   'execution record',
+  draft: "planning bundle",
+  plannable: "planning bundle",
+  planned: "working bundle",
+  ready: "planning bundle",
+  in_progress: "agent bundle",
+  in_review: "execution record",
+  done: "execution record",
+  cancelled: "execution record",
 };
 
 /** Which raw bundle string powers the MD toggle for each stage. */
-const BUNDLE_SOURCE: Record<BundleStage, 'agent' | 'planning' | 'working' | 'execution'> = {
-  draft:       'planning',
-  plannable:   'planning',
-  planned:     'working',
-  ready:       'planning',
-  in_progress: 'agent',
-  in_review:   'execution',
-  done:        'execution',
-  cancelled:   'execution',
+const BUNDLE_SOURCE: Record<
+  BundleStage,
+  "agent" | "planning" | "working" | "execution"
+> = {
+  draft: "planning",
+  plannable: "planning",
+  planned: "working",
+  ready: "planning",
+  in_progress: "agent",
+  in_review: "execution",
+  done: "execution",
+  cancelled: "execution",
 };
 
 interface BundleNeighbor {
@@ -154,9 +204,13 @@ interface BundlePreviewProps {
  * @param isPlannable - Derived-plannable flag from `lib/ui/taskState`.
  * @returns Resolved bundle stage.
  */
-function resolveStage(status: TaskStatus, isReady: boolean, isPlannable: boolean): BundleStage {
-  if (status === 'planned' && isReady) return 'ready';
-  if (status === 'draft' && isPlannable) return 'plannable';
+function resolveStage(
+  status: TaskStatus,
+  isReady: boolean,
+  isPlannable: boolean,
+): BundleStage {
+  if (status === "planned" && isReady) return "ready";
+  if (status === "draft" && isPlannable) return "plannable";
   return status;
 }
 
@@ -170,25 +224,49 @@ function resolveStage(status: TaskStatus, isReady: boolean, isPlannable: boolean
  */
 function sectionWeight(id: SectionId, props: BundlePreviewProps): number {
   const len = (s: string) => s.length;
-  if (id === 'spec') return Math.max(len(props.spec), 1);
-  if (id === 'criteria') {
-    return Math.max(props.criteria.reduce((sum, c) => sum + len(c.text), 0), 1);
+  if (id === "spec") return Math.max(len(props.spec), 1);
+  if (id === "criteria") {
+    return Math.max(
+      props.criteria.reduce((sum, c) => sum + len(c.text), 0),
+      1,
+    );
   }
-  if (id === 'plan') return Math.max(len(props.plan ?? ''), 1);
-  if (id === 'prerequisites') {
-    return Math.max(props.prerequisites.reduce((sum, n) => sum + len(`${n.taskRef} ${n.title}`), 0), 1);
+  if (id === "plan") return Math.max(len(props.plan ?? ""), 1);
+  if (id === "prerequisites") {
+    return Math.max(
+      props.prerequisites.reduce(
+        (sum, n) => sum + len(`${n.taskRef} ${n.title}`),
+        0,
+      ),
+      1,
+    );
   }
-  if (id === 'neighbors') {
-    return Math.max(props.neighbors.reduce((sum, n) => sum + len(`${n.taskRef} ${n.title}`), 0), 1);
+  if (id === "neighbors") {
+    return Math.max(
+      props.neighbors.reduce(
+        (sum, n) => sum + len(`${n.taskRef} ${n.title}`),
+        0,
+      ),
+      1,
+    );
   }
-  if (id === 'decisions') {
-    return Math.max(props.decisions.reduce((sum, d) => sum + len(d.text), 0), 1);
+  if (id === "decisions") {
+    return Math.max(
+      props.decisions.reduce((sum, d) => sum + len(d.text), 0),
+      1,
+    );
   }
-  if (id === 'files') return Math.max(len(props.files.join('\n')), 1);
-  if (id === 'downstream') {
-    return Math.max(props.downstream.reduce((sum, n) => sum + len(`${n.taskRef} ${n.title}`), 0), 1);
+  if (id === "files") return Math.max(len(props.files.join("\n")), 1);
+  if (id === "downstream") {
+    return Math.max(
+      props.downstream.reduce(
+        (sum, n) => sum + len(`${n.taskRef} ${n.title}`),
+        0,
+      ),
+      1,
+    );
   }
-  return Math.max(len(props.executionRecord ?? ''), 1);
+  return Math.max(len(props.executionRecord ?? ""), 1);
 }
 
 /**
@@ -216,7 +294,9 @@ export function BundlePreview(props: BundlePreviewProps) {
   const bundleName = BUNDLE_NAME[stage];
   const source = BUNDLE_SOURCE[stage];
 
-  const [expanded, setExpanded] = useState<Set<SectionId>>(() => new Set<SectionId>([sectionIds[0]]));
+  const [expanded, setExpanded] = useState<Set<SectionId>>(
+    () => new Set<SectionId>([sectionIds[0]]),
+  );
   const [showRaw, setShowRaw] = useState(false);
 
   const qc = useQueryClient();
@@ -226,12 +306,12 @@ export function BundlePreview(props: BundlePreviewProps) {
   const { data: bundles, isFetching: bundlesFetching } = useQuery({
     queryKey: taskKeys.context(projectId, taskId),
     queryFn: fetchTaskContext(qc, projectId, taskId),
-    enabled: showRaw && source !== 'execution',
+    enabled: showRaw && source !== "execution",
   });
 
   const rawText = useMemo(() => {
-    if (source === 'execution') return executionRecord ?? '';
-    return bundles?.[source] ?? '';
+    if (source === "execution") return executionRecord ?? "";
+    return bundles?.[source] ?? "";
   }, [source, bundles, executionRecord]);
 
   const weights = useMemo(() => {
@@ -239,9 +319,18 @@ export function BundlePreview(props: BundlePreviewProps) {
     for (const id of sectionIds) out[id] = sectionWeight(id, props);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, props.spec, props.criteria, props.plan, props.prerequisites,
-      props.neighbors, props.decisions, props.files, props.downstream,
-      props.executionRecord]);
+  }, [
+    stage,
+    props.spec,
+    props.criteria,
+    props.plan,
+    props.prerequisites,
+    props.neighbors,
+    props.decisions,
+    props.files,
+    props.downstream,
+    props.executionRecord,
+  ]);
 
   /** Toggle a section's expansion state without disturbing the others. */
   const toggle = (id: SectionId) => {
@@ -259,15 +348,17 @@ export function BundlePreview(props: BundlePreviewProps) {
         <span className="inline-flex text-accent-light">
           <IconBundle size={14} />
         </span>
-        <span className="text-[12px] font-medium text-text-primary">{bundleName}</span>
+        <span className="text-[12px] font-medium text-text-primary">
+          {bundleName}
+        </span>
         <span className="ml-auto" />
         <button
           type="button"
           onClick={() => setShowRaw((v) => !v)}
           className={`cursor-pointer rounded-md border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors ${
             showRaw
-              ? 'border-accent/30 bg-accent/10 text-accent-light'
-              : 'border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+              ? "border-accent/30 bg-accent/10 text-accent-light"
+              : "border-border-strong text-text-muted hover:bg-surface-hover hover:text-text-secondary"
           }`}
           aria-pressed={showRaw}
           title="Toggle raw markdown view"
@@ -298,10 +389,10 @@ export function BundlePreview(props: BundlePreviewProps) {
           </div>
           <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface px-3 py-2 font-mono text-[11.5px] leading-relaxed text-text-secondary">
             {bundlesFetching && !rawText
-              ? '// loading bundle…'
+              ? "// loading bundle…"
               : rawText.trim().length > 0
                 ? rawText
-                : '// bundle empty — add a description and prerequisites'}
+                : "// bundle empty — add a description and prerequisites"}
           </pre>
         </div>
       ) : (
@@ -345,18 +436,29 @@ interface BundleSectionProps {
  * @param section - Section configuration.
  * @returns Section element with header and animated body.
  */
-function BundleSection({ id, open, isLast, onToggle, props, onSelectTask }: BundleSectionProps) {
+function BundleSection({
+  id,
+  open,
+  isLast,
+  onToggle,
+  props,
+  onSelectTask,
+}: BundleSectionProps) {
   const meta = SECTION_META[id];
   const summary = sectionSummary(id, props);
 
   return (
-    <div className={isLast ? '' : 'border-b border-border'}>
+    <div className={isLast ? "" : "border-b border-border"}>
       <button
         type="button"
         onClick={onToggle}
         className="flex w-full cursor-pointer items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-raised/40"
       >
-        <span aria-hidden="true" className="h-[18px] w-1 rounded-sm" style={{ background: meta.color }} />
+        <span
+          aria-hidden="true"
+          className="h-[18px] w-1 rounded-sm"
+          style={{ background: meta.color }}
+        />
         <span className="w-[100px] shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">
           {meta.label}
         </span>
@@ -366,7 +468,7 @@ function BundleSection({ id, open, isLast, onToggle, props, onSelectTask }: Bund
         <span
           aria-hidden="true"
           className="inline-flex text-text-faint transition-transform duration-150"
-          style={{ transform: open ? 'rotate(90deg)' : 'none' }}
+          style={{ transform: open ? "rotate(90deg)" : "none" }}
         >
           <IconChevronRight size={11} />
         </span>
@@ -376,9 +478,9 @@ function BundleSection({ id, open, isLast, onToggle, props, onSelectTask }: Bund
         {open && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22, ease: 'easeInOut' }}
+            transition={{ duration: 0.22, ease: "easeInOut" }}
             className="overflow-hidden"
           >
             <div className="bg-base-2 pt-1 pb-3.5 pr-3.5 pl-8">
@@ -399,41 +501,62 @@ function BundleSection({ id, open, isLast, onToggle, props, onSelectTask }: Bund
  * @returns Plain text summary line.
  */
 function sectionSummary(id: SectionId, props: BundlePreviewProps): string {
-  if (id === 'spec') return 'task spec';
-  if (id === 'criteria') {
+  if (id === "spec") return "task spec";
+  if (id === "criteria") {
     const total = props.criteria.length;
-    if (total === 0) return 'no acceptance criteria';
+    if (total === 0) return "no acceptance criteria";
     const checked = props.criteria.filter((c) => c.checked).length;
     return `${checked} / ${total} criteria`;
   }
-  if (id === 'plan') {
-    return props.plan && props.plan.trim().length > 0 ? 'implementation plan' : 'no plan yet';
+  if (id === "plan") {
+    return props.plan && props.plan.trim().length > 0
+      ? "implementation plan"
+      : "no plan yet";
   }
-  if (id === 'prerequisites') {
-    if (props.prerequisites.length === 0) return 'no upstream deps';
-    const refs = props.prerequisites.slice(0, 2).map((p) => p.taskRef).join(' · ');
-    return props.prerequisites.length > 2 ? `${refs} · +${props.prerequisites.length - 2} more` : refs;
+  if (id === "prerequisites") {
+    if (props.prerequisites.length === 0) return "no upstream deps";
+    const refs = props.prerequisites
+      .slice(0, 2)
+      .map((p) => p.taskRef)
+      .join(" · ");
+    return props.prerequisites.length > 2
+      ? `${refs} · +${props.prerequisites.length - 2} more`
+      : refs;
   }
-  if (id === 'neighbors') {
-    if (props.neighbors.length === 0) return 'no 1-hop neighbors';
-    const refs = props.neighbors.slice(0, 3).map((p) => p.taskRef).join(' · ');
-    return props.neighbors.length > 3 ? `${refs} · +${props.neighbors.length - 3} more` : refs;
+  if (id === "neighbors") {
+    if (props.neighbors.length === 0) return "no 1-hop neighbors";
+    const refs = props.neighbors
+      .slice(0, 3)
+      .map((p) => p.taskRef)
+      .join(" · ");
+    return props.neighbors.length > 3
+      ? `${refs} · +${props.neighbors.length - 3} more`
+      : refs;
   }
-  if (id === 'decisions') {
-    return props.decisions.length === 1 ? '1 decision' : `${props.decisions.length} decisions`;
+  if (id === "decisions") {
+    return props.decisions.length === 1
+      ? "1 decision"
+      : `${props.decisions.length} decisions`;
   }
-  if (id === 'files') {
-    if (props.files.length === 0) return 'no files yet';
-    return props.files.length === 1 ? props.files[0] : `${props.files[0]} + ${props.files.length - 1} more`;
+  if (id === "files") {
+    if (props.files.length === 0) return "no files yet";
+    return props.files.length === 1
+      ? props.files[0]
+      : `${props.files[0]} + ${props.files.length - 1} more`;
   }
-  if (id === 'downstream') {
-    if (props.downstream.length === 0) return 'no consumers';
-    const refs = props.downstream.slice(0, 2).map((p) => p.taskRef).join(' · ');
-    return props.downstream.length > 2 ? `${refs} · +${props.downstream.length - 2} more` : refs;
+  if (id === "downstream") {
+    if (props.downstream.length === 0) return "no consumers";
+    const refs = props.downstream
+      .slice(0, 2)
+      .map((p) => p.taskRef)
+      .join(" · ");
+    return props.downstream.length > 2
+      ? `${refs} · +${props.downstream.length - 2} more`
+      : refs;
   }
   return props.executionRecord && props.executionRecord.trim().length > 0
-    ? 'shipped record'
-    : 'no execution record yet';
+    ? "shipped record"
+    : "no execution record yet";
 }
 
 interface SectionBodyProps {
@@ -452,21 +575,56 @@ interface SectionBodyProps {
  * @returns The matching body renderer.
  */
 function SectionBody({ id, props, onSelectTask }: SectionBodyProps) {
-  if (id === 'spec') return <MarkdownBody text={props.spec} emptyHint="No spec yet — add a description above." />;
-  if (id === 'criteria') return <CriteriaBody criteria={props.criteria} />;
-  if (id === 'plan') return <MarkdownBody text={props.plan ?? ''} emptyHint="No implementation plan yet." />;
-  if (id === 'prerequisites') {
-    return <NeighborList items={props.prerequisites} emptyHint="No upstream dependencies." onSelectTask={onSelectTask} />;
+  if (id === "spec")
+    return (
+      <MarkdownBody
+        text={props.spec}
+        emptyHint="No spec yet — add a description above."
+      />
+    );
+  if (id === "criteria") return <CriteriaBody criteria={props.criteria} />;
+  if (id === "plan")
+    return (
+      <MarkdownBody
+        text={props.plan ?? ""}
+        emptyHint="No implementation plan yet."
+      />
+    );
+  if (id === "prerequisites") {
+    return (
+      <NeighborList
+        items={props.prerequisites}
+        emptyHint="No upstream dependencies."
+        onSelectTask={onSelectTask}
+      />
+    );
   }
-  if (id === 'neighbors') {
-    return <NeighborList items={props.neighbors} emptyHint="No 1-hop neighbors." onSelectTask={onSelectTask} />;
+  if (id === "neighbors") {
+    return (
+      <NeighborList
+        items={props.neighbors}
+        emptyHint="No 1-hop neighbors."
+        onSelectTask={onSelectTask}
+      />
+    );
   }
-  if (id === 'decisions') return <DecisionsBody decisions={props.decisions} />;
-  if (id === 'files') return <FilesBody files={props.files} />;
-  if (id === 'downstream') {
-    return <NeighborList items={props.downstream} emptyHint="No downstream consumers." onSelectTask={onSelectTask} />;
+  if (id === "decisions") return <DecisionsBody decisions={props.decisions} />;
+  if (id === "files") return <FilesBody files={props.files} />;
+  if (id === "downstream") {
+    return (
+      <NeighborList
+        items={props.downstream}
+        emptyHint="No downstream consumers."
+        onSelectTask={onSelectTask}
+      />
+    );
   }
-  return <MarkdownBody text={props.executionRecord ?? ''} emptyHint="No execution record yet — populated when the task ships." />;
+  return (
+    <MarkdownBody
+      text={props.executionRecord ?? ""}
+      emptyHint="No execution record yet — populated when the task ships."
+    />
+  );
 }
 
 interface MarkdownBodyProps {
@@ -484,9 +642,17 @@ interface MarkdownBodyProps {
  */
 function MarkdownBody({ text, emptyHint }: MarkdownBodyProps) {
   if (!text.trim()) {
-    return <p className="font-mono text-[11.5px] italic text-text-muted">{emptyHint}</p>;
+    return (
+      <p className="font-mono text-[11.5px] italic text-text-muted">
+        {emptyHint}
+      </p>
+    );
   }
-  return <Markdown className="text-[12.5px] leading-relaxed text-text-secondary">{text}</Markdown>;
+  return (
+    <Markdown className="text-[12.5px] leading-relaxed text-text-secondary">
+      {text}
+    </Markdown>
+  );
 }
 
 interface CriteriaBodyProps {
@@ -502,7 +668,11 @@ interface CriteriaBodyProps {
  */
 function CriteriaBody({ criteria }: CriteriaBodyProps) {
   if (criteria.length === 0) {
-    return <p className="font-mono text-[11.5px] italic text-text-muted">No acceptance criteria yet.</p>;
+    return (
+      <p className="font-mono text-[11.5px] italic text-text-muted">
+        No acceptance criteria yet.
+      </p>
+    );
   }
   return (
     <ul className="space-y-1">
@@ -512,18 +682,29 @@ function CriteriaBody({ criteria }: CriteriaBodyProps) {
             aria-hidden="true"
             className="mt-[3px] inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border"
             style={{
-              background: c.checked ? 'var(--color-accent-grad)' : 'transparent',
-              borderColor: c.checked ? 'transparent' : 'var(--color-border-strong)',
+              background: c.checked
+                ? "var(--color-accent-grad)"
+                : "transparent",
+              borderColor: c.checked
+                ? "transparent"
+                : "var(--color-border-strong)",
             }}
           >
             {c.checked && (
               <svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M3 8.5L6.5 12 13 5" stroke="var(--color-base)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  d="M3 8.5L6.5 12 13 5"
+                  stroke="var(--color-base)"
+                  strokeWidth="2"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             )}
           </span>
           <span
-            className={`text-[12.5px] leading-snug ${c.checked ? 'text-text-muted line-through decoration-text-faint' : 'text-text-secondary'}`}
+            className={`text-[12.5px] leading-snug ${c.checked ? "text-text-muted line-through decoration-text-faint" : "text-text-secondary"}`}
           >
             {c.text}
           </span>
@@ -551,7 +732,11 @@ interface NeighborListProps {
  */
 function NeighborList({ items, emptyHint, onSelectTask }: NeighborListProps) {
   if (items.length === 0) {
-    return <p className="font-mono text-[11.5px] italic text-text-muted">{emptyHint}</p>;
+    return (
+      <p className="font-mono text-[11.5px] italic text-text-muted">
+        {emptyHint}
+      </p>
+    );
   }
   return (
     <ul className="space-y-1">
@@ -588,16 +773,27 @@ interface DecisionsBodyProps {
  */
 function DecisionsBody({ decisions }: DecisionsBodyProps) {
   if (decisions.length === 0) {
-    return <p className="font-mono text-[11.5px] italic text-text-muted">No pinned decisions.</p>;
+    return (
+      <p className="font-mono text-[11.5px] italic text-text-muted">
+        No pinned decisions.
+      </p>
+    );
   }
   return (
     <ul className="space-y-1.5">
       {decisions.map((d) => (
         <li key={d.id} className="flex items-start gap-2">
-          <span aria-hidden="true" className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+          <span
+            aria-hidden="true"
+            className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+          />
           <div className="min-w-0 flex-1">
-            <p className="text-[12.5px] leading-snug text-text-secondary">{d.text}</p>
-            <span className="font-mono text-[10px] text-text-faint">{d.date}</span>
+            <p className="text-[12.5px] leading-snug text-text-secondary">
+              {d.text}
+            </p>
+            <span className="font-mono text-[10px] text-text-faint">
+              {d.date}
+            </span>
           </div>
         </li>
       ))}
@@ -619,7 +815,11 @@ interface FilesBodyProps {
  */
 function FilesBody({ files }: FilesBodyProps) {
   if (files.length === 0) {
-    return <p className="font-mono text-[11.5px] italic text-text-muted">No files touched yet.</p>;
+    return (
+      <p className="font-mono text-[11.5px] italic text-text-muted">
+        No files touched yet.
+      </p>
+    );
   }
   return (
     <ul className="flex flex-wrap gap-1.5">

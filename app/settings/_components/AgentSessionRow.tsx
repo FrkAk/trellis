@@ -1,10 +1,13 @@
-'use client';
+"use client";
 
-import { motion } from 'motion/react';
-import { IconAgent } from '@/components/shared/icons';
-import { revokeOAuthSessionAction, type OAuthSessionView } from '@/lib/actions/oauth-session';
-import { formatAbsolute, formatRelative } from '@/lib/ui/relative-time';
-import { InlineConfirm } from './InlineConfirm';
+import { motion } from "motion/react";
+import { IconAgent } from "@/components/shared/icons";
+import {
+  revokeOAuthSessionAction,
+  type OAuthSessionView,
+} from "@/lib/actions/oauth-session";
+import { formatAbsolute, formatRelative } from "@/lib/ui/relative-time";
+import { InlineConfirm } from "./InlineConfirm";
 
 interface AgentSessionRowProps {
   /** OAuth session to render. */
@@ -64,7 +67,7 @@ export function AgentSessionRow({
       exit={{ opacity: 0, y: -4, scale: 0.98 }}
       transition={{ duration: 0.18 }}
       className={`flex items-center gap-3 px-4 py-3.5 ${
-        showDivider ? 'border-b border-border' : ''
+        showDivider ? "border-b border-border" : ""
       }`}
     >
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-strong bg-surface-raised text-accent-light">
@@ -77,7 +80,7 @@ export function AgentSessionRow({
         </p>
         <p className="mt-0.5 truncate text-[11.5px] text-text-muted">
           last seen {lastActiveLabel}
-          {session.organizationName ? ` · ${session.organizationName}` : ''}
+          {session.organizationName ? ` · ${session.organizationName}` : ""}
         </p>
       </div>
 

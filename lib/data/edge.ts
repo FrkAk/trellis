@@ -3,12 +3,7 @@ import "server-only";
 import { and, eq, or, sql } from "drizzle-orm";
 import type { Conn } from "@/lib/db/raw";
 import { withUserContext, type Tx } from "@/lib/db/rls";
-import {
-  projects,
-  tasks,
-  taskEdges,
-  type NewTaskEdge,
-} from "@/lib/db/schema";
+import { projects, tasks, taskEdges, type NewTaskEdge } from "@/lib/db/schema";
 import type { EdgeType, HistoryEntry } from "@/lib/types";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
 import { fetchDependencyChain } from "@/lib/db/raw/fetch-dependency-chain";
@@ -220,10 +215,7 @@ export async function getTaskEdgesDetailedTx(
  * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Full edge rows.
  */
-export async function fetchEdgesForTaskIds(
-  taskIds: string[],
-  conn: Conn,
-) {
+export async function fetchEdgesForTaskIds(taskIds: string[], conn: Conn) {
   if (taskIds.length === 0) return [];
   return conn
     .select()
@@ -244,10 +236,7 @@ export async function fetchEdgesForTaskIds(
  * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
  * @returns Edge endpoints (source/target only — no metadata).
  */
-export async function listDependsOnEdges(
-  sourceTaskIds: string[],
-  conn: Conn,
-) {
+export async function listDependsOnEdges(sourceTaskIds: string[], conn: Conn) {
   if (sourceTaskIds.length === 0) return [];
   return conn
     .select({

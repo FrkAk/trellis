@@ -1,21 +1,21 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'motion/react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Avatar } from '@/components/shared/Avatar';
-import { Markdown } from '@/components/shared/Markdown';
-import { MonoId } from '@/components/shared/MonoId';
-import { PriorityIcon } from '@/components/shared/PriorityIcon';
-import { StatusGlyph, STATUS_META } from '@/components/shared/StatusGlyph';
-import { Dropdown } from '@/components/shared/Dropdown';
-import { useUndo, UndoButton } from '@/hooks/useUndo';
-import { popoverFixedStyle, usePopoverAnchor } from '@/hooks/usePopoverAnchor';
-import { updateTask } from '@/lib/graph/mutations';
-import { projectColor } from '@/lib/ui/project-color';
-import { listTeamMembersAction } from '@/lib/actions/team-members';
-import type { MemberView } from '@/lib/actions/team-members-map';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "motion/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Avatar } from "@/components/shared/Avatar";
+import { Markdown } from "@/components/shared/Markdown";
+import { MonoId } from "@/components/shared/MonoId";
+import { PriorityIcon } from "@/components/shared/PriorityIcon";
+import { StatusGlyph, STATUS_META } from "@/components/shared/StatusGlyph";
+import { Dropdown } from "@/components/shared/Dropdown";
+import { useUndo, UndoButton } from "@/hooks/useUndo";
+import { popoverFixedStyle, usePopoverAnchor } from "@/hooks/usePopoverAnchor";
+import { updateTask } from "@/lib/graph/mutations";
+import { projectColor } from "@/lib/ui/project-color";
+import { listTeamMembersAction } from "@/lib/actions/team-members";
+import type { MemberView } from "@/lib/actions/team-members-map";
 import {
   IconBranch,
   IconChevronDown,
@@ -27,10 +27,10 @@ import {
   IconTag,
   IconUser,
   IconX,
-} from '@/components/shared/icons';
-import type { TaskEdge } from '@/lib/db/schema';
-import type { Priority, Estimate, TaskStatus } from '@/lib/types';
-import type { AssigneeRef, ProjectGraphSlim, TaskFull } from '@/lib/data/views';
+} from "@/components/shared/icons";
+import type { TaskEdge } from "@/lib/db/schema";
+import type { Priority, Estimate, TaskStatus } from "@/lib/types";
+import type { AssigneeRef, ProjectGraphSlim, TaskFull } from "@/lib/data/views";
 
 /**
  * Subset of task fields safe to patch onto both the `TaskFull` and
@@ -46,15 +46,22 @@ type TaskPatch = Partial<{
   category: string | null;
   tags: string[];
 }>;
-import { PRIORITY_COLOR, PRIORITY_DISPLAY_ORDER } from '@/lib/ui/priority';
-import { projectKeys, taskKeys, teamKeys } from '@/lib/query/keys';
+import { PRIORITY_COLOR, PRIORITY_DISPLAY_ORDER } from "@/lib/ui/priority";
+import { projectKeys, taskKeys, teamKeys } from "@/lib/query/keys";
 
 /** Display order for the Status dropdown — matches the lifecycle ribbon. */
-const STATUS_OPTIONS: readonly TaskStatus[] = ['draft', 'planned', 'in_progress', 'in_review', 'done', 'cancelled'];
+const STATUS_OPTIONS: readonly TaskStatus[] = [
+  "draft",
+  "planned",
+  "in_progress",
+  "in_review",
+  "done",
+  "cancelled",
+];
 /** Display order for the Estimate dropdown — Fibonacci story points. */
 const ESTIMATE_OPTIONS: readonly Estimate[] = [1, 2, 3, 5, 8, 13];
 /** Sentinel used by dropdowns to model the "clear" action under `string` schemas. */
-const SENTINEL_CLEAR = '__clear__';
+const SENTINEL_CLEAR = "__clear__";
 
 interface PropRailProps {
   /** Task UUID. */
@@ -128,15 +135,11 @@ export function PropRail({
   // an O(edges) hit on every refetch even when nothing relevant changed.
   // Centralising the pass also gives `DepGroup` a stable `items` prop so a
   // future `React.memo` on the sub-row can short-circuit.
-  const {
-    dependsOnItems,
-    blocksItems,
-    totalDeps,
-  } = useMemo(() => {
+  const { dependsOnItems, blocksItems, totalDeps } = useMemo(() => {
     const dependsOnArr: { edgeId: string; otherId: string }[] = [];
     const blocksArr: { edgeId: string; otherId: string }[] = [];
     for (const e of edges) {
-      if (e.edgeType !== 'depends_on') continue;
+      if (e.edgeType !== "depends_on") continue;
       if (e.sourceTaskId === taskId) {
         dependsOnArr.push({ edgeId: e.id, otherId: e.targetTaskId });
       } else if (e.targetTaskId === taskId) {
@@ -166,88 +169,113 @@ export function PropRail({
   // in `TaskPatch` is present on both shapes, so the same patch object
   // is safe to spread onto either.
   const queryClient = useQueryClient();
-  const applyOptimisticPatch = useCallback((patch: TaskPatch) => {
-    const taskKey = taskKeys.detail(projectId, taskId);
-    const graphKey = projectKeys.graph(projectId);
+  const applyOptimisticPatch = useCallback(
+    (patch: TaskPatch) => {
+      const taskKey = taskKeys.detail(projectId, taskId);
+      const graphKey = projectKeys.graph(projectId);
 
-    void queryClient.cancelQueries({ queryKey: taskKey });
-    void queryClient.cancelQueries({ queryKey: graphKey });
+      void queryClient.cancelQueries({ queryKey: taskKey });
+      void queryClient.cancelQueries({ queryKey: graphKey });
 
-    queryClient.setQueryData<TaskFull>(taskKey, (prev) =>
-      prev ? { ...prev, ...patch } : prev,
-    );
-    queryClient.setQueryData<ProjectGraphSlim>(graphKey, (prev) =>
-      prev
-        ? {
-            ...prev,
-            tasks: prev.tasks.map((t) =>
-              t.id === taskId ? { ...t, ...patch } : t,
-            ),
-          }
-        : prev,
-    );
-  }, [projectId, taskId, queryClient]);
+      queryClient.setQueryData<TaskFull>(taskKey, (prev) =>
+        prev ? { ...prev, ...patch } : prev,
+      );
+      queryClient.setQueryData<ProjectGraphSlim>(graphKey, (prev) =>
+        prev
+          ? {
+              ...prev,
+              tasks: prev.tasks.map((t) =>
+                t.id === taskId ? { ...t, ...patch } : t,
+              ),
+            }
+          : prev,
+      );
+    },
+    [projectId, taskId, queryClient],
+  );
 
-  const handleRestoreStatus = useCallback(async (prev: TaskStatus) => {
-    applyOptimisticPatch({ status: prev });
-    try {
-      await updateTask(taskId, { status: prev });
-    } finally {
-      onGraphChange?.();
-    }
-  }, [taskId, applyOptimisticPatch, onGraphChange]);
+  const handleRestoreStatus = useCallback(
+    async (prev: TaskStatus) => {
+      applyOptimisticPatch({ status: prev });
+      try {
+        await updateTask(taskId, { status: prev });
+      } finally {
+        onGraphChange?.();
+      }
+    },
+    [taskId, applyOptimisticPatch, onGraphChange],
+  );
 
-  const { canUndo: canUndoStatus, push: pushStatusUndo, undo: undoStatus } = useUndo<TaskStatus>({
+  const {
+    canUndo: canUndoStatus,
+    push: pushStatusUndo,
+    undo: undoStatus,
+  } = useUndo<TaskStatus>({
     onUndo: handleRestoreStatus,
     resetOn: taskId,
   });
 
-  const handleStatusChange = useCallback(async (next: TaskStatus) => {
-    if (next === status) return;
-    pushStatusUndo(status);
-    applyOptimisticPatch({ status: next });
-    try {
-      await updateTask(taskId, { status: next });
-    } finally {
-      onGraphChange?.();
-    }
-  }, [taskId, status, pushStatusUndo, applyOptimisticPatch, onGraphChange]);
+  const handleStatusChange = useCallback(
+    async (next: TaskStatus) => {
+      if (next === status) return;
+      pushStatusUndo(status);
+      applyOptimisticPatch({ status: next });
+      try {
+        await updateTask(taskId, { status: next });
+      } finally {
+        onGraphChange?.();
+      }
+    },
+    [taskId, status, pushStatusUndo, applyOptimisticPatch, onGraphChange],
+  );
 
-  const handleCategoryChange = useCallback(async (next: string | null) => {
-    applyOptimisticPatch({ category: next });
-    try {
-      await updateTask(taskId, { category: next });
-    } finally {
-      onGraphChange?.();
-    }
-  }, [taskId, applyOptimisticPatch, onGraphChange]);
+  const handleCategoryChange = useCallback(
+    async (next: string | null) => {
+      applyOptimisticPatch({ category: next });
+      try {
+        await updateTask(taskId, { category: next });
+      } finally {
+        onGraphChange?.();
+      }
+    },
+    [taskId, applyOptimisticPatch, onGraphChange],
+  );
 
-  const handleTagsChange = useCallback(async (next: string[]) => {
-    applyOptimisticPatch({ tags: next });
-    try {
-      await updateTask(taskId, { tags: next }, true);
-    } finally {
-      onGraphChange?.();
-    }
-  }, [taskId, applyOptimisticPatch, onGraphChange]);
+  const handleTagsChange = useCallback(
+    async (next: string[]) => {
+      applyOptimisticPatch({ tags: next });
+      try {
+        await updateTask(taskId, { tags: next }, true);
+      } finally {
+        onGraphChange?.();
+      }
+    },
+    [taskId, applyOptimisticPatch, onGraphChange],
+  );
 
-  const handlePriorityChange = useCallback(async (next: Priority | null) => {
-    applyOptimisticPatch({ priority: next });
-    try {
-      await updateTask(taskId, { priority: next });
-    } finally {
-      onGraphChange?.();
-    }
-  }, [taskId, applyOptimisticPatch, onGraphChange]);
+  const handlePriorityChange = useCallback(
+    async (next: Priority | null) => {
+      applyOptimisticPatch({ priority: next });
+      try {
+        await updateTask(taskId, { priority: next });
+      } finally {
+        onGraphChange?.();
+      }
+    },
+    [taskId, applyOptimisticPatch, onGraphChange],
+  );
 
-  const handleEstimateChange = useCallback(async (next: Estimate | null) => {
-    applyOptimisticPatch({ estimate: next });
-    try {
-      await updateTask(taskId, { estimate: next });
-    } finally {
-      onGraphChange?.();
-    }
-  }, [taskId, applyOptimisticPatch, onGraphChange]);
+  const handleEstimateChange = useCallback(
+    async (next: Estimate | null) => {
+      applyOptimisticPatch({ estimate: next });
+      try {
+        await updateTask(taskId, { estimate: next });
+      } finally {
+        onGraphChange?.();
+      }
+    },
+    [taskId, applyOptimisticPatch, onGraphChange],
+  );
 
   // Optimistic assignee updates: rewrite both the task-detail cache
   // (drives PropRail's trigger + name resolution) and the slim graph
@@ -278,112 +306,149 @@ export function PropRail({
   const pendingAssigneeWritesRef = useRef(0);
   const latestAssigneeIntentRef = useRef<string[] | null>(null);
 
-  const applyAssigneesOptimistically = useCallback((nextUserIds: string[]) => {
-    const taskKey = taskKeys.detail(projectId, taskId);
-    const graphKey = projectKeys.graph(projectId);
+  const applyAssigneesOptimistically = useCallback(
+    (nextUserIds: string[]) => {
+      const taskKey = taskKeys.detail(projectId, taskId);
+      const graphKey = projectKeys.graph(projectId);
 
-    // Resolve the new assignee projection from the team-members cache. If
-    // the cache is cold (graph-rooted entry, picker opened before the
-    // query resolved), `getQueryData` returns undefined; the safe fall
-    // back is to keep `prev.assignees` for unresolved ids so a cold cache
-    // cannot drop an assignee.
-    const cachedMembers =
-      queryClient.getQueryData<MemberView[]>(teamKeys.members(organizationId));
-    const memberById = new Map((cachedMembers ?? []).map((m) => [m.userId, m]));
+      // Resolve the new assignee projection from the team-members cache. If
+      // the cache is cold (graph-rooted entry, picker opened before the
+      // query resolved), `getQueryData` returns undefined; the safe fall
+      // back is to keep `prev.assignees` for unresolved ids so a cold cache
+      // cannot drop an assignee.
+      const cachedMembers = queryClient.getQueryData<MemberView[]>(
+        teamKeys.members(organizationId),
+      );
+      const memberById = new Map(
+        (cachedMembers ?? []).map((m) => [m.userId, m]),
+      );
 
-    queryClient.setQueryData<TaskFull>(taskKey, (prev) => {
-      if (!prev) return prev;
-      const prevById = new Map(prev.assignees.map((a) => [a.userId, a]));
-      const nextAssignees: AssigneeRef[] = nextUserIds
-        .map((id) => {
-          const fromCache = memberById.get(id);
-          if (fromCache) {
-            return { userId: fromCache.userId, name: fromCache.name, email: fromCache.email };
+      queryClient.setQueryData<TaskFull>(taskKey, (prev) => {
+        if (!prev) return prev;
+        const prevById = new Map(prev.assignees.map((a) => [a.userId, a]));
+        const nextAssignees: AssigneeRef[] = nextUserIds
+          .map((id) => {
+            const fromCache = memberById.get(id);
+            if (fromCache) {
+              return {
+                userId: fromCache.userId,
+                name: fromCache.name,
+                email: fromCache.email,
+              };
+            }
+            return prevById.get(id);
+          })
+          .filter((a): a is AssigneeRef => a !== undefined)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        return { ...prev, assignees: nextAssignees };
+      });
+      queryClient.setQueryData<ProjectGraphSlim>(graphKey, (prev) =>
+        prev
+          ? {
+              ...prev,
+              tasks: prev.tasks.map((t) =>
+                t.id === taskId
+                  ? {
+                      ...t,
+                      assigneeUserIds: nextUserIds,
+                      assigneeCount: nextUserIds.length,
+                    }
+                  : t,
+              ),
+            }
+          : prev,
+      );
+    },
+    [projectId, taskId, organizationId, queryClient],
+  );
+
+  const handleAssigneesChange = useCallback(
+    (nextUserIds: string[]) => {
+      const taskKey = taskKeys.detail(projectId, taskId);
+      const graphKey = projectKeys.graph(projectId);
+
+      // Track latest user intent — re-applied after each mutation lands so
+      // an SSE-driven refetch that completed mid-chain can't reveal an
+      // intermediate server state.
+      latestAssigneeIntentRef.current = nextUserIds;
+
+      // Cancel any in-flight refetch — `RealtimeBridge` may have invalidated
+      // the query from a previous mutation's SSE event, and the resulting
+      // refetch is currently in flight. Without cancellation, that refetch
+      // can complete after our `setQueryData` below and overwrite it.
+      void queryClient.cancelQueries({ queryKey: taskKey });
+      void queryClient.cancelQueries({ queryKey: graphKey });
+
+      applyAssigneesOptimistically(nextUserIds);
+
+      pendingAssigneeWritesRef.current += 1;
+      const myTurn = assigneeMutationChainRef.current.then(async () => {
+        try {
+          // Skip when newer clicks have queued after this step —
+          // `overwriteArrays=true` makes the later write a complete superset
+          // so this intermediate call is redundant, and dropping it reduces
+          // the SSE storm that drives race #2 above.
+          if (pendingAssigneeWritesRef.current > 1) return;
+          await updateTask(taskId, { assigneeIds: nextUserIds }, true);
+        } finally {
+          pendingAssigneeWritesRef.current -= 1;
+          if (pendingAssigneeWritesRef.current === 0) {
+            // Final mutation drained — let the broker-triggered refetch sync
+            // the server's settled view back in.
+            latestAssigneeIntentRef.current = null;
+            onGraphChange?.();
+          } else {
+            // More clicks queued: an SSE event from this step's response is
+            // about to (or already has) triggered an invalidating refetch
+            // that would land an intermediate snapshot on the cache. Cancel
+            // it and re-apply the latest intent so the trigger stays at the
+            // user's latest selection.
+            void queryClient.cancelQueries({ queryKey: taskKey });
+            void queryClient.cancelQueries({ queryKey: graphKey });
+            const latest = latestAssigneeIntentRef.current;
+            if (latest !== null) applyAssigneesOptimistically(latest);
           }
-          return prevById.get(id);
-        })
-        .filter((a): a is AssigneeRef => a !== undefined)
-        .sort((a, b) => a.name.localeCompare(b.name));
-      return { ...prev, assignees: nextAssignees };
-    });
-    queryClient.setQueryData<ProjectGraphSlim>(graphKey, (prev) =>
-      prev
-        ? {
-            ...prev,
-            tasks: prev.tasks.map((t) =>
-              t.id === taskId
-                ? { ...t, assigneeUserIds: nextUserIds, assigneeCount: nextUserIds.length }
-                : t,
-            ),
-          }
-        : prev,
-    );
-  }, [projectId, taskId, organizationId, queryClient]);
-
-  const handleAssigneesChange = useCallback((nextUserIds: string[]) => {
-    const taskKey = taskKeys.detail(projectId, taskId);
-    const graphKey = projectKeys.graph(projectId);
-
-    // Track latest user intent — re-applied after each mutation lands so
-    // an SSE-driven refetch that completed mid-chain can't reveal an
-    // intermediate server state.
-    latestAssigneeIntentRef.current = nextUserIds;
-
-    // Cancel any in-flight refetch — `RealtimeBridge` may have invalidated
-    // the query from a previous mutation's SSE event, and the resulting
-    // refetch is currently in flight. Without cancellation, that refetch
-    // can complete after our `setQueryData` below and overwrite it.
-    void queryClient.cancelQueries({ queryKey: taskKey });
-    void queryClient.cancelQueries({ queryKey: graphKey });
-
-    applyAssigneesOptimistically(nextUserIds);
-
-    pendingAssigneeWritesRef.current += 1;
-    const myTurn = assigneeMutationChainRef.current.then(async () => {
-      try {
-        // Skip when newer clicks have queued after this step —
-        // `overwriteArrays=true` makes the later write a complete superset
-        // so this intermediate call is redundant, and dropping it reduces
-        // the SSE storm that drives race #2 above.
-        if (pendingAssigneeWritesRef.current > 1) return;
-        await updateTask(taskId, { assigneeIds: nextUserIds }, true);
-      } finally {
-        pendingAssigneeWritesRef.current -= 1;
-        if (pendingAssigneeWritesRef.current === 0) {
-          // Final mutation drained — let the broker-triggered refetch sync
-          // the server's settled view back in.
-          latestAssigneeIntentRef.current = null;
-          onGraphChange?.();
-        } else {
-          // More clicks queued: an SSE event from this step's response is
-          // about to (or already has) triggered an invalidating refetch
-          // that would land an intermediate snapshot on the cache. Cancel
-          // it and re-apply the latest intent so the trigger stays at the
-          // user's latest selection.
-          void queryClient.cancelQueries({ queryKey: taskKey });
-          void queryClient.cancelQueries({ queryKey: graphKey });
-          const latest = latestAssigneeIntentRef.current;
-          if (latest !== null) applyAssigneesOptimistically(latest);
         }
-      }
-    });
-    assigneeMutationChainRef.current = myTurn.catch(() => {});
-    return myTurn;
-  }, [projectId, taskId, queryClient, onGraphChange, applyAssigneesOptimistically]);
+      });
+      assigneeMutationChainRef.current = myTurn.catch(() => {});
+      return myTurn;
+    },
+    [
+      projectId,
+      taskId,
+      queryClient,
+      onGraphChange,
+      applyAssigneesOptimistically,
+    ],
+  );
 
   return (
     <aside
       className="flex h-full min-h-0 flex-col overflow-y-auto border-l border-border bg-base"
-      style={{ width: 'var(--rail-w)' }}
+      style={{ width: "var(--rail-w)" }}
     >
       <div className="space-y-5 p-4">
-        <RailGroup label="Properties" trailing={<UndoButton canUndo={canUndoStatus} onUndo={undoStatus} />}>
-          <RailRow icon={<StatusGlyph status={status} size={11} />} label="Status">
-            <StatusDropdown status={status} onChange={handleStatusChange} align="end" />
+        <RailGroup
+          label="Properties"
+          trailing={<UndoButton canUndo={canUndoStatus} onUndo={undoStatus} />}
+        >
+          <RailRow
+            icon={<StatusGlyph status={status} size={11} />}
+            label="Status"
+          >
+            <StatusDropdown
+              status={status}
+              onChange={handleStatusChange}
+              align="end"
+            />
           </RailRow>
 
           <RailRow icon={<IconFlag size={11} />} label="Priority">
-            <PriorityDropdown priority={priority} onChange={handlePriorityChange} align="end" />
+            <PriorityDropdown
+              priority={priority}
+              onChange={handlePriorityChange}
+              align="end"
+            />
           </RailRow>
 
           <RailRow icon={<IconUser size={11} />} label="Assignees">
@@ -404,22 +469,43 @@ export function PropRail({
           </RailRow>
 
           <RailRow icon={<IconClock size={11} />} label="Estimate">
-            <EstimateDropdown estimate={estimate} onChange={handleEstimateChange} align="end" />
+            <EstimateDropdown
+              estimate={estimate}
+              onChange={handleEstimateChange}
+              align="end"
+            />
           </RailRow>
 
           <RailRow icon={<IconBranch size={11} />} label="Project">
-            <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-text-primary" title={projectName}>
-              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-sm" style={{ background: projectColor(projectIdentifier) }} />
+            <span
+              className="flex min-w-0 items-center gap-1.5 text-[12px] text-text-primary"
+              title={projectName}
+            >
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 shrink-0 rounded-sm"
+                style={{ background: projectColor(projectIdentifier) }}
+              />
               <span className="min-w-0 truncate">{projectName}</span>
             </span>
           </RailRow>
         </RailGroup>
 
-        <RailGroup label="Tags" count={tags.length > 0 ? tags.length : undefined}>
-          <TagsEditor tags={tags} vocabulary={projectTags} onChange={handleTagsChange} />
+        <RailGroup
+          label="Tags"
+          count={tags.length > 0 ? tags.length : undefined}
+        >
+          <TagsEditor
+            tags={tags}
+            vocabulary={projectTags}
+            onChange={handleTagsChange}
+          />
         </RailGroup>
 
-        <RailGroup label="Dependencies" count={totalDeps > 0 ? totalDeps : undefined}>
+        <RailGroup
+          label="Dependencies"
+          count={totalDeps > 0 ? totalDeps : undefined}
+        >
           <DepGroup
             kind="depends"
             label="Depends on"
@@ -436,7 +522,10 @@ export function PropRail({
           />
         </RailGroup>
 
-        <RailGroup label="Files touched" count={files.length > 0 ? files.length : undefined}>
+        <RailGroup
+          label="Files touched"
+          count={files.length > 0 ? files.length : undefined}
+        >
           {files.length > 0 ? (
             <ul className="space-y-1">
               {files.map((path) => (
@@ -444,7 +533,9 @@ export function PropRail({
               ))}
             </ul>
           ) : (
-            <p className="font-mono text-[11px] italic text-text-muted">No files yet.</p>
+            <p className="font-mono text-[11px] italic text-text-muted">
+              No files yet.
+            </p>
           )}
         </RailGroup>
       </div>
@@ -458,7 +549,7 @@ interface StatusDropdownProps {
   /** Update the status. */
   onChange: (next: TaskStatus) => void;
   /** Panel anchor side — defaults to `start`. */
-  align?: 'start' | 'end';
+  align?: "start" | "end";
 }
 
 /**
@@ -468,16 +559,21 @@ interface StatusDropdownProps {
  * @param props - Dropdown props.
  * @returns Anchored dropdown element.
  */
-function StatusDropdown({ status, onChange, align = 'start' }: StatusDropdownProps) {
+function StatusDropdown({
+  status,
+  onChange,
+  align = "start",
+}: StatusDropdownProps) {
   const options = useMemo(
-    () => STATUS_OPTIONS.map((s) => {
-      const meta = STATUS_META[s] ?? STATUS_META.draft;
-      return {
-        value: s,
-        label: meta.label,
-        leading: <StatusGlyph status={s} size={11} />,
-      };
-    }),
+    () =>
+      STATUS_OPTIONS.map((s) => {
+        const meta = STATUS_META[s] ?? STATUS_META.draft;
+        return {
+          value: s,
+          label: meta.label,
+          leading: <StatusGlyph status={s} size={11} />,
+        };
+      }),
     [],
   );
 
@@ -502,7 +598,11 @@ function StatusDropdown({ status, onChange, align = 'start' }: StatusDropdownPro
           >
             <StatusGlyph status={active?.value ?? status} size={10} />
             {meta.label}
-            <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+            <span
+              aria-hidden="true"
+              className="opacity-70 transition-transform"
+              style={{ transform: open ? "rotate(180deg)" : "none" }}
+            >
               <IconChevronDown size={9} />
             </span>
           </span>
@@ -520,7 +620,7 @@ interface CategoryDropdownProps {
   /** Update the category. */
   onChange: (next: string | null) => void;
   /** Panel anchor side — defaults to `start`. */
-  align?: 'start' | 'end';
+  align?: "start" | "end";
 }
 
 /**
@@ -531,17 +631,26 @@ interface CategoryDropdownProps {
  * @param props - Dropdown props.
  * @returns Anchored dropdown element.
  */
-function CategoryDropdown({ category, categories, onChange, align = 'start' }: CategoryDropdownProps) {
+function CategoryDropdown({
+  category,
+  categories,
+  onChange,
+  align = "start",
+}: CategoryDropdownProps) {
   const options = useMemo(() => {
     const items: { value: string; label: string }[] = [
-      { value: SENTINEL_CLEAR, label: 'Uncategorized' },
+      { value: SENTINEL_CLEAR, label: "Uncategorized" },
     ];
     for (const cat of categories) items.push({ value: cat, label: cat });
     return items;
   }, [categories]);
 
   if (categories.length === 0 && !category) {
-    return <PlaceholderValue title="No project categories yet"><span>—</span></PlaceholderValue>;
+    return (
+      <PlaceholderValue title="No project categories yet">
+        <span>—</span>
+      </PlaceholderValue>
+    );
   }
 
   const selected = category ?? SENTINEL_CLEAR;
@@ -559,12 +668,16 @@ function CategoryDropdown({ category, categories, onChange, align = 'start' }: C
         <span
           className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[11px] font-medium transition-colors ${
             category
-              ? 'bg-accent/10 text-accent-light'
-              : 'border border-dashed border-border-strong text-text-muted/70'
+              ? "bg-accent/10 text-accent-light"
+              : "border border-dashed border-border-strong text-text-muted/70"
           }`}
         >
-          {category ?? 'Uncategorized'}
-          <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+          {category ?? "Uncategorized"}
+          <span
+            aria-hidden="true"
+            className="opacity-70 transition-transform"
+            style={{ transform: open ? "rotate(180deg)" : "none" }}
+          >
             <IconChevronDown size={9} />
           </span>
         </span>
@@ -657,7 +770,7 @@ interface TagAddProps {
  */
 function TagAdd({ vocabulary, active, onToggle, onCreate }: TagAddProps) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const wrapRef = useRef<HTMLSpanElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -666,30 +779,36 @@ function TagAdd({ vocabulary, active, onToggle, onCreate }: TagAddProps) {
   // effect to keep setState out of the effect body.
   const close = useCallback(() => {
     setOpen(false);
-    setQuery('');
+    setQuery("");
   }, []);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) close();
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
+        close();
     };
     const escape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
+      if (e.key === "Escape") close();
     };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('keydown', escape);
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", escape);
     const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 30);
     return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('keydown', escape);
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", escape);
       window.clearTimeout(focusTimer);
     };
   }, [open, close]);
 
   const q = query.trim().toLowerCase();
-  const sorted = useMemo(() => [...vocabulary].sort((a, b) => a.localeCompare(b)), [vocabulary]);
-  const filtered = q ? sorted.filter((t) => t.toLowerCase().includes(q)) : sorted;
+  const sorted = useMemo(
+    () => [...vocabulary].sort((a, b) => a.localeCompare(b)),
+    [vocabulary],
+  );
+  const filtered = q
+    ? sorted.filter((t) => t.toLowerCase().includes(q))
+    : sorted;
   const exact = q && sorted.some((t) => t.toLowerCase() === q);
   const canCreate = q && !exact;
 
@@ -713,7 +832,7 @@ function TagAdd({ vocabulary, active, onToggle, onCreate }: TagAddProps) {
             initial={{ opacity: 0, y: -4, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.11, ease: 'easeOut' }}
+            transition={{ duration: 0.11, ease: "easeOut" }}
             className="absolute right-0 top-full z-30 mt-1 w-[200px] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-float"
           >
             <div className="border-b border-border bg-base p-1.5">
@@ -723,12 +842,16 @@ function TagAdd({ vocabulary, active, onToggle, onCreate }: TagAddProps) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && canCreate) {
+                  if (e.key === "Enter" && canCreate) {
                     onCreate(query);
-                    setQuery('');
+                    setQuery("");
                   }
                 }}
-                placeholder={vocabulary.length > 0 ? 'Search or create tag…' : 'Create a tag…'}
+                placeholder={
+                  vocabulary.length > 0
+                    ? "Search or create tag…"
+                    : "Create a tag…"
+                }
                 className="w-full bg-transparent px-1 font-mono text-[11px] text-text-primary placeholder:text-text-muted/50 outline-none"
               />
             </div>
@@ -748,20 +871,38 @@ function TagAdd({ vocabulary, active, onToggle, onCreate }: TagAddProps) {
                     aria-selected={on}
                     onClick={() => onToggle(tag)}
                     className={`flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left font-mono text-[11px] transition-colors ${
-                      on ? 'bg-accent/10 text-accent-light' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                      on
+                        ? "bg-accent/10 text-accent-light"
+                        : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                     }`}
                   >
                     <span
                       aria-hidden="true"
                       className="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border"
                       style={{
-                        background: on ? 'var(--color-accent-grad)' : 'transparent',
-                        borderColor: on ? 'transparent' : 'var(--color-border-strong)',
+                        background: on
+                          ? "var(--color-accent-grad)"
+                          : "transparent",
+                        borderColor: on
+                          ? "transparent"
+                          : "var(--color-border-strong)",
                       }}
                     >
                       {on && (
-                        <svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true">
-                          <path d="M3 8.5L6.5 12 13 5" stroke="var(--color-base)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                        <svg
+                          width="8"
+                          height="8"
+                          viewBox="0 0 16 16"
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M3 8.5L6.5 12 13 5"
+                            stroke="var(--color-base)"
+                            strokeWidth="2"
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
                         </svg>
                       )}
                     </span>
@@ -774,7 +915,7 @@ function TagAdd({ vocabulary, active, onToggle, onCreate }: TagAddProps) {
                   type="button"
                   onClick={() => {
                     onCreate(query);
-                    setQuery('');
+                    setQuery("");
                   }}
                   className="flex w-full cursor-pointer items-center gap-2 border-t border-border px-2.5 py-1.5 text-left font-mono text-[11px] text-accent-light transition-colors hover:bg-accent/10"
                 >
@@ -811,8 +952,14 @@ function RailGroup({ label, count, trailing, children }: RailGroupProps) {
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted">{label}</span>
-        {count != null && <span className="font-mono text-[10px] tabular-nums text-text-faint">{count}</span>}
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted">
+          {label}
+        </span>
+        {count != null && (
+          <span className="font-mono text-[10px] tabular-nums text-text-faint">
+            {count}
+          </span>
+        )}
         <span className="flex-1" />
         {trailing}
       </div>
@@ -840,10 +987,14 @@ function RailRow({ icon, label, children }: RailRowProps) {
   return (
     <div className="flex items-center gap-2 py-1">
       <span className="inline-flex w-[88px] shrink-0 items-center gap-1.5 text-[12px] text-text-muted">
-        <span aria-hidden="true" className="text-text-faint">{icon}</span>
+        <span aria-hidden="true" className="text-text-faint">
+          {icon}
+        </span>
         {label}
       </span>
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">{children}</span>
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        {children}
+      </span>
     </div>
   );
 }
@@ -864,7 +1015,11 @@ interface PlaceholderValueProps {
  * @param props - Placeholder configuration.
  * @returns Inline-flex span with the slot content.
  */
-function PlaceholderValue({ title, children, className = '' }: PlaceholderValueProps) {
+function PlaceholderValue({
+  title,
+  children,
+  className = "",
+}: PlaceholderValueProps) {
   return (
     <span
       title={title}
@@ -881,7 +1036,7 @@ interface PriorityDropdownProps {
   /** Update the priority (null clears). */
   onChange: (next: Priority | null) => void;
   /** Panel anchor side — defaults to `start`. */
-  align?: 'start' | 'end';
+  align?: "start" | "end";
 }
 
 /**
@@ -893,19 +1048,20 @@ interface PriorityDropdownProps {
  * @param props - Dropdown props.
  * @returns Anchored dropdown element.
  */
-function PriorityDropdown({ priority, onChange, align = 'start' }: PriorityDropdownProps) {
-  const options = useMemo(
-    () => {
-      const items: DropdownItem[] = PRIORITY_DISPLAY_ORDER.map((p) => ({
-        value: p,
-        label: p,
-        leading: <PriorityIcon priority={p} />,
-      }));
-      items.push({ value: SENTINEL_CLEAR, label: 'Clear' });
-      return items;
-    },
-    [],
-  );
+function PriorityDropdown({
+  priority,
+  onChange,
+  align = "start",
+}: PriorityDropdownProps) {
+  const options = useMemo(() => {
+    const items: DropdownItem[] = PRIORITY_DISPLAY_ORDER.map((p) => ({
+      value: p,
+      label: p,
+      leading: <PriorityIcon priority={p} />,
+    }));
+    items.push({ value: SENTINEL_CLEAR, label: "Clear" });
+    return items;
+  }, []);
 
   const selected = priority ?? SENTINEL_CLEAR;
 
@@ -925,7 +1081,11 @@ function PriorityDropdown({ priority, onChange, align = 'start' }: PriorityDropd
             <span className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border-strong px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted/70 transition-colors hover:border-border-stronger hover:text-text-secondary">
               <PriorityIcon priority={null} />
               <span>None</span>
-              <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+              <span
+                aria-hidden="true"
+                className="opacity-70 transition-transform"
+                style={{ transform: open ? "rotate(180deg)" : "none" }}
+              >
                 <IconChevronDown size={9} />
               </span>
             </span>
@@ -942,7 +1102,11 @@ function PriorityDropdown({ priority, onChange, align = 'start' }: PriorityDropd
           >
             <PriorityIcon priority={priority} />
             {priority}
-            <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+            <span
+              aria-hidden="true"
+              className="opacity-70 transition-transform"
+              style={{ transform: open ? "rotate(180deg)" : "none" }}
+            >
               <IconChevronDown size={9} />
             </span>
           </span>
@@ -958,7 +1122,7 @@ interface EstimateDropdownProps {
   /** Update the estimate (null clears). */
   onChange: (next: Estimate | null) => void;
   /** Panel anchor side — defaults to `start`. */
-  align?: 'start' | 'end';
+  align?: "start" | "end";
 }
 
 /**
@@ -968,18 +1132,19 @@ interface EstimateDropdownProps {
  * @param props - Dropdown props.
  * @returns Anchored dropdown element.
  */
-function EstimateDropdown({ estimate, onChange, align = 'start' }: EstimateDropdownProps) {
-  const options = useMemo(
-    () => {
-      const items: DropdownItem[] = ESTIMATE_OPTIONS.map((e) => ({
-        value: String(e),
-        label: `${e} pt`,
-      }));
-      items.push({ value: SENTINEL_CLEAR, label: 'Clear' });
-      return items;
-    },
-    [],
-  );
+function EstimateDropdown({
+  estimate,
+  onChange,
+  align = "start",
+}: EstimateDropdownProps) {
+  const options = useMemo(() => {
+    const items: DropdownItem[] = ESTIMATE_OPTIONS.map((e) => ({
+      value: String(e),
+      label: `${e} pt`,
+    }));
+    items.push({ value: SENTINEL_CLEAR, label: "Clear" });
+    return items;
+  }, []);
 
   const selected = estimate == null ? SENTINEL_CLEAR : String(estimate);
 
@@ -987,7 +1152,9 @@ function EstimateDropdown({ estimate, onChange, align = 'start' }: EstimateDropd
     <Dropdown
       value={selected}
       options={options}
-      onChange={(v) => onChange(v === SENTINEL_CLEAR ? null : (Number(v) as Estimate))}
+      onChange={(v) =>
+        onChange(v === SENTINEL_CLEAR ? null : (Number(v) as Estimate))
+      }
       align={align}
       ariaLabel="Change estimate"
       title="Change estimate"
@@ -997,7 +1164,11 @@ function EstimateDropdown({ estimate, onChange, align = 'start' }: EstimateDropd
           return (
             <span className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border-strong px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted/70 transition-colors hover:border-border-stronger hover:text-text-secondary">
               <span>None</span>
-              <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+              <span
+                aria-hidden="true"
+                className="opacity-70 transition-transform"
+                style={{ transform: open ? "rotate(180deg)" : "none" }}
+              >
                 <IconChevronDown size={9} />
               </span>
             </span>
@@ -1006,10 +1177,14 @@ function EstimateDropdown({ estimate, onChange, align = 'start' }: EstimateDropd
         return (
           <span
             className="inline-flex items-center gap-1.5 rounded-md bg-surface-raised px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-text-primary transition-all hover:brightness-110"
-            style={{ border: '1px solid var(--color-border-strong)' }}
+            style={{ border: "1px solid var(--color-border-strong)" }}
           >
             {estimate} pt
-            <span aria-hidden="true" className="opacity-70 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
+            <span
+              aria-hidden="true"
+              className="opacity-70 transition-transform"
+              style={{ transform: open ? "rotate(180deg)" : "none" }}
+            >
               <IconChevronDown size={9} />
             </span>
           </span>
@@ -1051,14 +1226,22 @@ const ASSIGNEE_POPOVER_HEIGHT_PX = 304;
  * @param props - Picker props.
  * @returns Inline-flex trigger + animated popover.
  */
-function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerProps) {
+function AssigneePicker({
+  organizationId,
+  assignees,
+  onChange,
+}: AssigneePickerProps) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: members, isPending, isError } = useQuery({
+  const {
+    data: members,
+    isPending,
+    isError,
+  } = useQuery({
     queryKey: teamKeys.members(organizationId),
     queryFn: async () => {
       const result = await listTeamMembersAction({ organizationId });
@@ -1075,7 +1258,7 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
   const { anchor } = usePopoverAnchor({
     open,
     triggerRef,
-    align: 'end',
+    align: "end",
     popoverHeight: ASSIGNEE_POPOVER_HEIGHT_PX,
   });
 
@@ -1085,7 +1268,7 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
   // setState out of the effect body.
   const close = useCallback(() => {
     setOpen(false);
-    setQuery('');
+    setQuery("");
   }, []);
 
   useEffect(() => {
@@ -1096,14 +1279,14 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
       if (!inTrigger && !inPopover) close();
     };
     const escape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
+      if (e.key === "Escape") close();
     };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('keydown', escape);
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", escape);
     const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 30);
     return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('keydown', escape);
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", escape);
       window.clearTimeout(focusTimer);
     };
   }, [open, close]);
@@ -1140,26 +1323,30 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
   const filtered = useMemo(() => {
     if (!members) return [] as MemberView[];
     if (!q) return members;
-    return members.filter((m) =>
-      m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q),
+    return members.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q),
     );
   }, [members, q]);
 
-  const toggleMember = useCallback(async (userId: string) => {
-    const next = new Set(selectedIdsRef.current);
-    if (next.has(userId)) next.delete(userId);
-    else next.add(userId);
-    selectedIdsRef.current = next;
-    setSelectedIds(next);
+  const toggleMember = useCallback(
+    async (userId: string) => {
+      const next = new Set(selectedIdsRef.current);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      selectedIdsRef.current = next;
+      setSelectedIds(next);
 
-    pendingMutationsRef.current += 1;
-    try {
-      await Promise.resolve(onChange([...next]));
-    } finally {
-      pendingMutationsRef.current -= 1;
-      if (pendingMutationsRef.current === 0) setDrainTick((t) => t + 1);
-    }
-  }, [onChange]);
+      pendingMutationsRef.current += 1;
+      try {
+        await Promise.resolve(onChange([...next]));
+      } finally {
+        pendingMutationsRef.current -= 1;
+        if (pendingMutationsRef.current === 0) setDrainTick((t) => t + 1);
+      }
+    },
+    [onChange],
+  );
 
   // Pre-sort the trigger avatars by name so they match `TaskRow`'s avatar
   // stack and the server-returned ordering. `assignees` already arrives
@@ -1176,7 +1363,7 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
   // Flip direction drives both the panel positioning and the enter/exit
   // y-translate so the popover slides toward its anchored edge instead of
   // away from it.
-  const flipped = anchor?.vertical === 'above';
+  const flipped = anchor?.vertical === "above";
   const popoverStyle = anchor ? popoverFixedStyle(anchor) : null;
 
   return (
@@ -1187,7 +1374,9 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
         onClick={() => (open ? close() : setOpen(true))}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={sortedAssignees.length === 0 ? 'Add assignees' : 'Edit assignees'}
+        title={
+          sortedAssignees.length === 0 ? "Add assignees" : "Edit assignees"
+        }
         className="inline-flex cursor-pointer items-center justify-end gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-surface-hover"
       >
         {sortedAssignees.length === 0 ? (
@@ -1207,7 +1396,10 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
             {visibleAssignees.map((a, i) => {
               const isLastVisible = i === visibleAssignees.length - 1;
               return (
-                <span key={a.userId} className={`relative ${i === 0 ? '' : '-ml-2'}`}>
+                <span
+                  key={a.userId}
+                  className={`relative ${i === 0 ? "" : "-ml-2"}`}
+                >
                   <Avatar name={a.name} size={18} />
                   {isLastVisible && overflowAssignees > 0 && (
                     <span
@@ -1224,105 +1416,129 @@ function AssigneePicker({ organizationId, assignees, onChange }: AssigneePickerP
         )}
       </button>
 
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {open && popoverStyle && (
-            <motion.div
-              ref={popoverRef}
-              role="listbox"
-              aria-multiselectable="true"
-              initial={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
-              transition={{ duration: 0.11, ease: 'easeOut' }}
-              style={popoverStyle}
-              className="z-50 w-[240px] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-float"
-            >
-              <div className="border-b border-border bg-base p-2">
-                <div className="flex items-center gap-1.5 rounded-md px-2 py-1.5">
-                  <span aria-hidden="true" className="text-text-muted">
-                    <IconSearch size={11} />
-                  </span>
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search teammates…"
-                    className="w-full bg-transparent px-1.5 py-1 font-mono text-[11px] text-text-primary placeholder:text-text-muted/60 outline-none"
-                  />
-                </div>
-              </div>
-              <div className="max-h-[260px] overflow-y-auto py-1">
-                {isPending && (
-                  <div className="space-y-1 px-1.5 py-1">
-                    {[0, 1, 2].map((i) => (
-                      <span key={i} className="block h-7 animate-pulse rounded bg-surface-hover" />
-                    ))}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {open && popoverStyle && (
+              <motion.div
+                ref={popoverRef}
+                role="listbox"
+                aria-multiselectable="true"
+                initial={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
+                transition={{ duration: 0.11, ease: "easeOut" }}
+                style={popoverStyle}
+                className="z-50 w-[240px] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-float"
+              >
+                <div className="border-b border-border bg-base p-2">
+                  <div className="flex items-center gap-1.5 rounded-md px-2 py-1.5">
+                    <span aria-hidden="true" className="text-text-muted">
+                      <IconSearch size={11} />
+                    </span>
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Search teammates…"
+                      className="w-full bg-transparent px-1.5 py-1 font-mono text-[11px] text-text-primary placeholder:text-text-muted/60 outline-none"
+                    />
                   </div>
-                )}
-                {isError && (
-                  <p className="px-2.5 py-1.5 font-mono text-[11px] italic text-text-muted">
-                    Failed to load team members.
-                  </p>
-                )}
-                {!isPending && !isError && filtered.length === 0 && (
-                  <p className="px-2.5 py-1.5 font-mono text-[11px] italic text-text-muted">
-                    No matches.
-                  </p>
-                )}
-                {!isPending && !isError && filtered.map((m) => {
-                  const on = selectedIds.has(m.userId);
-                  return (
-                    <button
-                      key={m.userId}
-                      type="button"
-                      role="option"
-                      aria-selected={on}
-                      onClick={() => toggleMember(m.userId)}
-                      className={`flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left transition-colors ${
-                        on ? 'bg-accent/10' : 'hover:bg-surface-hover'
-                      }`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border"
-                        style={{
-                          background: on ? 'var(--color-accent-grad)' : 'transparent',
-                          borderColor: on ? 'transparent' : 'var(--color-border-strong)',
-                        }}
-                      >
-                        {on && (
-                          <svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true">
-                            <path d="M3 8.5L6.5 12 13 5" stroke="var(--color-base)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </span>
-                      <Avatar name={m.name} size={22} />
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className={`truncate text-[12px] ${on ? 'text-accent-light' : 'text-text-primary'}`}>
-                          {m.name}
-                        </span>
-                        <span className="truncate font-mono text-[10px] text-text-muted">
-                          {m.email}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
+                </div>
+                <div className="max-h-[260px] overflow-y-auto py-1">
+                  {isPending && (
+                    <div className="space-y-1 px-1.5 py-1">
+                      {[0, 1, 2].map((i) => (
+                        <span
+                          key={i}
+                          className="block h-7 animate-pulse rounded bg-surface-hover"
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {isError && (
+                    <p className="px-2.5 py-1.5 font-mono text-[11px] italic text-text-muted">
+                      Failed to load team members.
+                    </p>
+                  )}
+                  {!isPending && !isError && filtered.length === 0 && (
+                    <p className="px-2.5 py-1.5 font-mono text-[11px] italic text-text-muted">
+                      No matches.
+                    </p>
+                  )}
+                  {!isPending &&
+                    !isError &&
+                    filtered.map((m) => {
+                      const on = selectedIds.has(m.userId);
+                      return (
+                        <button
+                          key={m.userId}
+                          type="button"
+                          role="option"
+                          aria-selected={on}
+                          onClick={() => toggleMember(m.userId)}
+                          className={`flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left transition-colors ${
+                            on ? "bg-accent/10" : "hover:bg-surface-hover"
+                          }`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border"
+                            style={{
+                              background: on
+                                ? "var(--color-accent-grad)"
+                                : "transparent",
+                              borderColor: on
+                                ? "transparent"
+                                : "var(--color-border-strong)",
+                            }}
+                          >
+                            {on && (
+                              <svg
+                                width="8"
+                                height="8"
+                                viewBox="0 0 16 16"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  d="M3 8.5L6.5 12 13 5"
+                                  stroke="var(--color-base)"
+                                  strokeWidth="2"
+                                  fill="none"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            )}
+                          </span>
+                          <Avatar name={m.name} size={22} />
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span
+                              className={`truncate text-[12px] ${on ? "text-accent-light" : "text-text-primary"}`}
+                            >
+                              {m.name}
+                            </span>
+                            <span className="truncate font-mono text-[10px] text-text-muted">
+                              {m.email}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </>
   );
 }
 
 interface DepGroupProps {
   /** Edge type — drives the dot colour. */
-  kind: 'depends' | 'relates';
+  kind: "depends" | "relates";
   /** Section label. */
   label: string;
   /** Edge entries. */
@@ -1339,7 +1555,13 @@ interface DepGroupProps {
  * @param props - Group configuration.
  * @returns Sub-group element.
  */
-function DepGroup({ kind, label, items, taskMap, onSelectNode }: DepGroupProps) {
+function DepGroup({
+  kind,
+  label,
+  items,
+  taskMap,
+  onSelectNode,
+}: DepGroupProps) {
   if (items.length === 0) return null;
   return (
     <div className="mb-3 last:mb-0">
@@ -1347,10 +1569,17 @@ function DepGroup({ kind, label, items, taskMap, onSelectNode }: DepGroupProps) 
         <span
           aria-hidden="true"
           className="inline-block h-2 w-2 rounded-sm"
-          style={{ background: kind === 'depends' ? 'var(--color-depends)' : 'var(--color-relates)' }}
+          style={{
+            background:
+              kind === "depends"
+                ? "var(--color-depends)"
+                : "var(--color-relates)",
+          }}
         />
         <span className="text-[11px] text-text-muted">{label}</span>
-        <span className="font-mono text-[10px] tabular-nums text-text-faint">{items.length}</span>
+        <span className="font-mono text-[10px] tabular-nums text-text-faint">
+          {items.length}
+        </span>
       </div>
       <ul className="space-y-px">
         {items.map(({ edgeId, otherId }) => {
@@ -1411,7 +1640,11 @@ function FileChip({ path }: FileChipProps) {
  * @returns Markdown sub-line.
  */
 export function EdgeNote({ note }: { note: string }) {
-  return <Markdown className="mt-0.5 pl-1 text-[11px] leading-tight text-text-muted">{note}</Markdown>;
+  return (
+    <Markdown className="mt-0.5 pl-1 text-[11px] leading-tight text-text-muted">
+      {note}
+    </Markdown>
+  );
 }
 
 export default PropRail;

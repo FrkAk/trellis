@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import type { CSSProperties } from 'react';
+import type { CSSProperties } from "react";
 
 /**
  * Stable hue palette per category — same string maps to the same hue across
@@ -22,7 +22,7 @@ export const CATEGORY_HUES: readonly number[] = [
 export function hashString(input: string): number {
   let h = 0;
   for (let i = 0; i < input.length; i += 1) {
-    h = ((h * 31) + input.charCodeAt(i)) | 0;
+    h = (h * 31 + input.charCodeAt(i)) | 0;
   }
   return Math.abs(h);
 }
@@ -34,7 +34,9 @@ export function hashString(input: string): number {
  * @returns HSL hue value in degrees.
  */
 export function getCategoryHue(name: string): number {
-  return CATEGORY_HUES[hashString(name) % CATEGORY_HUES.length] ?? CATEGORY_HUES[0]!;
+  return (
+    CATEGORY_HUES[hashString(name) % CATEGORY_HUES.length] ?? CATEGORY_HUES[0]!
+  );
 }
 
 interface CategoryDotProps {
@@ -58,7 +60,7 @@ export function CategoryDot({ name }: CategoryDotProps) {
   return (
     <span
       className="category-dot"
-      style={{ '--category-hue': String(hue) } as CSSProperties}
+      style={{ "--category-hue": String(hue) } as CSSProperties}
       aria-label={`Category: ${name}`}
       title={name}
     >

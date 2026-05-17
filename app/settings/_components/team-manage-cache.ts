@@ -10,9 +10,9 @@
  * reload (module re-eval) and on tab close.
  */
 
-import type { MemberView } from '@/lib/actions/team-members-map';
-import type { InvitationView } from '@/lib/actions/team-invitations-map';
-import type { InviteCodeMetadata } from '@/lib/actions/team-invite-code';
+import type { MemberView } from "@/lib/actions/team-members-map";
+import type { InvitationView } from "@/lib/actions/team-invitations-map";
+import type { InviteCodeMetadata } from "@/lib/actions/team-invite-code";
 
 /** Fresh-window beyond which the cache is shown but a background refetch fires. */
 const FRESH_WINDOW_MS = 30_000;

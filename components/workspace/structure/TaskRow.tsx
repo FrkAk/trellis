@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { memo, useMemo } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { CategoryDot } from '@/components/shared/CategoryDot';
-import { IconTrash } from '@/components/shared/icons';
-import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
-import { PriorityIcon } from '@/components/shared/PriorityIcon';
-import { StatusGlyph } from '@/components/shared/StatusGlyph';
-import type { Priority, TaskStatus } from '@/lib/types';
-import type { MemberView } from '@/lib/actions/team-members-map';
-import { DeleteConfirm } from './DeleteConfirm';
+import { memo, useMemo } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { CategoryDot } from "@/components/shared/CategoryDot";
+import { IconTrash } from "@/components/shared/icons";
+import { MonoId, type MonoIdTone } from "@/components/shared/MonoId";
+import { PriorityIcon } from "@/components/shared/PriorityIcon";
+import { StatusGlyph } from "@/components/shared/StatusGlyph";
+import type { Priority, TaskStatus } from "@/lib/types";
+import type { MemberView } from "@/lib/actions/team-members-map";
+import { DeleteConfirm } from "./DeleteConfirm";
 
 interface TaskRowProps {
   /** Task UUID — used as React key by the parent. */
@@ -76,9 +76,9 @@ interface TaskRowProps {
  * @returns Tailwind class string for the title span.
  */
 function titleClass(status: TaskStatus): string {
-  if (status === 'cancelled') return 'text-text-muted line-through';
-  if (status === 'done') return 'text-text-muted';
-  return 'text-text-primary';
+  if (status === "cancelled") return "text-text-muted line-through";
+  if (status === "done") return "text-text-muted";
+  return "text-text-primary";
 }
 
 /**
@@ -113,7 +113,7 @@ function TaskRowImpl({
 }: TaskRowProps) {
   const handleClick = () => onSelect(id);
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onSelect(id);
     }
@@ -129,39 +129,45 @@ function TaskRowImpl({
       data-task-ref={taskRef}
       className={`group relative flex h-[34px] cursor-pointer items-center gap-2.5 border-b border-border pl-4 pr-3 transition-colors duration-100 ${
         selected
-          ? 'bg-[color-mix(in_srgb,var(--color-accent)_6%,transparent)]'
-          : 'hover:bg-surface-raised/40'
+          ? "bg-[color-mix(in_srgb,var(--color-accent)_6%,transparent)]"
+          : "hover:bg-surface-raised/40"
       }`}
     >
       {selected && (
-        <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[2px]" style={{ background: 'var(--color-accent-grad)' }} />
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 w-[2px]"
+          style={{ background: "var(--color-accent-grad)" }}
+        />
       )}
 
       {(() => {
         const stage =
-          isPlannable && status === 'draft'
-            ? 'plannable'
-            : isReady && status === 'planned'
-              ? 'ready'
+          isPlannable && status === "draft"
+            ? "plannable"
+            : isReady && status === "planned"
+              ? "ready"
               : status;
         return (
           <>
             <StatusGlyph
               status={stage}
               size={14}
-              className={status === 'in_progress' ? 'status-pulse' : undefined}
+              className={status === "in_progress" ? "status-pulse" : undefined}
             />
 
             <MonoId
               id={taskRef}
-              dim={status === 'done' || status === 'cancelled'}
+              dim={status === "done" || status === "cancelled"}
               tone={stage as MonoIdTone}
             />
           </>
         );
       })()}
 
-      <span className={`min-w-0 flex-1 truncate text-[13px] font-medium ${titleClass(status)}`}>
+      <span
+        className={`min-w-0 flex-1 truncate text-[13px] font-medium ${titleClass(status)}`}
+      >
         {title}
       </span>
 
@@ -188,21 +194,27 @@ function TaskRowImpl({
         <span
           className={`absolute inset-y-0 right-1.5 flex items-center pl-6 transition-opacity duration-150 ${
             confirming
-              ? 'pointer-events-auto opacity-100'
-              : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
           }`}
           style={{
             background: selected
-              ? 'linear-gradient(to left, color-mix(in srgb, var(--color-accent) 6%, var(--color-base)) 50%, transparent 100%)'
-              : 'linear-gradient(to left, var(--color-base) 50%, transparent 100%)',
+              ? "linear-gradient(to left, color-mix(in srgb, var(--color-accent) 6%, var(--color-base)) 50%, transparent 100%)"
+              : "linear-gradient(to left, var(--color-base) 50%, transparent 100%)",
           }}
         >
           {confirming && onConfirmDelete && onCancelDelete ? (
-            <DeleteConfirm onConfirm={() => onConfirmDelete(id)} onCancel={onCancelDelete} />
+            <DeleteConfirm
+              onConfirm={() => onConfirmDelete(id)}
+              onCancel={onCancelDelete}
+            />
           ) : (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onRequestDelete(id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestDelete(id);
+              }}
               className="cursor-pointer rounded p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-danger"
               aria-label={`Delete ${taskRef}`}
               title={`Delete ${taskRef}`}
@@ -227,7 +239,7 @@ export const TaskRow = memo(TaskRowImpl);
 
 interface DepsHintProps {
   /** `up` for upstream `depends_on`, `down` for downstream. */
-  icon: 'up' | 'down';
+  icon: "up" | "down";
   /** Edge count to render. */
   count: number;
 }
@@ -241,9 +253,17 @@ interface DepsHintProps {
  */
 function DepsHint({ icon, count }: DepsHintProps) {
   return (
-    <span className="hidden shrink-0 items-center gap-0.5 font-mono text-[10px] text-text-muted sm:inline-flex" title={icon === 'up' ? `${count} upstream` : `${count} downstream`}>
-      <span style={{ color: icon === 'up' ? 'var(--color-depends)' : 'var(--color-relates)' }}>
-        {icon === 'up' ? '↑' : '↓'}
+    <span
+      className="hidden shrink-0 items-center gap-0.5 font-mono text-[10px] text-text-muted sm:inline-flex"
+      title={icon === "up" ? `${count} upstream` : `${count} downstream`}
+    >
+      <span
+        style={{
+          color:
+            icon === "up" ? "var(--color-depends)" : "var(--color-relates)",
+        }}
+      >
+        {icon === "up" ? "↑" : "↓"}
       </span>
       <span className="tabular-nums">{count}</span>
     </span>
@@ -322,7 +342,7 @@ function AssigneeStack({ userIds, memberLookup }: AssigneeStackProps) {
         return (
           <span
             key={userId}
-            className={`relative ${i === 0 ? '' : '-ml-2'}`}
+            className={`relative ${i === 0 ? "" : "-ml-2"}`}
             title={member?.name ?? `User ${userId.slice(0, 8)}`}
           >
             <Avatar name={label} size={18} />
@@ -330,7 +350,7 @@ function AssigneeStack({ userIds, memberLookup }: AssigneeStackProps) {
               <span
                 aria-hidden="true"
                 className="absolute -top-1 -right-1 inline-flex h-[11px] min-w-[11px] items-center justify-center rounded-full border border-border-strong bg-surface-raised px-[2px] font-mono text-[7.5px] font-semibold leading-none text-text-secondary"
-                title={`${overflow} more assignee${overflow === 1 ? '' : 's'}`}
+                title={`${overflow} more assignee${overflow === 1 ? "" : "s"}`}
               >
                 +{overflow}
               </span>

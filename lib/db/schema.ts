@@ -36,11 +36,18 @@ export const projects = pgTable(
     title: text("title").notNull(),
     identifier: text("identifier").notNull(),
     description: text("description").notNull().default(""),
-    status: text("status").$type<ProjectStatus>().notNull().default("brainstorming"),
+    status: text("status")
+      .$type<ProjectStatus>()
+      .notNull()
+      .default("brainstorming"),
     categories: jsonb("categories").$type<string[]>().notNull().default([]),
     history: jsonb("history").$type<HistoryEntry[]>().notNull().default([]),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
     index("projects_organization_id_idx").on(t.organizationId),
@@ -75,8 +82,12 @@ export const tasks = pgTable(
     estimate: integer("estimate").$type<Estimate>(),
     files: jsonb("files").$type<string[]>().notNull().default([]),
     history: jsonb("history").$type<HistoryEntry[]>().notNull().default([]),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
     index("tasks_project_id_idx").on(t.projectId),
@@ -103,13 +114,21 @@ export const taskEdges = pgTable(
       .references(() => tasks.id, { onDelete: "cascade" }),
     edgeType: text("edge_type").$type<EdgeType>().notNull(),
     note: text("note").notNull().default(""),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
     index("task_edges_source_idx").on(t.sourceTaskId),
     index("task_edges_target_idx").on(t.targetTaskId),
-    uniqueIndex("task_edges_unique_idx").on(t.sourceTaskId, t.targetTaskId, t.edgeType),
+    uniqueIndex("task_edges_unique_idx").on(
+      t.sourceTaskId,
+      t.targetTaskId,
+      t.edgeType,
+    ),
   ],
 ).enableRLS();
 
@@ -129,7 +148,9 @@ export const taskAssignees = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
     primaryKey({ columns: [t.taskId, t.userId] }),
@@ -154,17 +175,26 @@ export const taskAcceptanceCriteria = pgTable(
     text: text("text").notNull(),
     checked: boolean("checked").notNull().default(false),
     position: integer("position").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
-    index("task_acceptance_criteria_task_id_position_idx").on(t.taskId, t.position),
+    index("task_acceptance_criteria_task_id_position_idx").on(
+      t.taskId,
+      t.position,
+    ),
     unique("task_acceptance_criteria_task_id_text_unique").on(t.taskId, t.text),
   ],
 ).enableRLS();
 
-export type TaskAcceptanceCriterion = typeof taskAcceptanceCriteria.$inferSelect;
-export type NewTaskAcceptanceCriterion = typeof taskAcceptanceCriteria.$inferInsert;
+export type TaskAcceptanceCriterion =
+  typeof taskAcceptanceCriteria.$inferSelect;
+export type NewTaskAcceptanceCriterion =
+  typeof taskAcceptanceCriteria.$inferInsert;
 
 // ---------------------------------------------------------------------------
 // Task Decisions (replaces tasks.decisions JSONB)
@@ -181,8 +211,12 @@ export const taskDecisions = pgTable(
     source: text("source").$type<Decision["source"]>().notNull(),
     decisionDate: text("decision_date").notNull(),
     position: integer("position").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => [
     index("task_decisions_task_id_position_idx").on(t.taskId, t.position),
@@ -207,8 +241,12 @@ export const taskLinks = pgTable(
     kind: text("kind").notNull(),
     url: text("url").notNull(),
     label: text("label"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    createdBy: uuid("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
     metadata: jsonb("metadata"),
   },
   (t) => [

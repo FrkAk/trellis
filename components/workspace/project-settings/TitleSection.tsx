@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useCallback, useState } from 'react';
-import { updateProjectSettings } from '@/lib/actions/project';
+import { useCallback, useState } from "react";
+import { updateProjectSettings } from "@/lib/actions/project";
 
 interface TitleSectionProps {
   projectId: string;
@@ -10,14 +10,18 @@ interface TitleSectionProps {
 }
 
 const SECTION_LABEL_CLASS =
-  'font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted';
+  "font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted";
 
 /**
  * Click-to-edit title input that persists on blur.
  * @param props - Section props.
  * @returns Title row.
  */
-export function TitleSection({ projectId, initialTitle, onUpdated }: TitleSectionProps) {
+export function TitleSection({
+  projectId,
+  initialTitle,
+  onUpdated,
+}: TitleSectionProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(initialTitle);
   const [syncedInitialTitle, setSyncedInitialTitle] = useState(initialTitle);
@@ -35,11 +39,21 @@ export function TitleSection({ projectId, initialTitle, onUpdated }: TitleSectio
   const commit = useCallback(async () => {
     setEditing(false);
     const trimmed = value.trim();
-    if (!trimmed) { setValue(initialTitle); setServerError(null); return; }
-    if (trimmed === initialTitle) { setServerError(null); return; }
+    if (!trimmed) {
+      setValue(initialTitle);
+      setServerError(null);
+      return;
+    }
+    if (trimmed === initialTitle) {
+      setServerError(null);
+      return;
+    }
     setServerError(null);
     const result = await updateProjectSettings(projectId, { title: trimmed });
-    if (!result.ok) { setServerError(result.message); return; }
+    if (!result.ok) {
+      setServerError(result.message);
+      return;
+    }
     onUpdated?.();
   }, [value, initialTitle, projectId, onUpdated]);
 
@@ -53,8 +67,15 @@ export function TitleSection({ projectId, initialTitle, onUpdated }: TitleSectio
           onChange={(e) => setValue(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-            if (e.key === 'Escape') { setValue(initialTitle); setServerError(null); setEditing(false); }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+            if (e.key === "Escape") {
+              setValue(initialTitle);
+              setServerError(null);
+              setEditing(false);
+            }
           }}
           autoFocus
           className="w-full rounded-lg border border-border-strong bg-base px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent"

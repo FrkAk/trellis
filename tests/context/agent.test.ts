@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
-import {
-  seedUserOrgProject,
-  serviceRoleConnect,
-} from "@/tests/setup/seed";
+import { seedUserOrgProject, serviceRoleConnect } from "@/tests/setup/seed";
 import { buildAgentContext } from "@/lib/context/_core/agent";
 import { makeAuthContext } from "@/lib/auth/context";
 import { ForbiddenError } from "@/lib/auth/authorization";

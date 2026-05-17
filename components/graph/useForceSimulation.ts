@@ -357,10 +357,13 @@ function makeSim(
           // squeeze into the inner ring. Bonus rises sharply with min-deg.
           const hubHubBonus =
             minDeg >= HUB_THRESHOLD
-              ? Math.min(0.55, (minDeg - HUB_THRESHOLD + 1) * 0.10)
+              ? Math.min(0.55, (minDeg - HUB_THRESHOLD + 1) * 0.1)
               : 0;
           // Hub-to-leaf bonus — gives leaves breathing room around a hub.
-          const hubLeafBonus = Math.min(0.30, Math.sqrt(Math.max(maxDeg - 1, 0)) * 0.06);
+          const hubLeafBonus = Math.min(
+            0.3,
+            Math.sqrt(Math.max(maxDeg - 1, 0)) * 0.06,
+          );
           return baseDist * (1 + Math.max(hubHubBonus, hubLeafBonus));
         })
         .iterations(tier.linkIterations),
@@ -639,7 +642,7 @@ export function useForceSimulation(
     // re-converge.
     const sel =
       selectedRef.current != null
-        ? newNodes.find((n) => n.id === selectedRef.current) ?? null
+        ? (newNodes.find((n) => n.id === selectedRef.current) ?? null)
         : null;
 
     simRef.current?.stop();
@@ -657,7 +660,9 @@ export function useForceSimulation(
       // Scale pre-tick budget with project size, capped at 1.6× so we never
       // freeze the main thread for more than ~half a second on first paint.
       const settleScale = deriveSettleScale(newNodes.length);
-      const fullPreTick = Math.round(tier.preTickN * Math.min(1.6, settleScale));
+      const fullPreTick = Math.round(
+        tier.preTickN * Math.min(1.6, settleScale),
+      );
       const ticks = allCached ? MINI_RELAX_TICKS : fullPreTick;
       sim.alpha(allCached ? 0.05 : 1);
       for (let i = 0; i < ticks; i++) sim.tick();

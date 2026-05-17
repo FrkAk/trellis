@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { Markdown } from '@/components/shared/Markdown';
-import { SectionHeader } from './SectionHeader';
+import { Markdown } from "@/components/shared/Markdown";
+import { SectionHeader } from "./SectionHeader";
 
 interface ExecutionSectionProps {
   /** Execution record markdown, or null when not present. */
@@ -23,7 +23,9 @@ export function ExecutionSection({ record }: ExecutionSectionProps) {
     <section className="mb-7">
       <SectionHeader label="Execution record" />
       <div className="rounded-md border border-done/20 bg-done/5 p-3">
-        <Markdown className="text-[12.5px] leading-relaxed text-text-secondary">{record}</Markdown>
+        <Markdown className="text-[12.5px] leading-relaxed text-text-secondary">
+          {record}
+        </Markdown>
       </div>
     </section>
   );

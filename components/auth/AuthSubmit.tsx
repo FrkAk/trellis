@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 interface AuthSubmitProps {
   /** Button label content. Replaced by loading dots when `isLoading`. */
@@ -10,7 +10,7 @@ interface AuthSubmitProps {
   /** Disable without showing a loading indicator (e.g. coming-soon states). */
   disabled?: boolean;
   /** HTML button type — defaults to `submit` because every caller is a form submit. */
-  type?: 'button' | 'submit';
+  type?: "button" | "submit";
   /** Click handler — only meaningful with `type="button"`. */
   onClick?: () => void;
 }
@@ -30,7 +30,7 @@ export function AuthSubmit({
   children,
   isLoading,
   disabled,
-  type = 'submit',
+  type = "submit",
   onClick,
 }: AuthSubmitProps) {
   const inactive = isLoading || disabled;
@@ -41,14 +41,14 @@ export function AuthSubmit({
       disabled={inactive}
       aria-busy={isLoading || undefined}
       aria-disabled={inactive || undefined}
-      className={`relative inline-flex w-full items-center justify-center text-[13px] font-semibold transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${inactive ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:opacity-90'}`}
+      className={`relative inline-flex w-full items-center justify-center text-[13px] font-semibold transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${inactive ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:opacity-90"}`}
       style={{
         height: 38,
         borderRadius: 8,
-        background: 'var(--color-accent-grad)',
-        color: '#0b0c10',
-        border: '1px solid transparent',
-        letterSpacing: '0.005em',
+        background: "var(--color-accent-grad)",
+        color: "#0b0c10",
+        border: "1px solid transparent",
+        letterSpacing: "0.005em",
       }}
     >
       {isLoading ? (

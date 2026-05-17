@@ -26,9 +26,7 @@ export type TaskFullRawRow = {
   updated_at: string | Date;
   project_identifier: string;
   assignees: { userId: string; name: string; email: string }[] | null;
-  acceptance_criteria:
-    | { id: string; text: string; checked: boolean }[]
-    | null;
+  acceptance_criteria: { id: string; text: string; checked: boolean }[] | null;
   decisions:
     | { id: string; text: string; source: string; date: string }[]
     | null;

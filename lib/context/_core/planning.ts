@@ -1,9 +1,6 @@
 import "server-only";
 
-import {
-  getDependencyChain,
-  getDownstreamTx,
-} from "@/lib/data/traversal";
+import { getDependencyChain, getDownstreamTx } from "@/lib/data/traversal";
 import {
   fetchDependencyTasks,
   fetchEdgeNotesBySource,
@@ -68,12 +65,16 @@ export async function buildPlanningContext(
 
     parts.push(section("Description") + "\n" + task.description);
     parts.push(
-      section("Acceptance Criteria") + "\n" + formatCriteria(task.acceptanceCriteria),
+      section("Acceptance Criteria") +
+        "\n" +
+        formatCriteria(task.acceptanceCriteria),
     );
 
     if (task.implementationPlan) {
       parts.push(
-        section("Existing Implementation Plan") + "\n" + task.implementationPlan,
+        section("Existing Implementation Plan") +
+          "\n" +
+          task.implementationPlan,
       );
     }
 
