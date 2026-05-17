@@ -565,8 +565,7 @@ describe("RLS — defense-in-depth on team isolation", () => {
 
   test("M2 trigger rejects INSERT of a cross-project task_edge under app_user", async () => {
     // Pins the BEFORE INSERT/UPDATE trigger `task_edges_same_project_immutable`
-    // (docker/rls-functions.sql:638-669) which enforces both endpoints share
-    // a project_id and raises ERRCODE 23514 (check_violation).
+    // which enforces both endpoints share a project_id and raises 23514.
     const teamA = await seedUserOrgProject("rls-m2-trig-a");
     const teamB = await seedUserOrgProject("rls-m2-trig-b");
 

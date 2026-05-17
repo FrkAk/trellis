@@ -178,10 +178,8 @@ describe("team_invite_code RLS — admin-only writes", () => {
   });
 
   test("RESTRICTIVE write floor holds even when a permissive INSERT policy is added", async () => {
-    // Pins docker/rls-policies.sql:83-88. The RESTRICTIVE
-    // `team_invite_code_insert_admin_only` AND's with the OR of permissive
-    // INSERT policies. Adding a permissive that says "true" cannot
-    // OR-relax the floor — the admin/owner predicate still has to hold.
+    // The RESTRICTIVE `team_invite_code_insert_admin_only` AND's with
+    // the OR of permissives; a stray `WITH CHECK (true)` cannot relax it.
     const fx = await seedUserOrgProject("tc3-member");
     const seed = superuserPool();
     try {

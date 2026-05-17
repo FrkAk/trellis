@@ -232,10 +232,8 @@ test("getProjectMaxUpdatedAt returns the latest updated_at across project + task
 });
 
 test("getProjectListMaxUpdatedAt returns the latest updated_at across the caller's accessible scope", async () => {
-  // Access scoping is RLS-driven (projects/tasks/task_edges all carry
-  // app_user policies that restrict visible rows). The helper aggregates
-  // MAX(updated_at) over those filtered sets — no neon_auth join, which
-  // app_user has no grant on (docker/grants.sql:37).
+  // RLS scopes the row sets; the helper aggregates MAX(updated_at) with
+  // no neon_auth join (app_user has no grant there).
   const f = await seedUserOrgProject("listmax");
   const ctx = makeAuthContext(f.userId);
 

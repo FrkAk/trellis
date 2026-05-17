@@ -99,11 +99,8 @@ CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "account"("userId");
 CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification"("identifier");
 CREATE INDEX IF NOT EXISTS "member_organizationId_idx" ON "member"("organizationId");
 CREATE INDEX IF NOT EXISTS "member_userId_idx" ON "member"("userId");
--- Composite index for RLS predicate performance. The 3-hop EXISTS subqueries
--- on tasks + 5 child tables join `member` on `(organizationId, userId)` per
--- row; the single-column indexes above would force two scans + a bitmap-AND,
--- so the composite gives a direct lookup. Mirrors the index provisioned
--- manually on Neon production.
+-- Composite index for RLS predicate performance: the 3-hop EXISTS joins
+-- on `(organizationId, userId)` need a direct lookup, not bitmap-AND.
 CREATE INDEX IF NOT EXISTS "member_org_user_idx" ON "member"("organizationId", "userId");
 CREATE INDEX IF NOT EXISTS "invitation_organizationId_idx" ON "invitation"("organizationId");
 CREATE INDEX IF NOT EXISTS "invitation_email_idx" ON "invitation"("email");

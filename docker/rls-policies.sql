@@ -1,30 +1,24 @@
--- Hand-written RLS policies for public.*. Drizzle's `pgPolicy()` round-trip
--- drops USING/WITH CHECK on push, so policy DDL lives here.
+-- Hand-written RLS policies for public.*. Drizzle's `pgPolicy()` drops
+-- USING/WITH CHECK on push, so policy DDL lives here.
 --
--- Membership is computed once per query via `public.current_user_org_ids()`,
--- a STABLE SECURITY DEFINER function returning `uuid[]`. The membership
--- predicates use `IN (SELECT unnest(public.current_user_org_ids()))` — an
--- explicit sublink that forces an InitPlan node regardless of planner
--- heuristics on STABLE-function memoization. 2- and 3-hop tables delegate
--- through the parent table's RLS rather than duplicating the membership
--- join, so adding new auth schema columns doesn't ripple here.
+-- Membership is fetched once per query via `public.current_user_org_ids()`
+-- (STABLE SECURITY DEFINER, returns uuid[]). The `IN (SELECT unnest(...))`
+-- sublink forces an InitPlan regardless of planner heuristics.
+-- 2- and 3-hop tables delegate through the parent table's RLS.
 --
--- `task_edges` USING and WITH CHECK both require both endpoints visible.
--- USING-side symmetry matters because Postgres does not evaluate WITH CHECK
--- on DELETE; without it, a source-side member could delete (or read) an
--- edge whose target lives in a foreign team.
+-- `task_edges` requires both endpoints visible on both USING and WITH
+-- CHECK — Postgres does not evaluate WITH CHECK on DELETE, so USING-side
+-- symmetry is what blocks a source-side member from deleting an edge
+-- whose target lives in a foreign team.
 
--- projects — 1-hop directly on organization_id. The `IN (SELECT unnest(...))`
--- form materializes the membership array once via an InitPlan node so the
--- per-row check is a constant-time set probe.
+-- projects — 1-hop on organization_id; InitPlan materializes the
+-- membership array once per query.
 DROP POLICY IF EXISTS "projects_member_access" ON "projects";
 CREATE POLICY "projects_member_access" ON "projects" AS PERMISSIVE FOR ALL TO app_user
   USING (organization_id IN (SELECT unnest(public.current_user_org_ids())));
 
--- tasks — 2-hop via projects. Delegates to projects' RLS so the membership
--- check evaluates once at the projects layer, not per task row. WITH CHECK
--- is explicit (matching the convention on team_invite_code) so future
--- Postgres versions can't regress the implicit-from-USING fallback.
+-- tasks — 2-hop via projects' RLS. Explicit WITH CHECK so future Postgres
+-- versions can't regress the implicit-from-USING fallback.
 DROP POLICY IF EXISTS "tasks_member_access" ON "tasks";
 CREATE POLICY "tasks_member_access" ON "tasks" AS PERMISSIVE FOR ALL TO app_user
   USING (project_id IN (SELECT id FROM public.projects))
@@ -42,8 +36,7 @@ CREATE POLICY "task_edges_member_access" ON "task_edges" AS PERMISSIVE FOR ALL T
     AND target_task_id IN (SELECT id FROM public.tasks)
   );
 
--- task_assignees — 3-hop via task. Delegates to tasks' RLS. Explicit
--- WITH CHECK matches the team_invite_code convention.
+-- task_assignees — 3-hop via tasks' RLS.
 DROP POLICY IF EXISTS "task_assignees_member_access" ON "task_assignees";
 CREATE POLICY "task_assignees_member_access" ON "task_assignees" AS PERMISSIVE FOR ALL TO app_user
   USING (task_id IN (SELECT id FROM public.tasks))
@@ -67,17 +60,9 @@ CREATE POLICY "task_links_member_access" ON "task_links" AS PERMISSIVE FOR ALL T
   USING (task_id IN (SELECT id FROM public.tasks))
   WITH CHECK (task_id IN (SELECT id FROM public.tasks));
 
--- RESTRICTIVE per-command write floor on task_edges. The permissive
--- task_edges_member_access policy above already enforces both-endpoints-
--- visible USING + WITH CHECK; this floor is belt-and-braces. Postgres
--- AND's restrictive policies with the OR of permissive policies, so even
--- if a future engineer adds another permissive write policy (intentionally
--- or otherwise), this floor still requires both endpoints visible —
--- it cannot be OR-relaxed by adding more permissives. The
--- reject_task_edges_cross_project trigger fires BEFORE INSERT/UPDATE for
--- the same-project invariant; the restrictive floor closes the membership
--- side. Scoped per-command so unrelated SELECT continues to use the
--- permissive policy.
+-- RESTRICTIVE write floor on task_edges. RESTRICTIVE AND's with the OR of
+-- permissives, so a future stray permissive cannot OR-relax both-endpoints
+-- -visible. Scoped per-command to leave SELECT on the permissive policy.
 DROP POLICY IF EXISTS "task_edges_insert_member_only" ON "task_edges";
 DROP POLICY IF EXISTS "task_edges_update_member_only" ON "task_edges";
 DROP POLICY IF EXISTS "task_edges_delete_member_only" ON "task_edges";
@@ -107,13 +92,9 @@ CREATE POLICY "task_edges_delete_member_only" ON "task_edges"
     AND target_task_id IN (SELECT id FROM public.tasks)
   );
 
--- team_invite_code — admin/owner only on every command, including SELECT.
--- A regular org member never needs the raw `code` column; the action-layer
--- gate (getOrCreateTeamInviteCodeAction → isOrgAdmin) returns 403 to
--- non-admins. RLS layer enforces the same gate as defense-in-depth so a
--- bypass of the action-layer check (new endpoint, SQLi landing) cannot
--- exfiltrate the code from a regular member's session. Redemption SDFs are
--- SECURITY DEFINER and sidestep the policy, so the join flow still works.
+-- team_invite_code — admin/owner only on every command (including SELECT).
+-- Regular members never need the raw `code`; redemption SDFs are
+-- SECURITY DEFINER and sidestep the policy so the join flow still works.
 DROP POLICY IF EXISTS "team_invite_code_member_access" ON "team_invite_code";
 DROP POLICY IF EXISTS "team_invite_code_member_select" ON "team_invite_code";
 DROP POLICY IF EXISTS "team_invite_code_admin_write" ON "team_invite_code";
@@ -123,16 +104,8 @@ CREATE POLICY "team_invite_code_admin_write" ON "team_invite_code"
   USING (public.current_user_org_role(organization_id) IN ('admin', 'owner'))
   WITH CHECK (public.current_user_org_role(organization_id) IN ('admin', 'owner'));
 
--- WITH CHECK is explicit (not implicit-from-USING) so the INSERT-time policy
--- evaluation is unambiguous to readers and future Postgres versions can't
--- regress the behavior by tightening the implicit-reuse rule.
-
--- RESTRICTIVE floor on writes. Postgres AND's restrictive policies with
--- the OR of permissive policies. Even if a future engineer adds another
--- permissive write policy (intentionally or otherwise), this floor still
--- requires admin/owner for any INSERT/UPDATE/DELETE on team_invite_code —
--- it cannot be OR-relaxed by adding more permissives. Scoped per-command
--- so member SELECT remains unaffected.
+-- RESTRICTIVE write floor — locks admin/owner-only against a future stray
+-- permissive. Per-command so member SELECT is unaffected.
 DROP POLICY IF EXISTS "team_invite_code_write_admin_only" ON "team_invite_code";
 DROP POLICY IF EXISTS "team_invite_code_insert_admin_only" ON "team_invite_code";
 DROP POLICY IF EXISTS "team_invite_code_update_admin_only" ON "team_invite_code";
@@ -152,11 +125,9 @@ CREATE POLICY "team_invite_code_delete_admin_only" ON "team_invite_code"
   USING (public.current_user_org_role(organization_id) IN ('admin', 'owner'));
 
 
--- ENABLE turns the policies on. Required because the testcontainer / self-host
--- path gets this for free from drizzle-kit push (it reads `.enableRLS()` markers
--- in lib/db/schema.ts), but the Neon prod path runs drizzle-kit migrate against
--- generated migrations in drizzle/, which do not emit ENABLE. Without this block,
--- FORCE below is a no-op and policies never fire.
+-- ENABLE explicitly: testcontainer/self-host get this from `drizzle-kit
+-- push` reading `.enableRLS()`, but `drizzle-kit migrate` does not emit
+-- ENABLE, and FORCE without ENABLE is a no-op.
 ALTER TABLE "projects" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "tasks" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "task_edges" ENABLE ROW LEVEL SECURITY;
@@ -166,9 +137,8 @@ ALTER TABLE "task_decisions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "task_links" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "team_invite_code" ENABLE ROW LEVEL SECURITY;
 
--- FORCE makes the table owner subject to RLS. Targets the Neon prod
--- owner (`neondb_owner`, which is NOT a superuser); BYPASSRLS roles and
--- real superusers still sidestep.
+-- FORCE subjects the table owner to RLS. BYPASSRLS roles and real
+-- superusers still sidestep.
 ALTER TABLE "projects" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "tasks" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "task_edges" FORCE ROW LEVEL SECURITY;

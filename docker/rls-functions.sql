@@ -1,36 +1,16 @@
 -- ---------------------------------------------------------------------------
--- SECURITY DEFINER helpers for the team-invite-code join flow.
+-- SECURITY DEFINER helpers reachable from app_user.
 --
--- These functions run as their OWNER (the role that installs them — the DB
--- superuser in self-host, neondb_owner in Neon prod), not as the caller.
--- That lets a joining user — who has NO neon_auth.member row for the target
--- org yet — complete the lookup and slot-reservation steps without the JS
--- data ring holding a BYPASSRLS (service_role) connection.
---
--- Each function has a narrow surface and strict input handling. EXECUTE is
--- granted to app_user only; the public role gets nothing. Audit by reading
--- this file — every SECURITY DEFINER body is reviewable in one place.
---
--- LANGUAGE plpgsql is used on every SECURITY DEFINER body so the planner
--- cannot inline them. Inlining has historically changed effective privileges
--- around SECURITY DEFINER (CVE-2022-1552 class); plpgsql is never inlined.
---
--- Every function pins search_path with `pg_temp` appended last
--- (CVE-2018-1058 class). Postgres implicitly searches pg_temp first
--- unless explicitly listed; putting it last forces attacker-injected
--- temp objects to resolve only after the trusted schemas.
+-- Every body is plpgsql (never inlined — CVE-2022-1552 class) and pins
+-- search_path with `pg_temp` last (CVE-2018-1058 class). EXECUTE is granted
+-- per-function below; PUBLIC is denied everywhere.
 --
 -- KEEP IN SYNC WITH lib/data/team-invite-code.ts (JS callers).
 -- ---------------------------------------------------------------------------
 
--- Returns only the four diagnostic fields. Withholding id /
--- organization_id / default_role prevents a guessed code from resolving
--- to a real org on a diagnose miss.
---
--- Service-role only — the diagnostic is gated to the trusted pool so an
--- `app_user` session (or SQL-injection sink against `app_user`) cannot
--- enumerate code validity at scale. The JS caller routes through
--- `serviceRoleDb`.
+-- Diagnostic only: returns four non-identifying fields so a guessed code
+-- cannot resolve to a real org. Service-role only — prevents app_user (or
+-- an SQLi sink against it) from enumerating code validity at scale.
 CREATE OR REPLACE FUNCTION public.lookup_team_invite_code(p_code text)
 RETURNS TABLE (
   revoked_at timestamptz,
@@ -54,40 +34,19 @@ REVOKE EXECUTE ON FUNCTION public.lookup_team_invite_code(text) FROM public;
 REVOKE EXECUTE ON FUNCTION public.lookup_team_invite_code(text) FROM app_user;
 GRANT EXECUTE ON FUNCTION public.lookup_team_invite_code(text) TO service_role;
 
--- Atomically reserve a slot on a valid, non-revoked, non-expired,
--- non-exhausted code. Records `reserved_by = p_user_id` so the matching
--- `release_team_invite_code_slot` call can confirm it's the same caller
--- before mutating the slot. Returns the row identifiers on success,
--- empty set on failure (anti-enumeration — caller cannot distinguish
--- failure reasons).
+-- Atomically reserve a slot on a valid code. Returns row identifiers on
+-- success, empty set on any failure (anti-enumeration).
 --
--- Pre-sweep: an unreleased reservation older than its `reserved_until`
--- gets its slot reclaimed (use_count decremented, reserved_until +
--- reserved_by cleared) before the new attempt is evaluated. This handles
--- the crash-between-reserve-and-release case (OOM, SIGTERM). The sweep
--- is scoped to the row being attempted, so unrelated codes are not
--- touched.
+-- Pre-sweep reclaims a stale reservation on the same row (handles crash
+-- between reserve and release). The FOR UPDATE row lock serializes
+-- concurrent reservers — closes the read-committed
+-- `max_uses + (concurrency-1)` overflow window from EvalPlanQual rechecks.
 --
--- Concurrency: concurrent reservations on the same code serialize via
--- an explicit row-level lock (`SELECT … FOR UPDATE`) acquired before the
--- reservation UPDATE re-evaluates `use_count < max_uses`. Closes the
--- read-committed `max_uses + (concurrency-1)` overflow window where two
--- reservers could both observe `use_count < max_uses` and both succeed
--- via EvalPlanQual re-checks. If the row does not exist the PERFORM is
--- a no-op and the main UPDATE matches nothing — identical null-result
--- behavior to a missing code.
---
--- Caller binding: the SDF aborts (returns empty set) unless `p_user_id`
--- matches the session's `app.user_id` GUC. EXECUTE is granted to
--- `app_user`, so without binding any SQL-injection sink could pass an
--- arbitrary uuid to (a) burn slots on guessed codes or (b) recover
--- `(organization_id, default_role)` for a code under a forged identity.
--- Pairing the binding check with the GUC pins the SDF to the caller the
--- JS action layer verified via `requireSession()`. Empty-set on
--- mismatch (rather than RAISE) preserves anti-enumeration: the JS layer
--- treats null identically whether the call was rejected for binding or
--- for an invalid code. JS callers MUST enter through `withUserContext`
--- so the GUC is set; without it the binding check rejects every call.
+-- Caller binding: aborts unless `p_user_id` matches the session's
+-- `app.user_id` GUC. Without this, an SQLi sink under `app_user` could
+-- burn slots on guessed codes or recover an org/default_role pair under
+-- a forged identity. Empty-set (not RAISE) on mismatch preserves
+-- anti-enumeration. JS callers MUST enter through `withUserContext`.
 DROP FUNCTION IF EXISTS public.reserve_team_invite_code_slot(text);
 CREATE OR REPLACE FUNCTION public.reserve_team_invite_code_slot(p_code text, p_user_id uuid)
 RETURNS TABLE (id uuid, organization_id uuid, default_role text)
@@ -127,26 +86,21 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text, uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.reserve_team_invite_code_slot(text, uuid) TO app_user;
 
--- Finalize a reservation. The caller passes the explicit outcome
--- (`p_succeeded`) — the SDF no longer infers it from DB state, which
--- closes the `already_member` mis-finalize hole (the JS layer is the
--- only place that can tell "this saga created the member row" from
--- "caller was already a member of this org before reserve").
+-- Finalize a reservation. Caller passes the explicit `p_succeeded` — the
+-- JS layer is the only place that can distinguish "saga created the
+-- member row" from "caller was already a member before reserve", so the
+-- SDF must not infer it.
 --
--- Gates on `reserved_by = p_user_id` so an attacker who learns a row's
--- UUID (log leak, debugger trace) cannot release someone else's
--- reservation. Mismatches match zero rows and return false; the JS
--- caller logs and moves on.
+-- Gates on `reserved_by = p_user_id` so an attacker who learns a row UUID
+-- cannot release someone else's reservation. Mismatches match zero rows
+-- and return false.
 --
 -- Outcomes:
---   p_succeeded = true  → keep use_count, clear reserved_until + reserved_by.
---   p_succeeded = false → decrement use_count (floored at 0), clear both.
+--   p_succeeded = true  → keep use_count, clear reservation.
+--   p_succeeded = false → decrement use_count (floored at 0), clear reservation.
 --
--- Idempotent — a second `release` call after either outcome matches zero
--- rows because `reserved_until` is cleared. The first release wins.
---
--- Returns: true when an authorized row was updated, false otherwise.
--- This SDF does NOT read `app.user_id`.
+-- Idempotent: a second call matches zero rows because `reserved_until`
+-- is already cleared.
 DROP FUNCTION IF EXISTS public.release_team_invite_code_slot(uuid);
 CREATE OR REPLACE FUNCTION public.release_team_invite_code_slot(
   p_id uuid,
@@ -179,15 +133,10 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid, uuid, boolean) FROM public;
 GRANT EXECUTE ON FUNCTION public.release_team_invite_code_slot(uuid, uuid, boolean) TO app_user;
 
--- Admin/system lookup: list project ids for an org without scoping by the
--- caller's membership. Used by lib/realtime/access.ts:revokeOrgAccess which
--- runs in better-auth's afterRemoveMember hook — at that point the user's
--- membership row is gone, so a member-scoped lookup returns zero rows.
---
--- SECURITY: EXECUTE granted to service_role ONLY (not app_user). Cross-org
--- project enumeration would otherwise be reachable from any compromised
--- app_user session. The JS data ring calls this via serviceRoleDb, which
--- is already the documented BYPASSRLS connection.
+-- Admin lookup: project ids for an org without caller-membership scope.
+-- Used by `revokeOrgAccess` in the `afterRemoveMember` hook where the
+-- caller's membership row is already gone. EXECUTE granted to
+-- service_role only — app_user access would expose cross-org enumeration.
 CREATE OR REPLACE FUNCTION public.list_org_project_ids(p_org_id uuid)
 RETURNS TABLE (id uuid)
 LANGUAGE plpgsql
@@ -204,12 +153,8 @@ GRANT EXECUTE ON FUNCTION public.list_org_project_ids(uuid) TO service_role;
 
 
 -- ---------------------------------------------------------------------------
--- current_user_* helpers — the only path app_user has to neon_auth.*.
---
--- STABLE plpgsql bodies. Postgres still memoizes STABLE function calls used
--- inside WHERE / ANY constructs once per query plan. search_path is pinned
--- so a hostile caller cannot shadow neon_auth.* by setting a local
--- search_path.
+-- current_user_* helpers — app_user's only path to neon_auth.*.
+-- STABLE plpgsql; pinned search_path defeats neon_auth.* shadowing.
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.current_user_org_ids()
@@ -396,17 +341,13 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.lookup_user_names_in_shared_orgs(uuid[]) FROM public;
 GRANT EXECUTE ON FUNCTION public.lookup_user_names_in_shared_orgs(uuid[]) TO app_user;
 
--- Returns assignees of a task to a caller who is a member of the task's
--- org. Replaces an inline `JOIN neon_auth."user"` in `getTaskFull` (which
--- app_user cannot run under the Option-B lockdown). Caller membership is
--- re-checked inside the function so upstream regressions cannot leak
--- assignee identity cross-team.
+-- Assignees of a task, visible to members of the task's org. Membership
+-- is re-checked inside the function so an upstream regression cannot
+-- leak assignee identity cross-team.
 --
 -- `email` is intentionally exposed to every member of the task's org —
--- this matches the surface of the team-roster screen (members already see
--- each other's emails there). A future PR that wants to tighten this must
--- also tighten the team-roster query; do not silently drop the column
--- here.
+-- matches the team-roster surface. Tightening here requires tightening
+-- the team-roster query in lockstep.
 CREATE OR REPLACE FUNCTION public.task_assignees_visible(p_task_id uuid)
 RETURNS TABLE (user_id uuid, name text, email text)
 LANGUAGE plpgsql
@@ -435,13 +376,9 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.task_assignees_visible(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.task_assignees_visible(uuid) TO app_user;
 
--- Batched per-project sibling of task_assignees_visible: evaluates the
--- caller-membership EXISTS check ONCE for the whole project rather than
--- once per task (the old `CROSS JOIN LATERAL task_assignees_visible(...)`
--- pattern paid N membership probes for a project with N tasks). The
--- caller-membership check resolves against `p_project_id`'s
--- `organization_id` so an attacker probing project UUIDs cannot
--- distinguish "no project" from "project in another org".
+-- Per-project sibling of task_assignees_visible: one membership probe
+-- for the whole project instead of N (old LATERAL pattern). Probing a
+-- foreign project UUID is indistinguishable from a missing one.
 CREATE OR REPLACE FUNCTION public.task_assignees_for_project_visible(
   p_project_id uuid
 )
@@ -504,13 +441,10 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.org_member_user_ids_visible(uuid, uuid[]) FROM public;
 GRANT EXECUTE ON FUNCTION public.org_member_user_ids_visible(uuid, uuid[]) TO app_user;
 
--- Returns whether the caller is a member of the invitation's org AND the
--- supplied expected_org_id matches the invitation's own organizationId.
--- The function never discloses the organizationId value — it answers a
--- yes/no question against a (invitation_id, org_id) pair the caller must
--- already hold. An attacker who knows only the invitation UUID learns
--- nothing; they must also know (and be a member of) the correct org.
--- Used by cancelInvitationAction to scope its admin check.
+-- Boolean: caller is a member of the invitation's org AND
+-- `p_expected_org_id` matches the invitation's `organizationId`.
+-- Never discloses the org id — caller must already hold (and be a member
+-- of) the correct org to learn anything.
 DROP FUNCTION IF EXISTS public.lookup_invitation_org_id(uuid);
 
 CREATE OR REPLACE FUNCTION public.is_caller_in_invitation_org(
@@ -587,13 +521,9 @@ CREATE TRIGGER tasks_project_id_immutable
   FOR EACH ROW
   EXECUTE FUNCTION public.reject_tasks_project_id_change();
 
--- Block cross-team reparenting of the team_invite_code row pointer. Mirrors
--- the projects/tasks immutability guard. Without it, a dual-admin attacker
--- could `UPDATE team_invite_code SET organization_id = <team-B>` — RLS
--- evaluates USING against OLD and WITH CHECK against NEW, so an admin of
--- both teams passes both predicates and reparents team A's code into
--- team B. The trigger collapses the surface to "the column is immutable",
--- regardless of RLS evaluation order.
+-- Block cross-team reparenting. Without this, a dual-admin attacker
+-- could pass USING(OLD) + WITH CHECK(NEW) and move team A's code into
+-- team B. The trigger is unconditional regardless of RLS evaluation order.
 CREATE OR REPLACE FUNCTION public.reject_team_invite_code_organization_id_change()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -616,24 +546,17 @@ CREATE TRIGGER team_invite_code_organization_id_immutable
   FOR EACH ROW
   EXECUTE FUNCTION public.reject_team_invite_code_organization_id_change();
 
--- Reject task_edges rows whose endpoints belong to different projects (or
--- whose endpoints are missing/invisible under RLS).
---
--- Threat model: the existing RLS USING + WITH CHECK on task_edges verifies
--- only that both endpoints are *visible* to the caller. A dual-org member
--- (or service_role via SQL-injection) could therefore wire an edge whose
--- source and target live in different projects — possibly in different
--- orgs — exfiltrating cross-tenant task ids through edge metadata.
+-- Reject task_edges rows whose endpoints don't share a project (or whose
+-- endpoints are missing/invisible). RLS only verifies endpoint visibility;
+-- a dual-org member could otherwise wire cross-project edges and leak
+-- task ids through edge metadata.
 --
 -- SECURITY DEFINER so the per-row `tasks` lookups bypass RLS — the
--- function then sees both endpoints unconditionally regardless of the
--- caller's team. Combined with the uniform error message + ERRCODE
--- below, this collapses what was previously a 4-state oracle (both
--- invisible / one visible / different projects / same project) into a
--- single failure shape, eliminating the per-row visibility leak. The
--- INSERT/UPDATE itself is still gated by the table's RLS WITH CHECK and
--- by `team_invite_code_*` policies, so SECURITY DEFINER here cannot be
--- abused to wire foreign edges — only to validate them uniformly.
+-- function sees both endpoints unconditionally. The uniform error
+-- collapses what would be a 4-state oracle (both invisible / one
+-- visible / different projects / same project) into one failure shape.
+-- INSERT/UPDATE is still gated by the table's RLS, so DEFINER here
+-- cannot wire foreign edges, only validate them uniformly.
 CREATE OR REPLACE FUNCTION public.reject_task_edges_cross_project()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -659,11 +582,8 @@ BEGIN
 END;
 $$;
 
--- Trigger function — the EXECUTE grant to app_user mirrors the role that
--- runs the triggering INSERT/UPDATE. Postgres checks EXECUTE on the
--- trigger function against the firing role, so dropping the grant here
--- would silently break every app_user INSERT/UPDATE on task_edges.
--- PUBLIC is denied as part of the CVE-2018-1058 search_path defense.
+-- Postgres checks EXECUTE on the trigger function against the firing
+-- role; without this grant, every app_user write on task_edges fails.
 REVOKE EXECUTE ON FUNCTION public.reject_task_edges_cross_project() FROM public;
 GRANT EXECUTE ON FUNCTION public.reject_task_edges_cross_project() TO app_user;
 
@@ -673,8 +593,8 @@ CREATE TRIGGER task_edges_same_project_immutable
   FOR EACH ROW
   EXECUTE FUNCTION public.reject_task_edges_cross_project();
 
--- service_role only. The org-delete hook iterates members after the org
--- row is queued for deletion, so a user-scoped lookup races the cascade.
+-- service_role only. Used by the org-delete hook after the org row is
+-- queued for deletion — caller-scoped variants race the cascade.
 CREATE OR REPLACE FUNCTION public.find_org_member_user_ids_as_admin(p_org_id uuid)
 RETURNS TABLE (user_id uuid)
 LANGUAGE plpgsql
