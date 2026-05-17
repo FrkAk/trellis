@@ -1,6 +1,11 @@
 import { test, expect, beforeEach, afterEach, mock } from "bun:test";
 import { internalError } from "@/lib/api/error";
 
+// Baseline is `"production"` (forced in `tests/setup/preload.ts` to
+// match the deployed Cloudflare Worker runtime where BA bakes
+// `useSecureCookies: true` at module load). Each test mutates the
+// value below via `setNodeEnv` and the `afterEach` restores to this
+// captured baseline — production, not Bun's default `"test"`.
 const originalNodeEnv = process.env.NODE_ENV;
 const originalConsoleError = console.error;
 let consoleSpy: ReturnType<typeof mock>;
