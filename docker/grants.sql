@@ -40,6 +40,16 @@
 -- stealth failure, so the trade is asymmetric in our favor.
 --
 -- KEEP IN SYNC WITH docs/neon-prod-provisioning.sql.
+--
+-- CVE-2018-1058 belt: revoke CREATE on schema public from PUBLIC. PG ≤ 14
+-- grants this by default; PG 15+ removes the default but the bootstrap
+-- should not depend on server version. With CREATE revoked, no role
+-- (including future ones inheriting from PUBLIC) can install a function
+-- in schema public — eliminating the "shadow public.current_user_org_ids()"
+-- attack surface entirely. Combined with `pg_temp` pinned last in every
+-- SDF's search_path and `REVOKE TEMPORARY ON DATABASE ... FROM PUBLIC`,
+-- this is the third leg of the CVE-2018-1058 defense.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO app_user, service_role;
 GRANT CREATE ON SCHEMA public TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user, service_role;

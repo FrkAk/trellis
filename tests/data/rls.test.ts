@@ -642,6 +642,90 @@ describe("RLS — defense-in-depth on team isolation", () => {
     }
   });
 
+  test("task_edges RESTRICTIVE write floor holds even when a permissive INSERT policy is added", async () => {
+    // The RESTRICTIVE `task_edges_insert_member_only` AND's with the OR
+    // of permissive INSERT policies. Adding a permissive that says
+    // `true` cannot OR-relax the floor — both endpoints still have to
+    // resolve to a project visible to the caller.
+    const teamA = await seedUserOrgProject("rls-x-te-floor-a");
+    const teamB = await seedUserOrgProject("rls-x-te-floor-b");
+    const su = superuserPool();
+    let sourceTaskId: string;
+    let targetTaskId: string;
+    try {
+      const [src] = await su<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${teamA.projectId}, 'src', 1) RETURNING id
+      `;
+      const [tgt] = await su<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${teamB.projectId}, 'tgt', 1) RETURNING id
+      `;
+      sourceTaskId = src.id;
+      targetTaskId = tgt.id;
+      await su`CREATE POLICY temp_task_edges_member_can_write ON task_edges
+               AS PERMISSIVE FOR INSERT TO app_user WITH CHECK (true)`;
+      await su`ALTER TABLE task_edges DISABLE TRIGGER task_edges_same_project_immutable`;
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    try {
+      const c = appUserConnect();
+      await expectQueryRejects(
+        c.begin(async (tx) => {
+          await tx`SELECT set_config('app.user_id', ${teamA.userId}, true)`;
+          await tx`
+            INSERT INTO task_edges (source_task_id, target_task_id, edge_type)
+            VALUES (${sourceTaskId}::uuid, ${targetTaskId}::uuid, 'depends_on')
+          `;
+        }) as unknown as PromiseLike<unknown>,
+        /row-level security|violates row-level security/i,
+      );
+    } finally {
+      const cleanup = superuserPool();
+      try {
+        await cleanup`DROP POLICY IF EXISTS temp_task_edges_member_can_write ON task_edges`;
+        await cleanup`ALTER TABLE task_edges ENABLE TRIGGER task_edges_same_project_immutable`;
+      } finally {
+        await cleanup.end({ timeout: 5 });
+      }
+    }
+  });
+
+  test("cross-team INSERT on a 3-hop child table is rejected by the explicit WITH CHECK", async () => {
+    // Pin that the WITH CHECK clause on task_assignees (and analogously
+    // every 3-hop policy) fires when a caller in team B tries to attach
+    // a row to team A's task. Without explicit WITH CHECK, the policy
+    // would rely on Postgres's implicit-from-USING fallback — making the
+    // rejection explicit so future engine changes can't quietly regress.
+    const teamA = await seedUserOrgProject("rls-x-tac-with-check-a");
+    const teamB = await seedUserOrgProject("rls-x-tac-with-check-b");
+    const su = superuserPool();
+    let taskAId: string;
+    try {
+      const [t] = await su<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${teamA.projectId}, 'task-a', 1) RETURNING id
+      `;
+      taskAId = t.id;
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    await expectQueryRejects(
+      c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
+        await tx`
+          INSERT INTO task_assignees (task_id, user_id)
+          VALUES (${taskAId}::uuid, ${teamB.userId}::uuid)
+        `;
+      }) as unknown as PromiseLike<unknown>,
+      /row-level security|violates row-level security/i,
+    );
+  });
+
   test("team_invite_code RESTRICTIVE write floor blocks regular-member INSERT", async () => {
     // Pin H1 directly at the SQL layer: even if a future permissive
     // policy is added that would allow a member to INSERT, the

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import postgres from "postgres";
 import { truncateAll } from "@/tests/setup/schema";
 import { appUserConnect, seedUserOrgProject } from "@/tests/setup/seed";
-import { getConnectionString } from "@/tests/setup/global";
+import { getConnectionString, superuserPool } from "@/tests/setup/global";
 import { expectQueryRejects } from "@/tests/setup/expect-query";
 
 afterEach(async () => {
@@ -91,6 +91,31 @@ describe("app_user neon_auth lockdown", () => {
       });
     } finally {
       await c.end({ timeout: 5 });
+    }
+  });
+
+  test("app_user has zero rows in information_schema.table_privileges for schema neon_auth", async () => {
+    // The runtime SELECT-deny probes above prove the surface is
+    // unreachable, but a catalog assertion is the static-shape backup —
+    // a future docker/grants.sql edit that accidentally added a grant
+    // would silently widen the blast radius. Pin the contract.
+    const su = superuserPool();
+    try {
+      const rows = await su<
+        Array<{ grantee: string; table_name: string; privilege_type: string }>
+      >`
+        SELECT grantee, table_name, privilege_type
+        FROM information_schema.table_privileges
+        WHERE grantee = 'app_user'
+          AND table_schema = 'neon_auth'
+      `;
+      const found = rows.map((r) => `${r.table_name}.${r.privilege_type}`);
+      expect(
+        found,
+        `app_user must have zero table privileges in neon_auth (found: ${found.join(", ")})`,
+      ).toEqual([]);
+    } finally {
+      await su.end({ timeout: 5 });
     }
   });
 });

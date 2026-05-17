@@ -199,6 +199,10 @@ export async function releaseInviteCodeSlot(
   id: string,
   succeeded: boolean,
 ): Promise<void> {
+  // Bare `db` (no withUserContext frame) is intentional: the SDF takes
+  // `p_user_id` as an explicit argument and gates on `reserved_by`, not on
+  // the `app.user_id` GUC. Routing through withUserContext would only
+  // add a wasted SET LOCAL roundtrip.
   const rows = await executeRaw<{ release_team_invite_code_slot: boolean }>(
     db,
     sql`SELECT public.release_team_invite_code_slot(${id}::uuid, ${userId}::uuid, ${succeeded})`,

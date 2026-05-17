@@ -557,10 +557,11 @@ describe("CVE-2018-1058 hardening — search_path", () => {
       WHERE n.nspname = 'public'
         AND p.proname IN (
           'reject_projects_organization_id_change',
-          'reject_tasks_project_id_change'
+          'reject_tasks_project_id_change',
+          'reject_team_invite_code_organization_id_change'
         )
     `;
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBe(3);
     for (const row of rows) {
       const settings = row.proconfig ?? [];
       const searchPath = settings.find((s) => s.toLowerCase().startsWith("search_path="));
@@ -732,21 +733,6 @@ describe("SECURITY DEFINER catalog invariants", () => {
  * A's identifiers.
  */
 describe("SECURITY DEFINER — cross-team caller-membership re-checks", () => {
-  test("team_members_visible — cross-team caller sees zero rows", async () => {
-    const teamA = await seedUserOrgProject("sdf-tmv-a");
-    const teamB = await seedUserOrgProject("sdf-tmv-b");
-    const c = appUserConnect();
-    try {
-      const rows = await c.begin(async (tx) => {
-        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
-        return await tx`SELECT * FROM public.team_members_visible(${teamA.organizationId}::uuid)`;
-      });
-      expect(rows.length).toBe(0);
-    } finally {
-      await c.end({ timeout: 5 });
-    }
-  });
-
   test("task_assignees_visible — cross-team caller sees zero rows", async () => {
     const teamA = await seedUserOrgProject("sdf-tav-a");
     const teamB = await seedUserOrgProject("sdf-tav-b");
@@ -825,30 +811,6 @@ describe("SECURITY DEFINER — cross-team caller-membership re-checks", () => {
             ARRAY[${teamA.userId}::uuid]
           )
         `;
-      });
-      expect(rows.length).toBe(0);
-    } finally {
-      await c.end({ timeout: 5 });
-    }
-  });
-
-  test("team_invitations_visible — cross-team caller sees zero rows", async () => {
-    const teamA = await seedUserOrgProject("sdf-tiv-a");
-    const teamB = await seedUserOrgProject("sdf-tiv-b");
-    const su = superuserPool();
-    await su`
-      INSERT INTO neon_auth."invitation"
-        ("organizationId", "email", "role", "status", "expiresAt", "inviterId")
-      VALUES (
-        ${teamA.organizationId}, ${"cross@test.local"}, 'member', 'pending',
-        ${new Date(Date.now() + 7 * 86400_000)}, ${teamA.userId}
-      )
-    `;
-    const c = appUserConnect();
-    try {
-      const rows = await c.begin(async (tx) => {
-        await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
-        return await tx`SELECT * FROM public.team_invitations_visible(${teamA.organizationId}::uuid)`;
       });
       expect(rows.length).toBe(0);
     } finally {
@@ -1038,3 +1000,46 @@ describe("AsAdmin functions — service_role only EXECUTE", () => {
     }
   });
 });
+
+/**
+ * The two AsAdmin SDFs are BYPASSRLS-routed (no membership scope, no
+ * caller GUC). Their correctness contract is "returns exactly the named
+ * org's set, never another org's". A regression dropping the WHERE clause
+ * would silently fan out into other orgs. The cross-org isolation tests
+ * here pin the contract independent of any calling action's behavior.
+ */
+describe("AsAdmin functions — org-scoped correctness", () => {
+  test("find_org_member_user_ids_as_admin returns exactly the named org's members", async () => {
+    const a = await seedUserOrgProject("asadmin-fomuia-fan-a");
+    const b = await seedUserOrgProject("asadmin-fomuia-fan-b");
+    const sr = serviceRoleConnect();
+    const aRows = await sr<{ user_id: string }[]>`
+      SELECT user_id FROM public.find_org_member_user_ids_as_admin(${a.organizationId}::uuid)
+    `;
+    const bRows = await sr<{ user_id: string }[]>`
+      SELECT user_id FROM public.find_org_member_user_ids_as_admin(${b.organizationId}::uuid)
+    `;
+    expect(aRows.map((r) => r.user_id).sort()).toEqual([a.userId].sort());
+    expect(bRows.map((r) => r.user_id).sort()).toEqual([b.userId].sort());
+    // Cross-org isolation: each org's result must not include the other's user.
+    expect(aRows.map((r) => r.user_id)).not.toContain(b.userId);
+    expect(bRows.map((r) => r.user_id)).not.toContain(a.userId);
+  });
+
+  test("list_org_project_ids returns exactly the named org's projects", async () => {
+    const a = await seedUserOrgProject("asadmin-lopi-fan-a");
+    const b = await seedUserOrgProject("asadmin-lopi-fan-b");
+    const sr = serviceRoleConnect();
+    const aRows = await sr<{ id: string }[]>`
+      SELECT id FROM public.list_org_project_ids(${a.organizationId}::uuid)
+    `;
+    const bRows = await sr<{ id: string }[]>`
+      SELECT id FROM public.list_org_project_ids(${b.organizationId}::uuid)
+    `;
+    expect(aRows.map((r) => r.id).sort()).toEqual([a.projectId].sort());
+    expect(bRows.map((r) => r.id).sort()).toEqual([b.projectId].sort());
+    expect(aRows.map((r) => r.id)).not.toContain(b.projectId);
+    expect(bRows.map((r) => r.id)).not.toContain(a.projectId);
+  });
+});
+

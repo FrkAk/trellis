@@ -359,77 +359,16 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.team_member_roles_visible(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.team_member_roles_visible(uuid) TO app_user;
 
-CREATE OR REPLACE FUNCTION public.team_members_visible(p_org_id uuid)
-RETURNS TABLE (
-  member_id uuid,
-  user_id uuid,
-  role text,
-  name text,
-  email text,
-  member_created_at timestamptz
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog, pg_temp
-AS $$
-BEGIN
-  RETURN QUERY
-  SELECT m.id, m."userId", m.role, u.name, u.email, m."createdAt"
-  FROM neon_auth."member" m
-  INNER JOIN neon_auth."user" u ON u.id = m."userId"
-  WHERE m."organizationId" = p_org_id
-    AND EXISTS (
-      SELECT 1
-      FROM neon_auth."member" caller
-      WHERE caller."organizationId" = p_org_id
-        AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
-    )
-  ORDER BY m."createdAt" ASC;
-END;
-$$;
-REVOKE EXECUTE ON FUNCTION public.team_members_visible(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.team_members_visible(uuid) TO app_user;
-
--- Body gates on admin/owner role; regular members get zero rows.
-CREATE OR REPLACE FUNCTION public.team_invitations_visible(p_org_id uuid)
-RETURNS TABLE (
-  invitation_id uuid,
-  email text,
-  role text,
-  status text,
-  expires_at timestamptz,
-  created_at timestamptz,
-  inviter_id uuid,
-  inviter_name text
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = neon_auth, pg_catalog, pg_temp
-AS $$
-BEGIN
-  RETURN QUERY
-  SELECT i.id, i.email, i.role, i.status, i."expiresAt", i."createdAt",
-         i."inviterId", u.name
-  FROM neon_auth.invitation i
-  LEFT JOIN neon_auth."user" u ON u.id = i."inviterId"
-  WHERE i."organizationId" = p_org_id
-    AND EXISTS (
-      SELECT 1
-      FROM neon_auth."member" caller
-      WHERE caller."organizationId" = p_org_id
-        AND caller."userId" = NULLIF(current_setting('app.user_id', TRUE), '')::uuid
-        AND caller.role IN ('admin', 'owner')
-    )
-  ORDER BY i."createdAt" DESC;
-END;
-$$;
-REVOKE EXECUTE ON FUNCTION public.team_invitations_visible(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.team_invitations_visible(uuid) TO app_user;
+-- Legacy SDFs without TS callers: dropped so re-running this file keeps
+-- prod in lockstep. Reintroduce alongside a JS caller if a future UI
+-- surface needs them.
+DROP FUNCTION IF EXISTS public.team_members_visible(uuid);
+DROP FUNCTION IF EXISTS public.team_invitations_visible(uuid);
 
 -- Non-shared users are filtered out so the caller cannot probe arbitrary
--- uuids for existence.
+-- uuids for existence. Caller is rate-limited at the action layer; the
+-- cardinality cap below is the in-DB belt that bounds worst-case work
+-- regardless of action-layer behavior.
 CREATE OR REPLACE FUNCTION public.lookup_user_names_in_shared_orgs(p_user_ids uuid[])
 RETURNS TABLE (id uuid, name text)
 LANGUAGE plpgsql
@@ -438,6 +377,10 @@ SECURITY DEFINER
 SET search_path = neon_auth, pg_catalog, pg_temp
 AS $$
 BEGIN
+  IF cardinality(p_user_ids) > 1000 THEN
+    RAISE EXCEPTION 'lookup_user_names_in_shared_orgs: too many ids (max 1000)'
+      USING ERRCODE = '22023';
+  END IF;
   RETURN QUERY
   SELECT u.id, u.name
   FROM neon_auth."user" u
@@ -460,6 +403,12 @@ GRANT EXECUTE ON FUNCTION public.lookup_user_names_in_shared_orgs(uuid[]) TO app
 -- app_user cannot run under the Option-B lockdown). Caller membership is
 -- re-checked inside the function so upstream regressions cannot leak
 -- assignee identity cross-team.
+--
+-- `email` is intentionally exposed to every member of the task's org —
+-- this matches the surface of the team-roster screen (members already see
+-- each other's emails there). A future PR that wants to tighten this must
+-- also tighten the team-roster query; do not silently drop the column
+-- here.
 CREATE OR REPLACE FUNCTION public.task_assignees_visible(p_task_id uuid)
 RETURNS TABLE (user_id uuid, name text, email text)
 LANGUAGE plpgsql
@@ -599,6 +548,7 @@ GRANT EXECUTE ON FUNCTION public.is_caller_in_invitation_org(uuid, uuid) TO app_
 CREATE OR REPLACE FUNCTION public.reject_projects_organization_id_change()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY INVOKER
 SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
@@ -620,6 +570,7 @@ CREATE TRIGGER projects_organization_id_immutable
 CREATE OR REPLACE FUNCTION public.reject_tasks_project_id_change()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY INVOKER
 SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
@@ -637,6 +588,35 @@ CREATE TRIGGER tasks_project_id_immutable
   BEFORE UPDATE OF project_id ON public.tasks
   FOR EACH ROW
   EXECUTE FUNCTION public.reject_tasks_project_id_change();
+
+-- Block cross-team reparenting of the team_invite_code row pointer. Mirrors
+-- the projects/tasks immutability guard. Without it, a dual-admin attacker
+-- could `UPDATE team_invite_code SET organization_id = <team-B>` — RLS
+-- evaluates USING against OLD and WITH CHECK against NEW, so an admin of
+-- both teams passes both predicates and reparents team A's code into
+-- team B. The trigger collapses the surface to "the column is immutable",
+-- regardless of RLS evaluation order.
+CREATE OR REPLACE FUNCTION public.reject_team_invite_code_organization_id_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
+    RAISE EXCEPTION
+      'team_invite_code.organization_id is immutable — cross-team reparenting is forbidden'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS team_invite_code_organization_id_immutable ON public.team_invite_code;
+CREATE TRIGGER team_invite_code_organization_id_immutable
+  BEFORE UPDATE OF organization_id ON public.team_invite_code
+  FOR EACH ROW
+  EXECUTE FUNCTION public.reject_team_invite_code_organization_id_change();
 
 -- Reject task_edges rows whose endpoints belong to different projects (or
 -- whose endpoints are missing/invisible under RLS).
@@ -681,6 +661,11 @@ BEGIN
 END;
 $$;
 
+-- Trigger function — the EXECUTE grant to app_user mirrors the role that
+-- runs the triggering INSERT/UPDATE. Postgres checks EXECUTE on the
+-- trigger function against the firing role, so dropping the grant here
+-- would silently break every app_user INSERT/UPDATE on task_edges.
+-- PUBLIC is denied as part of the CVE-2018-1058 search_path defense.
 REVOKE EXECUTE ON FUNCTION public.reject_task_edges_cross_project() FROM public;
 GRANT EXECUTE ON FUNCTION public.reject_task_edges_cross_project() TO app_user;
 

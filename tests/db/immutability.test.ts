@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
-import { serviceRoleConnect, seedUserOrgProject } from "@/tests/setup/seed";
+import {
+  appUserConnect,
+  serviceRoleConnect,
+  seedUserOrgProject,
+} from "@/tests/setup/seed";
 import { superuserPool } from "@/tests/setup/global";
 import { expectQueryRejects } from "@/tests/setup/expect-query";
 
@@ -75,6 +79,121 @@ describe("immutability triggers — cross-team move prevented at DB level", () =
     } finally {
       await sr.end({ timeout: 5 });
     }
+  });
+
+  test("UPDATE team_invite_code SET organization_id = ... raises an exception", async () => {
+    const a = await seedUserOrgProject("immut-invite-a");
+    const b = await seedUserOrgProject("immut-invite-b");
+    const su = superuserPool();
+    let codeId: string;
+    try {
+      const [row] = await su<{ id: string }[]>`
+        INSERT INTO team_invite_code ("organization_id", "code", "created_by")
+        VALUES (${a.organizationId}::uuid, ${"CODE-immut-invite-a"}, ${a.userId}::uuid)
+        RETURNING id
+      `;
+      codeId = row.id;
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    const sr = serviceRoleConnect();
+    await expectQueryRejects(
+      sr`UPDATE team_invite_code SET organization_id = ${b.organizationId}::uuid WHERE id = ${codeId}::uuid`,
+      /team_invite_code\.organization_id is immutable/i,
+    );
+  });
+});
+
+/**
+ * A user who is a member of *both* teams A and B should not be able to
+ * UPDATE a public-schema row's organization_id / project_id under app_user.
+ * The RLS USING side accepts (both teams visible) but the immutability
+ * trigger fires regardless. These tests pin that the trigger composes
+ * correctly with RLS — without them the contract is only proven at the
+ * service_role level.
+ */
+describe("dual-org member cannot reparent rows under app_user", () => {
+  test("dual-org member: UPDATE projects.organization_id rejected", async () => {
+    const a = await seedUserOrgProject("dualorg-prj-a");
+    const b = await seedUserOrgProject("dualorg-prj-b");
+    const su = superuserPool();
+    try {
+      await su`
+        INSERT INTO neon_auth."member" ("organizationId", "userId", "role", "createdAt")
+        VALUES (${b.organizationId}::uuid, ${a.userId}::uuid, 'member', now())
+      `;
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    await expectQueryRejects(
+      c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${a.userId}, true)`;
+        await tx`UPDATE projects SET organization_id = ${b.organizationId}::uuid WHERE id = ${a.projectId}::uuid`;
+      }) as unknown as PromiseLike<unknown>,
+      /projects\.organization_id is immutable/i,
+    );
+  });
+
+  test("dual-org member: UPDATE tasks.project_id rejected", async () => {
+    const a = await seedUserOrgProject("dualorg-task-a");
+    const b = await seedUserOrgProject("dualorg-task-b");
+    const su = superuserPool();
+    let taskId: string;
+    try {
+      await su`
+        INSERT INTO neon_auth."member" ("organizationId", "userId", "role", "createdAt")
+        VALUES (${b.organizationId}::uuid, ${a.userId}::uuid, 'member', now())
+      `;
+      const [t] = await su<{ id: string }[]>`
+        INSERT INTO tasks (project_id, title, sequence_number)
+        VALUES (${a.projectId}::uuid, 'task', 1) RETURNING id
+      `;
+      taskId = t.id;
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    await expectQueryRejects(
+      c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${a.userId}, true)`;
+        await tx`UPDATE tasks SET project_id = ${b.projectId}::uuid WHERE id = ${taskId}::uuid`;
+      }) as unknown as PromiseLike<unknown>,
+      /tasks\.project_id is immutable/i,
+    );
+  });
+
+  test("dual-org admin: UPDATE team_invite_code.organization_id rejected", async () => {
+    const a = await seedUserOrgProject("dualorg-invite-a");
+    const b = await seedUserOrgProject("dualorg-invite-b");
+    const su = superuserPool();
+    let codeId: string;
+    try {
+      await su`
+        INSERT INTO neon_auth."member" ("organizationId", "userId", "role", "createdAt")
+        VALUES (${b.organizationId}::uuid, ${a.userId}::uuid, 'admin', now())
+      `;
+      const [row] = await su<{ id: string }[]>`
+        INSERT INTO team_invite_code ("organization_id", "code", "created_by")
+        VALUES (${a.organizationId}::uuid, ${"CODE-dualorg-invite-a"}, ${a.userId}::uuid)
+        RETURNING id
+      `;
+      codeId = row.id;
+    } finally {
+      await su.end({ timeout: 5 });
+    }
+
+    const c = appUserConnect();
+    await expectQueryRejects(
+      c.begin(async (tx) => {
+        await tx`SELECT set_config('app.user_id', ${a.userId}, true)`;
+        await tx`UPDATE team_invite_code SET organization_id = ${b.organizationId}::uuid WHERE id = ${codeId}::uuid`;
+      }) as unknown as PromiseLike<unknown>,
+      /team_invite_code\.organization_id is immutable/i,
+    );
   });
 });
 
