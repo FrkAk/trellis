@@ -13,16 +13,16 @@ export function AuthBrand() {
         aria-hidden="true"
         className="inline-flex h-[30px] w-[30px] items-center justify-center font-mono text-[15px] font-bold"
         style={{
-          background: 'var(--color-accent-grad)',
+          background: "var(--color-accent-grad)",
           borderRadius: 7,
-          color: '#0b0c10',
+          color: "#0b0c10",
         }}
       >
         m
       </span>
       <span
         className="text-[16px] font-semibold text-text-primary"
-        style={{ letterSpacing: '-0.005em' }}
+        style={{ letterSpacing: "-0.005em" }}
       >
         mymir
       </span>

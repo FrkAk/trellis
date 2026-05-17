@@ -1,56 +1,66 @@
-'use client';
+"use client";
 
-import { motion, AnimatePresence } from 'motion/react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { createTask, deleteTask } from '@/lib/graph/mutations';
-import { useUndo, UndoButton } from '@/hooks/useUndo';
-import { IconSearch, IconX, IconPlus } from '@/components/shared/icons';
-import { StatusGlyph, STATUS_META, type TaskStatus as GlyphStatus } from '@/components/shared/StatusGlyph';
-import type { TaskEdge } from '@/lib/db/schema';
-import type { TaskGraphSlim, TaskFull } from '@/lib/data/views';
-import type { TaskStatus } from '@/lib/types';
-import { taskKeys } from '@/lib/query/keys';
-import { fetchTaskBody } from '@/lib/query/queries';
-import { listTeamMembersAction } from '@/lib/actions/team-members';
-import type { MemberView } from '@/lib/actions/team-members-map';
-import { teamKeys } from '@/lib/query/keys';
+import { motion, AnimatePresence } from "motion/react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { createTask, deleteTask } from "@/lib/graph/mutations";
+import { useUndo, UndoButton } from "@/hooks/useUndo";
+import { IconSearch, IconX, IconPlus } from "@/components/shared/icons";
+import {
+  StatusGlyph,
+  STATUS_META,
+  type TaskStatus as GlyphStatus,
+} from "@/components/shared/StatusGlyph";
+import type { TaskEdge } from "@/lib/db/schema";
+import type { TaskGraphSlim, TaskFull } from "@/lib/data/views";
+import type { TaskStatus } from "@/lib/types";
+import { taskKeys } from "@/lib/query/keys";
+import { fetchTaskBody } from "@/lib/query/queries";
+import { listTeamMembersAction } from "@/lib/actions/team-members";
+import type { MemberView } from "@/lib/actions/team-members-map";
+import { teamKeys } from "@/lib/query/keys";
 import {
   PRIORITY_DISPLAY_ORDER,
   PRIORITY_RANK,
   PRIORITY_RANK_UNSET,
   UNPRIORITIZED_KEY,
-} from '@/lib/ui/priority';
-import { TaskRow } from './TaskRow';
-import { type TaskGroupKey } from './TaskGroup';
-import type { GroupKey, SortKey } from './FilterBar';
-import { FilterPanel } from './FilterPanel';
-import { formatRelative } from './relativeTime';
+} from "@/lib/ui/priority";
+import { TaskRow } from "./TaskRow";
+import { type TaskGroupKey } from "./TaskGroup";
+import type { GroupKey, SortKey } from "./FilterBar";
+import { FilterPanel } from "./FilterPanel";
+import { formatRelative } from "./relativeTime";
 
 /** URL search-param keys persisting filter state. */
-const FILTER_PARAM_KEYS = { tags: 'tags', categories: 'cat', statuses: 'status', priorities: 'pri', search: 'q' } as const;
+const FILTER_PARAM_KEYS = {
+  tags: "tags",
+  categories: "cat",
+  statuses: "status",
+  priorities: "pri",
+  search: "q",
+} as const;
 
 /** Display order for status groups — most actionable at the top. */
 const GROUP_ORDER: readonly TaskGroupKey[] = [
-  'in_progress',
-  'in_review',
-  'ready',
-  'planned',
-  'plannable',
-  'draft',
-  'done',
-  'cancelled',
+  "in_progress",
+  "in_review",
+  "ready",
+  "planned",
+  "plannable",
+  "draft",
+  "done",
+  "cancelled",
 ];
 
 type TaskWithRef = TaskGraphSlim;
 
 /** Discriminated union describing a group section's identity and label source. */
 type GroupSection =
-  | { kind: 'status'; key: TaskGroupKey }
-  | { kind: 'category'; key: string; label: string }
-  | { kind: 'flat' };
+  | { kind: "status"; key: TaskGroupKey }
+  | { kind: "category"; key: string; label: string }
+  | { kind: "flat" };
 
 interface StructureViewProps {
   /** All project tasks, augmented with composed `taskRef`. */
@@ -91,8 +101,8 @@ interface StructureViewProps {
  * @returns Group key.
  */
 function groupKeyFor(task: TaskWithRef): TaskGroupKey {
-  if (task.state === 'ready') return 'ready';
-  if (task.state === 'plannable') return 'plannable';
+  if (task.state === "ready") return "ready";
+  if (task.state === "plannable") return "plannable";
   return task.status;
 }
 
@@ -104,7 +114,12 @@ function groupKeyFor(task: TaskWithRef): TaskGroupKey {
  */
 function parseSet(value: string | null): Set<string> {
   if (!value) return new Set();
-  return new Set(value.split(',').map((v) => v.trim()).filter(Boolean));
+  return new Set(
+    value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean),
+  );
 }
 
 /**
@@ -117,12 +132,18 @@ function parseSet(value: string | null): Set<string> {
  */
 function serializeFilters(
   current: URLSearchParams,
-  next: { tags: Set<string>; categories: Set<string>; statuses: Set<string>; priorities: Set<string>; search: string },
+  next: {
+    tags: Set<string>;
+    categories: Set<string>;
+    statuses: Set<string>;
+    priorities: Set<string>;
+    search: string;
+  },
 ): string {
   const out = new URLSearchParams(current);
   const apply = (key: string, set: Set<string>) => {
     if (set.size === 0) out.delete(key);
-    else out.set(key, [...set].join(','));
+    else out.set(key, [...set].join(","));
   };
   apply(FILTER_PARAM_KEYS.tags, next.tags);
   apply(FILTER_PARAM_KEYS.categories, next.categories);
@@ -131,7 +152,7 @@ function serializeFilters(
   if (next.search.trim()) out.set(FILTER_PARAM_KEYS.search, next.search.trim());
   else out.delete(FILTER_PARAM_KEYS.search);
   const qs = out.toString();
-  return qs ? `?${qs}` : '';
+  return qs ? `?${qs}` : "";
 }
 
 interface DepsMap {
@@ -151,9 +172,12 @@ function buildDepsMap(edges: TaskEdge[]): DepsMap {
   const upstream = new Map<string, number>();
   const downstream = new Map<string, number>();
   for (const edge of edges) {
-    if (edge.edgeType !== 'depends_on') continue;
+    if (edge.edgeType !== "depends_on") continue;
     upstream.set(edge.sourceTaskId, (upstream.get(edge.sourceTaskId) ?? 0) + 1);
-    downstream.set(edge.targetTaskId, (downstream.get(edge.targetTaskId) ?? 0) + 1);
+    downstream.set(
+      edge.targetTaskId,
+      (downstream.get(edge.targetTaskId) ?? 0) + 1,
+    );
   }
   return { upstream, downstream };
 }
@@ -175,15 +199,17 @@ interface DeletedTask {
  */
 function sortTasks(items: TaskWithRef[], key: SortKey): TaskWithRef[] {
   const copy = [...items];
-  if (key === 'updated') {
+  if (key === "updated") {
     copy.sort((a, b) => {
       const at = a.updatedAt ? Date.parse(String(a.updatedAt)) : 0;
       const bt = b.updatedAt ? Date.parse(String(b.updatedAt)) : 0;
       return bt - at;
     });
-  } else if (key === 'identifier') {
-    copy.sort((a, b) => a.taskRef.localeCompare(b.taskRef, undefined, { numeric: true }));
-  } else if (key === 'priority') {
+  } else if (key === "identifier") {
+    copy.sort((a, b) =>
+      a.taskRef.localeCompare(b.taskRef, undefined, { numeric: true }),
+    );
+  } else if (key === "priority") {
     // Unset priorities sort below the lowest assigned value so the user
     // sees a meaningful gradient first; ties fall back to `order` to keep
     // adjacent rows stable.
@@ -224,8 +250,12 @@ export function StructureView({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [activeStatuses, setActiveStatuses] = useState<Set<string>>(() => parseSet(searchParams.get(FILTER_PARAM_KEYS.statuses)));
-  const [activeCategories, setActiveCategories] = useState<Set<string>>(() => parseSet(searchParams.get(FILTER_PARAM_KEYS.categories)));
+  const [activeStatuses, setActiveStatuses] = useState<Set<string>>(() =>
+    parseSet(searchParams.get(FILTER_PARAM_KEYS.statuses)),
+  );
+  const [activeCategories, setActiveCategories] = useState<Set<string>>(() =>
+    parseSet(searchParams.get(FILTER_PARAM_KEYS.categories)),
+  );
   const [activeTags, setActiveTags] = useState<Set<string>>(() =>
     parseSet(searchParams.get(FILTER_PARAM_KEYS.tags)),
   );
@@ -234,22 +264,43 @@ export function StructureView({
     // sentinel so a stale bookmark with an unknown token cannot empty the
     // list.
     const parsed = parseSet(searchParams.get(FILTER_PARAM_KEYS.priorities));
-    const allowed = new Set<string>([UNPRIORITIZED_KEY, ...PRIORITY_DISPLAY_ORDER]);
+    const allowed = new Set<string>([
+      UNPRIORITIZED_KEY,
+      ...PRIORITY_DISPLAY_ORDER,
+    ]);
     for (const p of [...parsed]) if (!allowed.has(p)) parsed.delete(p);
     return parsed;
   });
-  const [search, setSearch] = useState<string>(() => searchParams.get(FILTER_PARAM_KEYS.search) ?? '');
+  const [search, setSearch] = useState<string>(
+    () => searchParams.get(FILTER_PARAM_KEYS.search) ?? "",
+  );
   const [addingToGroup, setAddingToGroup] = useState<TaskGroupKey | null>(null);
-  const [addTitle, setAddTitle] = useState('');
+  const [addTitle, setAddTitle] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const pendingDeleteBodyRef = useRef<Map<string, Promise<TaskFull | null>>>(new Map());
-  const filtersRef = useRef({ tags: activeTags, categories: activeCategories, statuses: activeStatuses, priorities: activePriorities, search });
+  const pendingDeleteBodyRef = useRef<Map<string, Promise<TaskFull | null>>>(
+    new Map(),
+  );
+  const filtersRef = useRef({
+    tags: activeTags,
+    categories: activeCategories,
+    statuses: activeStatuses,
+    priorities: activePriorities,
+    search,
+  });
 
-  filtersRef.current = { tags: activeTags, categories: activeCategories, statuses: activeStatuses, priorities: activePriorities, search };
+  filtersRef.current = {
+    tags: activeTags,
+    categories: activeCategories,
+    statuses: activeStatuses,
+    priorities: activePriorities,
+    search,
+  };
 
   useEffect(() => {
     const qs = serializeFilters(searchParams, filtersRef.current);
-    const currentQs = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    const currentQs = searchParams.toString()
+      ? `?${searchParams.toString()}`
+      : "";
     // Skip the no-op `router.replace` on mount when filter state already
     // mirrors the URL (initial state is parsed FROM the URL via
     // `searchParams.get(...)` above). Each `router.replace` triggers an
@@ -273,14 +324,11 @@ export function StructureView({
     },
     staleTime: 5 * 60_000,
   });
-  const memberLookup = useMemo<ReadonlyMap<string, MemberView>>(
-    () => {
-      const map = new Map<string, MemberView>();
-      for (const m of teamMembers ?? []) map.set(m.userId, m);
-      return map;
-    },
-    [teamMembers],
-  );
+  const memberLookup = useMemo<ReadonlyMap<string, MemberView>>(() => {
+    const map = new Map<string, MemberView>();
+    for (const m of teamMembers ?? []) map.set(m.userId, m);
+    return map;
+  }, [teamMembers]);
 
   const depsMap = useMemo(() => buildDepsMap(edges), [edges]);
 
@@ -301,7 +349,9 @@ export function StructureView({
       const list = (task.tags as string[] | null) ?? [];
       for (const tag of list) counts.set(tag, (counts.get(tag) ?? 0) + 1);
     }
-    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])) as ReadonlyArray<readonly [string, number]>;
+    return [...counts.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    ) as ReadonlyArray<readonly [string, number]>;
   }, [tasks]);
 
   const statusCounts = useMemo(() => {
@@ -337,10 +387,11 @@ export function StructureView({
     return tasks.filter((t) => {
       const groupKey = groupKeyFor(t);
 
-      if (activeStatuses.size > 0 && !activeStatuses.has(groupKey)) return false;
+      if (activeStatuses.size > 0 && !activeStatuses.has(groupKey))
+        return false;
 
       if (activeCategories.size > 0) {
-        if (!t.category && !activeCategories.has('Uncategorized')) return false;
+        if (!t.category && !activeCategories.has("Uncategorized")) return false;
         if (t.category && !activeCategories.has(t.category)) return false;
       }
 
@@ -361,29 +412,45 @@ export function StructureView({
 
       return true;
     });
-  }, [tasks, activeStatuses, activeCategories, activeTags, activePriorities, search]);
+  }, [
+    tasks,
+    activeStatuses,
+    activeCategories,
+    activeTags,
+    activePriorities,
+    search,
+  ]);
 
-  const groupedVisible = useMemo<ReadonlyArray<readonly [GroupSection, TaskWithRef[]]>>(() => {
-    if (group === 'none') {
-      return [[ { kind: 'flat' }, sortTasks(visibleTasks, sort) ]];
+  const groupedVisible = useMemo<
+    ReadonlyArray<readonly [GroupSection, TaskWithRef[]]>
+  >(() => {
+    if (group === "none") {
+      return [[{ kind: "flat" }, sortTasks(visibleTasks, sort)]];
     }
-    if (group === 'category') {
+    if (group === "category") {
       const map = new Map<string, TaskWithRef[]>();
       for (const task of visibleTasks) {
-        const key = task.category ?? '__uncategorized__';
+        const key = task.category ?? "__uncategorized__";
         const list = map.get(key) ?? [];
         list.push(task);
         map.set(key, list);
       }
       const labels = [...map.keys()].sort((a, b) => {
-        if (a === '__uncategorized__') return 1;
-        if (b === '__uncategorized__') return -1;
+        if (a === "__uncategorized__") return 1;
+        if (b === "__uncategorized__") return -1;
         return a.localeCompare(b);
       });
-      return labels.map((key) => [
-        { kind: 'category' as const, key, label: key === '__uncategorized__' ? 'Uncategorized' : key },
-        sortTasks(map.get(key) ?? [], sort),
-      ] as const);
+      return labels.map(
+        (key) =>
+          [
+            {
+              kind: "category" as const,
+              key,
+              label: key === "__uncategorized__" ? "Uncategorized" : key,
+            },
+            sortTasks(map.get(key) ?? [], sort),
+          ] as const,
+      );
     }
     const map = new Map<TaskGroupKey, TaskWithRef[]>();
     for (const task of visibleTasks) {
@@ -392,18 +459,20 @@ export function StructureView({
       list.push(task);
       map.set(key, list);
     }
-    return GROUP_ORDER
-      .filter((key) => (map.get(key)?.length ?? 0) > 0)
-      .map((key) => [
-        { kind: 'status' as const, key },
-        sortTasks(map.get(key) ?? [], sort),
-      ] as const);
+    return GROUP_ORDER.filter((key) => (map.get(key)?.length ?? 0) > 0).map(
+      (key) =>
+        [
+          { kind: "status" as const, key },
+          sortTasks(map.get(key) ?? [], sort),
+        ] as const,
+    );
   }, [visibleTasks, sort, group]);
 
   const toggleStatus = useCallback((id: string) => {
     setActiveStatuses((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -411,7 +480,8 @@ export function StructureView({
   const toggleCategory = useCallback((id: string) => {
     setActiveCategories((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -419,7 +489,8 @@ export function StructureView({
   const toggleTag = useCallback((id: string) => {
     setActiveTags((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -427,7 +498,8 @@ export function StructureView({
   const togglePriority = useCallback((id: string) => {
     setActivePriorities((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -437,57 +509,68 @@ export function StructureView({
     setActiveCategories(new Set());
     setActiveTags(new Set());
     setActivePriorities(new Set());
-    setSearch('');
+    setSearch("");
   }, []);
 
   const handleStartNewTask = useCallback((groupKey: TaskGroupKey) => {
     setAddingToGroup(groupKey);
-    setAddTitle('');
+    setAddTitle("");
   }, []);
 
-  const handleAddTask = useCallback(async (groupKey: TaskGroupKey) => {
-    const trimmed = addTitle.trim();
-    if (!trimmed) {
+  const handleAddTask = useCallback(
+    async (groupKey: TaskGroupKey) => {
+      const trimmed = addTitle.trim();
+      if (!trimmed) {
+        setAddingToGroup(null);
+        return;
+      }
+      const status: TaskStatus =
+        groupKey === "ready"
+          ? "planned"
+          : groupKey === "plannable" || groupKey === "cancelled"
+            ? "draft"
+            : (groupKey as TaskStatus);
+      await createTask({
+        projectId,
+        title: trimmed,
+        description: "",
+        status,
+        order: tasks.length,
+      });
       setAddingToGroup(null);
-      return;
-    }
-    const status: TaskStatus = groupKey === 'ready'
-      ? 'planned'
-      : groupKey === 'plannable' || groupKey === 'cancelled'
-        ? 'draft'
-        : (groupKey as TaskStatus);
-    await createTask({
-      projectId,
-      title: trimmed,
-      description: '',
-      status,
-      order: tasks.length,
-    });
-    setAddingToGroup(null);
-    setAddTitle('');
-    onGraphChange?.();
-  }, [addTitle, projectId, tasks.length, onGraphChange]);
+      setAddTitle("");
+      onGraphChange?.();
+    },
+    [addTitle, projectId, tasks.length, onGraphChange],
+  );
 
-  const handleRestore = useCallback(async (item: DeletedTask) => {
-    const t = item.taskData;
-    await createTask({
-      projectId: t.projectId,
-      title: t.title,
-      description: t.description,
-      status: t.status,
-      order: tasks.length,
-      acceptanceCriteria: t.acceptanceCriteria,
-      decisions: t.decisions,
-      implementationPlan: t.implementationPlan,
-      executionRecord: t.executionRecord,
-      tags: t.tags,
-      category: t.category,
-      files: t.files,
-    });
-    onGraphChange?.();
-  }, [tasks.length, onGraphChange]);
+  const handleRestore = useCallback(
+    async (item: DeletedTask) => {
+      const t = item.taskData;
+      await createTask({
+        projectId: t.projectId,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        order: tasks.length,
+        acceptanceCriteria: t.acceptanceCriteria,
+        decisions: t.decisions,
+        implementationPlan: t.implementationPlan,
+        executionRecord: t.executionRecord,
+        tags: t.tags,
+        category: t.category,
+        files: t.files,
+      });
+      onGraphChange?.();
+    },
+    [tasks.length, onGraphChange],
+  );
 
-  const { canUndo, push: pushUndo, undo } = useUndo<DeletedTask>({
+  const {
+    canUndo,
+    push: pushUndo,
+    undo,
+  } = useUndo<DeletedTask>({
     onUndo: handleRestore,
     keyboard: { panelSelector: '[data-panel="navigator"]' },
   });
@@ -513,27 +596,30 @@ export function StructureView({
     );
   }, [confirmDelete, queryClient, projectId]);
 
-  const handleDelete = useCallback(async (taskId: string) => {
-    const slim = tasks.find((t) => t.id === taskId);
-    const bodyPromise =
-      pendingDeleteBodyRef.current.get(taskId) ??
-      queryClient
-        .fetchQuery({
-          queryKey: taskKeys.detail(projectId, taskId),
-          queryFn: fetchTaskBody(queryClient, projectId, taskId),
-        })
-        .then((data) => (data as TaskFull | undefined) ?? null)
-        .catch(() => null);
-    // Await the GET before firing the DELETE so the server reads the
-    // pre-deletion state — a parallel `Promise.all` could let the DELETE
-    // win the race and the GET return 404.
-    const full = await bodyPromise;
-    pendingDeleteBodyRef.current.delete(taskId);
-    if (slim && full) pushUndo({ title: slim.title, taskData: full });
-    await deleteTask(taskId);
-    setConfirmDelete(null);
-    onGraphChange?.();
-  }, [tasks, pushUndo, onGraphChange, queryClient, projectId]);
+  const handleDelete = useCallback(
+    async (taskId: string) => {
+      const slim = tasks.find((t) => t.id === taskId);
+      const bodyPromise =
+        pendingDeleteBodyRef.current.get(taskId) ??
+        queryClient
+          .fetchQuery({
+            queryKey: taskKeys.detail(projectId, taskId),
+            queryFn: fetchTaskBody(queryClient, projectId, taskId),
+          })
+          .then((data) => (data as TaskFull | undefined) ?? null)
+          .catch(() => null);
+      // Await the GET before firing the DELETE so the server reads the
+      // pre-deletion state — a parallel `Promise.all` could let the DELETE
+      // win the race and the GET return 404.
+      const full = await bodyPromise;
+      pendingDeleteBodyRef.current.delete(taskId);
+      if (slim && full) pushUndo({ title: slim.title, taskData: full });
+      await deleteTask(taskId);
+      setConfirmDelete(null);
+      onGraphChange?.();
+    },
+    [tasks, pushUndo, onGraphChange, queryClient, projectId],
+  );
 
   // Stable delete callbacks for `TaskRow` — keeping these tight is what
   // makes `React.memo(TaskRow)` useful. Identity stays stable across
@@ -541,14 +627,22 @@ export function StructureView({
   const handleRequestDelete = useCallback((id: string) => {
     setConfirmDelete(id);
   }, []);
-  const handleConfirmDelete = useCallback((id: string) => {
-    void handleDelete(id);
-  }, [handleDelete]);
+  const handleConfirmDelete = useCallback(
+    (id: string) => {
+      void handleDelete(id);
+    },
+    [handleDelete],
+  );
   const handleCancelDelete = useCallback(() => {
     setConfirmDelete(null);
   }, []);
 
-  const totalActiveFilters = activeStatuses.size + activeCategories.size + activeTags.size + activePriorities.size + (search.trim() ? 1 : 0);
+  const totalActiveFilters =
+    activeStatuses.size +
+    activeCategories.size +
+    activeTags.size +
+    activePriorities.size +
+    (search.trim() ? 1 : 0);
 
   // Flatten the grouped sections into a single sequence so the virtualizer
   // can size and position each visible row independently. Group headers
@@ -556,23 +650,23 @@ export function StructureView({
   const flatItems = useMemo<RowItem[]>(() => {
     const items: RowItem[] = [];
     for (const [section, groupTasks] of groupedVisible) {
-      if (section.kind !== 'flat') {
+      if (section.kind !== "flat") {
         items.push({
-          kind: 'group-header',
+          kind: "group-header",
           key: `h:${sectionKey(section)}`,
           section,
           count: groupTasks.length,
         });
       }
-      if (section.kind === 'status' && addingToGroup === section.key) {
+      if (section.kind === "status" && addingToGroup === section.key) {
         items.push({
-          kind: 'new-task-input',
+          kind: "new-task-input",
           key: `n:${section.key}`,
           groupKey: section.key,
         });
       }
       for (const t of groupTasks) {
-        items.push({ kind: 'task', key: t.id, task: t });
+        items.push({ kind: "task", key: t.id, task: t });
       }
     }
     return items;
@@ -589,7 +683,8 @@ export function StructureView({
   const virtualizer = useVirtualizer({
     count: flatItems.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (flatItems[index]?.kind === 'group-header' ? 32 : 35),
+    estimateSize: (index) =>
+      flatItems[index]?.kind === "group-header" ? 32 : 35,
     getItemKey: (index) => flatItems[index]?.key ?? index,
     overscan: 8,
   });
@@ -603,9 +698,11 @@ export function StructureView({
     if (didScrollToSelectionRef.current) return;
     if (!selectedNodeId) return;
     if (flatItems.length === 0) return;
-    const idx = flatItems.findIndex((it) => it.kind === 'task' && it.task.id === selectedNodeId);
+    const idx = flatItems.findIndex(
+      (it) => it.kind === "task" && it.task.id === selectedNodeId,
+    );
     if (idx < 0) return;
-    virtualizer.scrollToIndex(idx, { align: 'center' });
+    virtualizer.scrollToIndex(idx, { align: "center" });
     didScrollToSelectionRef.current = true;
   }, [selectedNodeId, flatItems, virtualizer]);
 
@@ -637,11 +734,13 @@ export function StructureView({
         {canUndo && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
+            animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             className="flex items-center gap-2 border-b border-border bg-surface-raised/40 px-4 py-1.5"
           >
-            <span className="text-[11px] text-text-secondary">Task deleted</span>
+            <span className="text-[11px] text-text-secondary">
+              Task deleted
+            </span>
             <UndoButton canUndo={canUndo} onUndo={undo} className="ml-auto" />
           </motion.div>
         )}
@@ -656,8 +755,8 @@ export function StructureView({
           <div
             style={{
               height: virtualizer.getTotalSize(),
-              position: 'relative',
-              width: '100%',
+              position: "relative",
+              width: "100%",
             }}
           >
             {virtualizer.getVirtualItems().map((vi) => {
@@ -668,33 +767,44 @@ export function StructureView({
                   key={vi.key}
                   data-index={vi.index}
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     top: 0,
                     left: 0,
                     right: 0,
                     transform: `translateY(${vi.start}px)`,
                   }}
                 >
-                  {item.kind === 'group-header' && (
+                  {item.kind === "group-header" && (
                     <TaskGroupHeader
                       section={item.section}
                       count={item.count}
                       onAdd={
-                        item.section.kind === 'status'
-                          ? () => handleStartNewTask((item.section as Extract<GroupSection, { kind: 'status' }>).key)
+                        item.section.kind === "status"
+                          ? () =>
+                              handleStartNewTask(
+                                (
+                                  item.section as Extract<
+                                    GroupSection,
+                                    { kind: "status" }
+                                  >
+                                ).key,
+                              )
                           : undefined
                       }
                     />
                   )}
-                  {item.kind === 'new-task-input' && (
+                  {item.kind === "new-task-input" && (
                     <NewTaskRow
                       value={addTitle}
                       onChange={setAddTitle}
                       onCommit={() => handleAddTask(item.groupKey)}
-                      onCancel={() => { setAddingToGroup(null); setAddTitle(''); }}
+                      onCancel={() => {
+                        setAddingToGroup(null);
+                        setAddTitle("");
+                      }}
                     />
                   )}
-                  {item.kind === 'task' && (
+                  {item.kind === "task" && (
                     <TaskRow
                       id={item.task.id}
                       taskRef={item.task.taskRef}
@@ -705,11 +815,13 @@ export function StructureView({
                       assigneeUserIds={item.task.assigneeUserIds}
                       memberLookup={memberLookup}
                       upstreamCount={depsMap.upstream.get(item.task.id) ?? 0}
-                      downstreamCount={depsMap.downstream.get(item.task.id) ?? 0}
+                      downstreamCount={
+                        depsMap.downstream.get(item.task.id) ?? 0
+                      }
                       lastActive={formatRelative(item.task.updatedAt)}
                       selected={selectedNodeId === item.task.id}
-                      isReady={item.task.state === 'ready'}
-                      isPlannable={item.task.state === 'plannable'}
+                      isReady={item.task.state === "ready"}
+                      isPlannable={item.task.state === "plannable"}
                       onSelect={onSelectNode}
                       onRequestDelete={handleRequestDelete}
                       onConfirmDelete={handleConfirmDelete}
@@ -729,9 +841,9 @@ export function StructureView({
 
 /** Discriminated row item — drives the virtualised renderer's item heights and layout. */
 type RowItem =
-  | { kind: 'group-header'; key: string; section: GroupSection; count: number }
-  | { kind: 'new-task-input'; key: string; groupKey: TaskGroupKey }
-  | { kind: 'task'; key: string; task: TaskWithRef };
+  | { kind: "group-header"; key: string; section: GroupSection; count: number }
+  | { kind: "new-task-input"; key: string; groupKey: TaskGroupKey }
+  | { kind: "task"; key: string; task: TaskWithRef };
 
 interface TaskGroupHeaderProps {
   /** Section discriminator (status or category). */
@@ -751,8 +863,8 @@ interface TaskGroupHeaderProps {
  * @returns 30px sticky-style header.
  */
 function TaskGroupHeader({ section, count, onAdd }: TaskGroupHeaderProps) {
-  if (section.kind === 'flat') return null;
-  if (section.kind === 'status') {
+  if (section.kind === "flat") return null;
+  if (section.kind === "status") {
     const meta = STATUS_META[section.key as GlyphStatus] ?? STATUS_META.draft;
     return (
       <div className="flex h-[30px] items-center gap-2 border-y border-border bg-base-2 px-4">
@@ -786,11 +898,16 @@ function TaskGroupHeader({ section, count, onAdd }: TaskGroupHeaderProps) {
   }
   return (
     <div className="flex h-[30px] items-center gap-2 border-y border-border bg-base-2 px-4">
-      <span aria-hidden="true" className="h-2 w-2 rounded-sm border border-border-strong bg-surface-raised" />
+      <span
+        aria-hidden="true"
+        className="h-2 w-2 rounded-sm border border-border-strong bg-surface-raised"
+      />
       <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.10em] text-text-secondary">
         {section.label}
       </span>
-      <span className="font-mono text-[10px] tabular-nums text-text-faint">{count}</span>
+      <span className="font-mono text-[10px] tabular-nums text-text-faint">
+        {count}
+      </span>
     </div>
   );
 }
@@ -803,8 +920,8 @@ function TaskGroupHeader({ section, count, onAdd }: TaskGroupHeaderProps) {
  * @returns String key.
  */
 function sectionKey(section: GroupSection): string {
-  if (section.kind === 'flat') return '__flat__';
-  if (section.kind === 'status') return `status:${section.key}`;
+  if (section.kind === "flat") return "__flat__";
+  if (section.kind === "status") return `status:${section.key}`;
   return `category:${section.key}`;
 }
 
@@ -829,7 +946,10 @@ function NewTaskRow({ value, onChange, onCommit, onCancel }: NewTaskRowProps) {
   const cancelRef = useRef(false);
   return (
     <div className="flex h-[34px] items-center gap-2 border-b border-border bg-surface-raised/30 px-4">
-      <span aria-hidden="true" className="h-2 w-2 rounded-full border border-dashed border-border-strong" />
+      <span
+        aria-hidden="true"
+        className="h-2 w-2 rounded-full border border-dashed border-border-strong"
+      />
       <input
         type="text"
         autoFocus
@@ -844,13 +964,21 @@ function NewTaskRow({ value, onChange, onCommit, onCancel }: NewTaskRowProps) {
           }
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-          if (e.key === 'Escape') { cancelRef.current = true; e.currentTarget.blur(); }
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+          if (e.key === "Escape") {
+            cancelRef.current = true;
+            e.currentTarget.blur();
+          }
         }}
         placeholder="Task title…"
         className="flex-1 bg-transparent text-[13px] text-text-primary placeholder:text-text-muted/60 outline-none"
       />
-      <span className="font-mono text-[10px] text-text-faint">↵ to add · Esc to cancel</span>
+      <span className="font-mono text-[10px] text-text-faint">
+        ↵ to add · Esc to cancel
+      </span>
     </div>
   );
 }
@@ -864,7 +992,9 @@ function EmptyTasks() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-1 p-8 text-center">
       <p className="text-sm text-text-secondary">No tasks yet</p>
-      <p className="text-xs text-text-muted">Use the chat or your CLI agent to draft tasks.</p>
+      <p className="text-xs text-text-muted">
+        Use the chat or your CLI agent to draft tasks.
+      </p>
     </div>
   );
 }
@@ -887,7 +1017,10 @@ interface SearchRowProps {
 function SearchRow({ value, onChange }: SearchRowProps) {
   return (
     <div className="flex items-center gap-2 border-b border-border bg-base-2/40 px-3 py-1.5">
-      <span aria-hidden="true" className={value ? 'text-accent-light' : 'text-text-faint'}>
+      <span
+        aria-hidden="true"
+        className={value ? "text-accent-light" : "text-text-faint"}
+      >
         <IconSearch size={11} />
       </span>
       <input
@@ -900,7 +1033,7 @@ function SearchRow({ value, onChange }: SearchRowProps) {
       {value && (
         <button
           type="button"
-          onClick={() => onChange('')}
+          onClick={() => onChange("")}
           className="cursor-pointer rounded p-0.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
           aria-label="Clear search"
         >
@@ -926,7 +1059,9 @@ interface EmptyFilterProps {
 function EmptyFilter({ onClear }: EmptyFilterProps) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-      <p className="text-sm text-text-secondary">No tasks match the active filters</p>
+      <p className="text-sm text-text-secondary">
+        No tasks match the active filters
+      </p>
       <button
         type="button"
         onClick={onClear}

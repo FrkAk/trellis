@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 interface KbdProps {
   /** @param children - Key glyph(s) — write "⌘K", "N", "ESC" etc. literally. */
@@ -14,20 +14,20 @@ interface KbdProps {
  * @param props - Kbd configuration.
  * @returns A `<kbd>` element styled to match the prototype.
  */
-export function Kbd({ children, dim = false, className = '' }: KbdProps) {
+export function Kbd({ children, dim = false, className = "" }: KbdProps) {
   return (
     <kbd
       className={`inline-flex items-center justify-center rounded font-mono ${className}`}
       style={{
         minWidth: 16,
         height: 16,
-        padding: '0 4px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid var(--color-border)',
-        color: dim ? 'var(--color-text-muted)' : 'var(--color-text-secondary)',
+        padding: "0 4px",
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid var(--color-border)",
+        color: dim ? "var(--color-text-muted)" : "var(--color-text-secondary)",
         fontSize: 10,
         fontWeight: 600,
-        letterSpacing: '0.04em',
+        letterSpacing: "0.04em",
         fontFeatureSettings: '"tnum" 1',
       }}
     >

@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { motion } from 'motion/react';
-import { TeamChip } from '@/components/shared/TeamChip';
-import type { TeamView } from '@/lib/actions/team-list';
-import { getTeamColor } from '@/lib/ui/team-color';
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { motion } from "motion/react";
+import { TeamChip } from "@/components/shared/TeamChip";
+import type { TeamView } from "@/lib/actions/team-list";
+import { getTeamColor } from "@/lib/ui/team-color";
 
 interface TeamFilterBarProps {
   /** All teams the caller is a member of. */
@@ -50,12 +50,17 @@ export function TeamFilterBar({
     if (teams.length <= inlineCap) {
       return { inlineTeams: teams, overflowTeams: [] as TeamView[] };
     }
-    const active = activeTeamId ? teams.find((t) => t.id === activeTeamId) : undefined;
+    const active = activeTeamId
+      ? teams.find((t) => t.id === activeTeamId)
+      : undefined;
     // Reserve a slot for the active team if it would otherwise fall into overflow,
     // so the current selection always stays visible on the inline rail.
     const headRoom = active ? inlineCap - 1 : inlineCap;
     const head = teams.slice(0, headRoom);
-    const inline = active && !head.some((t) => t.id === active.id) ? [...head, active] : head;
+    const inline =
+      active && !head.some((t) => t.id === active.id)
+        ? [...head, active]
+        : head;
     const overflow = teams.filter((t) => !inline.some((it) => it.id === t.id));
     return { inlineTeams: inline, overflowTeams: overflow };
   }, [teams, activeTeamId, inlineCap]);
@@ -65,41 +70,48 @@ export function TeamFilterBar({
   useEffect(() => {
     if (!overflowOpen) return;
     function handleClick(e: MouseEvent) {
-      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+      if (
+        overflowRef.current &&
+        !overflowRef.current.contains(e.target as Node)
+      ) {
         setOverflowOpen(false);
       }
     }
     function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOverflowOpen(false);
+      if (e.key === "Escape") setOverflowOpen(false);
     }
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleEscape);
     return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [overflowOpen]);
 
   const select = (teamId: string | null) => {
     setOverflowOpen(false);
     const params = new URLSearchParams(searchParams);
-    if (teamId) params.set('team', teamId);
-    else params.delete('team');
+    if (teamId) params.set("team", teamId);
+    else params.delete("team");
     const query = params.toString();
     if (query === searchParams.toString()) return;
     startTransition(() => {
-      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      router.replace(query ? `${pathname}?${query}` : pathname, {
+        scroll: false,
+      });
     });
   };
 
   const toggleGroup = () => {
     const params = new URLSearchParams(searchParams);
-    if (groupActive) params.delete('group');
-    else params.set('group', 'team');
+    if (groupActive) params.delete("group");
+    else params.set("group", "team");
     const query = params.toString();
     if (query === searchParams.toString()) return;
     startTransition(() => {
-      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      router.replace(query ? `${pathname}?${query}` : pathname, {
+        scroll: false,
+      });
     });
   };
 
@@ -140,8 +152,8 @@ export function TeamFilterBar({
               aria-label={`Show ${overflowTeams.length} more teams`}
               className={`relative cursor-pointer whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-opacity ${
                 overflowActive
-                  ? 'text-text-primary'
-                  : 'text-text-muted hover:text-text-secondary hover:opacity-80'
+                  ? "text-text-primary"
+                  : "text-text-muted hover:text-text-secondary hover:opacity-80"
               }`}
             >
               {overflowActive ? (
@@ -149,7 +161,7 @@ export function TeamFilterBar({
                   layoutId="team-filter-indicator"
                   className="absolute inset-0 rounded-md bg-surface shadow-[var(--shadow-button)]"
                   style={{ zIndex: -1 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
                 />
               ) : null}
               <span className="relative">+{overflowTeams.length}</span>
@@ -173,8 +185,8 @@ export function TeamFilterBar({
                       onClick={() => select(team.id)}
                       className={`flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
                         isActive
-                          ? 'bg-surface-hover text-text-primary'
-                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                          ? "bg-surface-hover text-text-primary"
+                          : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                       }`}
                     >
                       <TeamChip team={team} size="xs" />
@@ -191,23 +203,33 @@ export function TeamFilterBar({
 
         {showGroupToggle ? (
           <>
-            <span aria-hidden="true" className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+            <span
+              aria-hidden="true"
+              className="mx-0.5 h-5 w-px shrink-0 bg-border"
+            />
             <button
               type="button"
               onClick={toggleGroup}
               disabled={pending}
               aria-pressed={groupActive}
-              title={groupActive ? 'Switch to flat grid' : 'Group by team'}
+              title={groupActive ? "Switch to flat grid" : "Group by team"}
               className={`relative flex shrink-0 cursor-pointer items-center justify-center rounded-md px-3 py-1.5 transition-opacity disabled:cursor-not-allowed disabled:opacity-60 ${
                 groupActive
-                  ? 'bg-surface text-text-primary shadow-[var(--shadow-button)]'
-                  : 'text-text-muted hover:text-text-secondary hover:opacity-80'
+                  ? "bg-surface text-text-primary shadow-[var(--shadow-button)]"
+                  : "text-text-muted hover:text-text-secondary hover:opacity-80"
               }`}
             >
-              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
+              <svg
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                aria-hidden="true"
+                className="h-3.5 w-3.5"
+              >
                 <path d="M2 3.75A1.75 1.75 0 013.75 2h8.5A1.75 1.75 0 0114 3.75v1.5A1.75 1.75 0 0112.25 7h-8.5A1.75 1.75 0 012 5.25v-1.5zM2 10.75A1.75 1.75 0 013.75 9h8.5A1.75 1.75 0 0114 10.75v1.5A1.75 1.75 0 0112.25 14h-8.5A1.75 1.75 0 012 12.25v-1.5z" />
               </svg>
-              <span className="sr-only">{groupActive ? 'Stop grouping by team' : 'Group by team'}</span>
+              <span className="sr-only">
+                {groupActive ? "Stop grouping by team" : "Group by team"}
+              </span>
             </button>
           </>
         ) : null}
@@ -232,7 +254,13 @@ interface FilterPillProps {
  * @param props - Pill configuration.
  * @returns Tab-style button with an animated active indicator.
  */
-function FilterPill({ label, active, onClick, disabled, team }: FilterPillProps) {
+function FilterPill({
+  label,
+  active,
+  onClick,
+  disabled,
+  team,
+}: FilterPillProps) {
   return (
     <button
       type="button"
@@ -242,8 +270,8 @@ function FilterPill({ label, active, onClick, disabled, team }: FilterPillProps)
       disabled={disabled}
       className={`relative flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-60 ${
         active
-          ? 'text-text-primary'
-          : 'text-text-muted hover:text-text-secondary hover:opacity-80'
+          ? "text-text-primary"
+          : "text-text-muted hover:text-text-secondary hover:opacity-80"
       }`}
     >
       {active ? (
@@ -251,12 +279,10 @@ function FilterPill({ label, active, onClick, disabled, team }: FilterPillProps)
           layoutId="team-filter-indicator"
           className="absolute inset-0 rounded-md bg-surface shadow-[var(--shadow-button)]"
           style={{ zIndex: -1 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
         />
       ) : null}
-      {team ? (
-        <TeamDot teamId={team.id} />
-      ) : null}
+      {team ? <TeamDot teamId={team.id} /> : null}
       <span className="relative">{label}</span>
     </button>
   );
@@ -269,5 +295,10 @@ function FilterPill({ label, active, onClick, disabled, team }: FilterPillProps)
  */
 function TeamDot({ teamId }: { teamId: string }) {
   const color = getTeamColor(teamId);
-  return <span className={`relative h-1.5 w-1.5 shrink-0 rounded-full ${color.dot}`} aria-hidden="true" />;
+  return (
+    <span
+      className={`relative h-1.5 w-1.5 shrink-0 rounded-full ${color.dot}`}
+      aria-hidden="true"
+    />
+  );
 }

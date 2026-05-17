@@ -4,10 +4,10 @@ const CLIENT_BRAND_LABELS: readonly {
   readonly match: RegExp;
   readonly label: string;
 }[] = [
-  { match: /^claude code\b/i, label: 'Claude Code' },
-  { match: /^codex\b/i, label: 'Codex' },
-  { match: /^cursor\b/i, label: 'Cursor' },
-  { match: /^gemini(?: cli)?\b/i, label: 'Gemini' },
+  { match: /^claude code\b/i, label: "Claude Code" },
+  { match: /^codex\b/i, label: "Codex" },
+  { match: /^cursor\b/i, label: "Cursor" },
+  { match: /^gemini(?: cli)?\b/i, label: "Gemini" },
 ];
 
 /**
@@ -17,7 +17,7 @@ const CLIENT_BRAND_LABELS: readonly {
  * @returns Name without known trailing metadata suffixes.
  */
 function stripClientMetadata(clientName: string): string {
-  return clientName.trim().replace(CLIENT_METADATA_SUFFIX, '').trim();
+  return clientName.trim().replace(CLIENT_METADATA_SUFFIX, "").trim();
 }
 
 /**
@@ -27,7 +27,7 @@ function stripClientMetadata(clientName: string): string {
  * @returns Stable user-facing client label.
  */
 export function formatOAuthClientName(clientName: string): string {
-  const baseName = stripClientMetadata(clientName).replace(/\s+/g, ' ');
+  const baseName = stripClientMetadata(clientName).replace(/\s+/g, " ");
   const brand = CLIENT_BRAND_LABELS.find(({ match }) => match.test(baseName));
   return brand?.label ?? baseName;
 }

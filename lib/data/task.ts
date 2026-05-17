@@ -128,8 +128,7 @@ function normalizeCriteria(input: unknown[]): AcceptanceCriterion[] {
     const obj = c as Record<string, unknown>;
     return {
       id: (obj.id as string) ?? crypto.randomUUID(),
-      text:
-        (obj.text as string) ?? (obj.description as string) ?? String(c),
+      text: (obj.text as string) ?? (obj.description as string) ?? String(c),
       checked: (obj.checked as boolean) ?? false,
     };
   });
@@ -158,7 +157,7 @@ function normalizeDecisions(input: unknown[]): Decision[] {
       id: (obj.id as string) ?? crypto.randomUUID(),
       text: (obj.text as string) ?? String(d),
       date: (obj.date as string) ?? new Date().toISOString().slice(0, 10),
-      source: ((obj.source as Decision["source"]) ?? "refinement"),
+      source: (obj.source as Decision["source"]) ?? "refinement",
     };
   });
 }
@@ -264,9 +263,7 @@ async function applyDecisionsWrite(
   mode: "append" | "replace",
 ): Promise<void> {
   if (mode === "replace") {
-    await tx
-      .delete(taskDecisions)
-      .where(eq(taskDecisions.taskId, taskId));
+    await tx.delete(taskDecisions).where(eq(taskDecisions.taskId, taskId));
     if (incoming.length > 0) {
       await tx.insert(taskDecisions).values(
         incoming.map((d, i) => ({
@@ -439,10 +436,7 @@ export async function getTaskFull(
  *   decisions, and links.
  * @throws ForbiddenError when the caller is not a member of the task's team.
  */
-export async function getTaskFullTx(
-  tx: Tx,
-  taskId: string,
-): Promise<TaskFull> {
+export async function getTaskFullTx(tx: Tx, taskId: string): Promise<TaskFull> {
   await assertTaskAccessTx(tx, taskId);
   const rows = await fetchTaskFull(tx, taskId);
   if (rows.length === 0) {
@@ -471,8 +465,10 @@ export async function getTaskFullTx(
     estimate: r.estimate as Estimate | null,
     files: r.files ?? [],
     history: (r.history ?? []) as HistoryEntry[],
-    createdAt: r.created_at instanceof Date ? r.created_at : new Date(r.created_at),
-    updatedAt: r.updated_at instanceof Date ? r.updated_at : new Date(r.updated_at),
+    createdAt:
+      r.created_at instanceof Date ? r.created_at : new Date(r.created_at),
+    updatedAt:
+      r.updated_at instanceof Date ? r.updated_at : new Date(r.updated_at),
     taskRef,
     assignees: r.assignees ?? [],
     acceptanceCriteria: r.acceptance_criteria ?? [],
@@ -653,7 +649,9 @@ export function assigneeCountExpr() {
  * Factory: returns a fresh expression each call. See {@link hasCriteriaExpr}.
  */
 export function assigneeUserIdsExpr() {
-  return sql<string[]>`COALESCE((SELECT array_agg("ta_au"."user_id" ORDER BY "ta_au"."user_id") FROM "task_assignees" "ta_au" WHERE "ta_au"."task_id" = "tasks"."id"), '{}'::uuid[])`;
+  return sql<
+    string[]
+  >`COALESCE((SELECT array_agg("ta_au"."user_id" ORDER BY "ta_au"."user_id") FROM "task_assignees" "ta_au" WHERE "ta_au"."task_id" = "tasks"."id"), '{}'::uuid[])`;
 }
 
 /**
@@ -938,65 +936,70 @@ export async function searchTasks(
         END`
       : null;
 
-  const { project, trimmed, stateMap } = await withUserContext(ctx.userId, async (tx) => {
-    const { project } = await assertProjectAccessTx(tx, projectId);
+  const { project, trimmed, stateMap } = await withUserContext(
+    ctx.userId,
+    async (tx) => {
+      const { project } = await assertProjectAccessTx(tx, projectId);
 
-    const clauses = [eq(tasks.projectId, projectId)];
+      const clauses = [eq(tasks.projectId, projectId)];
 
-    if (trimmedQuery.length > 0) {
-      const refMatch = trimmedQuery.match(TASK_REF_PATTERN);
-      const seqClause =
-        refMatch && refMatch[1].toUpperCase() === project.identifier
-          ? eq(tasks.sequenceNumber, Number(refMatch[2]))
-          : null;
+      if (trimmedQuery.length > 0) {
+        const refMatch = trimmedQuery.match(TASK_REF_PATTERN);
+        const seqClause =
+          refMatch && refMatch[1].toUpperCase() === project.identifier
+            ? eq(tasks.sequenceNumber, Number(refMatch[2]))
+            : null;
 
-      const pattern = `%${trimmedQuery}%`;
-      const tagSubstring = sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${tasks.tags}) AS t WHERE t ILIKE ${pattern})`;
-      const queryClause =
-        seqClause ?? or(ilike(tasks.title, pattern), tagSubstring);
-      if (queryClause) clauses.push(queryClause);
-    }
+        const pattern = `%${trimmedQuery}%`;
+        const tagSubstring = sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${tasks.tags}) AS t WHERE t ILIKE ${pattern})`;
+        const queryClause =
+          seqClause ?? or(ilike(tasks.title, pattern), tagSubstring);
+        if (queryClause) clauses.push(queryClause);
+      }
 
-    if (tagFilter.length > 0) {
-      clauses.push(
-        sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${tasks.tags}) AS t WHERE t IN ${tagFilter})`,
+      if (tagFilter.length > 0) {
+        clauses.push(
+          sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${tasks.tags}) AS t WHERE t IN ${tagFilter})`,
+        );
+      }
+
+      // Inlining a literal `0` in ORDER BY is parsed as a positional column
+      // reference, not a constant — Postgres rejects it with 42P10.
+      const orderByCols = rankExpr
+        ? [rankExpr, asc(tasks.order)]
+        : [asc(tasks.order)];
+      const trimmedRows = await tx
+        .select({
+          id: tasks.id,
+          title: tasks.title,
+          status: tasks.status,
+          tags: tasks.tags,
+          category: tasks.category,
+          priority: tasks.priority,
+          estimate: tasks.estimate,
+          hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
+          hasCriteria: hasCriteriaExpr(),
+          sequenceNumber: tasks.sequenceNumber,
+          order: tasks.order,
+          assigneeCount: assigneeCountExpr(),
+        })
+        .from(tasks)
+        .where(and(...clauses))
+        .orderBy(...orderByCols)
+        .limit(20);
+      const states = await deriveTaskStatesSlim(
+        projectId,
+        trimmedRows.map((t) => ({
+          id: t.id,
+          status: t.status,
+          hasDescription: t.hasDescription,
+          hasCriteria: t.hasCriteria,
+        })),
+        tx,
       );
-    }
-
-    // Inlining a literal `0` in ORDER BY is parsed as a positional column
-    // reference, not a constant — Postgres rejects it with 42P10.
-    const orderByCols = rankExpr ? [rankExpr, asc(tasks.order)] : [asc(tasks.order)];
-    const trimmedRows = await tx
-      .select({
-        id: tasks.id,
-        title: tasks.title,
-        status: tasks.status,
-        tags: tasks.tags,
-        category: tasks.category,
-        priority: tasks.priority,
-        estimate: tasks.estimate,
-        hasDescription: sql<boolean>`length(btrim(${tasks.description})) > 0`,
-        hasCriteria: hasCriteriaExpr(),
-        sequenceNumber: tasks.sequenceNumber,
-        order: tasks.order,
-        assigneeCount: assigneeCountExpr(),
-      })
-      .from(tasks)
-      .where(and(...clauses))
-      .orderBy(...orderByCols)
-      .limit(20);
-    const states = await deriveTaskStatesSlim(
-      projectId,
-      trimmedRows.map((t) => ({
-        id: t.id,
-        status: t.status,
-        hasDescription: t.hasDescription,
-        hasCriteria: t.hasCriteria,
-      })),
-      tx,
-    );
-    return { project, trimmed: trimmedRows, stateMap: states };
-  });
+      return { project, trimmed: trimmedRows, stateMap: states };
+    },
+  );
 
   const identifier = asIdentifier(project.identifier);
   return enrichWithTaskRef(trimmed, identifier).map((t) => ({
@@ -1112,7 +1115,12 @@ export async function searchTasksPaged(
           : null;
 
       if (trimmedRows.length === 0) {
-        return { project, trimmed: trimmedRows, nextCursor: null, stateMap: null };
+        return {
+          project,
+          trimmed: trimmedRows,
+          nextCursor: null,
+          stateMap: null,
+        };
       }
 
       const states = await deriveTaskStatesSlim(
@@ -1125,7 +1133,12 @@ export async function searchTasksPaged(
         })),
         tx,
       );
-      return { project, trimmed: trimmedRows, nextCursor: cursor, stateMap: states };
+      return {
+        project,
+        trimmed: trimmedRows,
+        nextCursor: cursor,
+        stateMap: states,
+      };
     },
   );
 
@@ -1250,9 +1263,7 @@ export async function fetchTaskSummaries(
     })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(
-      and(eq(tasks.projectId, projectId), sql`${tasks.id} IN ${taskIds}`),
-    );
+    .where(and(eq(tasks.projectId, projectId), sql`${tasks.id} IN ${taskIds}`));
   return rows.map((r) => ({
     id: r.id,
     taskRef: composeTaskRef(asIdentifier(r.identifier), r.sequenceNumber),
@@ -1300,9 +1311,7 @@ export async function fetchDependencyTasks(
     })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(
-      and(eq(tasks.projectId, projectId), sql`${tasks.id} IN ${taskIds}`),
-    );
+    .where(and(eq(tasks.projectId, projectId), sql`${tasks.id} IN ${taskIds}`));
   return rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -1628,7 +1637,10 @@ export async function createTask(ctx: AuthContext, data: CreateTaskInput) {
       projectId: task.projectId,
       order: task.order,
       sequenceNumber: task.sequenceNumber,
-      taskRef: composeTaskRef(asIdentifier(proj.identifier), task.sequenceNumber),
+      taskRef: composeTaskRef(
+        asIdentifier(proj.identifier),
+        task.sequenceNumber,
+      ),
     };
   });
 
@@ -1814,10 +1826,7 @@ export async function updateTask(
     await assertTaskAccessTx(tx, taskId);
     // Child-table writes are atomic per row (MVCC + ON CONFLICT (id) DO
     // UPDATE); no FOR UPDATE lock needed for this baseline SELECT.
-    const [current] = await tx
-      .select()
-      .from(tasks)
-      .where(eq(tasks.id, taskId));
+    const [current] = await tx.select().from(tasks).where(eq(tasks.id, taskId));
     if (!current) throw new ForbiddenError("Forbidden", "task", taskId);
 
     // After normalization above, an `assigneeIds: []` in default-append
@@ -1919,7 +1928,10 @@ export async function updateTask(
         await tx
           .delete(taskLinks)
           .where(
-            and(eq(taskLinks.taskId, taskId), eq(taskLinks.kind, "pull_request")),
+            and(
+              eq(taskLinks.taskId, taskId),
+              eq(taskLinks.kind, "pull_request"),
+            ),
           );
       } else {
         const classified = classifyLink(prUrl);
@@ -2111,9 +2123,12 @@ export async function addTaskLink(
       const [existing] = await tx
         .select()
         .from(taskLinks)
-        .where(and(eq(taskLinks.taskId, taskId), eq(taskLinks.url, classified.url)))
+        .where(
+          and(eq(taskLinks.taskId, taskId), eq(taskLinks.url, classified.url)),
+        )
         .limit(1);
-      if (!existing) throw new Error("Link insert reported conflict but no row exists");
+      if (!existing)
+        throw new Error("Link insert reported conflict but no row exists");
       row = existing;
     }
 
@@ -2251,4 +2266,3 @@ export async function updateTaskLink(
   emitTaskEvent(result.projectId, result.taskId);
   return result.updated;
 }
-

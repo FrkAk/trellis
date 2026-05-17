@@ -78,7 +78,8 @@ export async function listMembershipsWithCounts(
       memberCount: Number(r.member_count),
     }))
     .sort((a, b) => {
-      const t = b.organizationCreatedAt.getTime() - a.organizationCreatedAt.getTime();
+      const t =
+        b.organizationCreatedAt.getTime() - a.organizationCreatedAt.getTime();
       return t !== 0 ? t : a.organizationId < b.organizationId ? 1 : -1;
     });
 
@@ -112,7 +113,9 @@ export async function listMembershipsWithCounts(
     membershipCreatedAt: r.membershipCreatedAt,
     role: r.role,
   }));
-  const countByOrg = new Map(trimmed.map((r) => [r.organizationId, r.memberCount]));
+  const countByOrg = new Map(
+    trimmed.map((r) => [r.organizationId, r.memberCount]),
+  );
   return { memberships, countByOrg, nextCursor };
 }
 
@@ -323,7 +326,10 @@ export async function findTeamMembership(
 /** Outcome of a guarded member-demote attempt. */
 export type DemoteOutcome =
   | { kind: "ok" }
-  | { kind: "fail"; code: "not_found" | "forbidden" | "cannot_leave_only_owner" }
+  | {
+      kind: "fail";
+      code: "not_found" | "forbidden" | "cannot_leave_only_owner";
+    }
   | { kind: "callback_error"; err: unknown };
 
 /**
@@ -362,8 +368,9 @@ export async function demoteMemberWithGuard(
     const newIsOwner = input.role === "owner";
     if (targetIsOwner && !newIsOwner) {
       const owners = await listMemberRolesTx(tx, latest.organizationId);
-      const ownerCount = owners.filter((m) => input.roleIncludesOwner(m.role))
-        .length;
+      const ownerCount = owners.filter((m) =>
+        input.roleIncludesOwner(m.role),
+      ).length;
       if (ownerCount <= 1) {
         return { kind: "fail", code: "cannot_leave_only_owner" };
       }
@@ -374,8 +381,7 @@ export async function demoteMemberWithGuard(
       return { kind: "ok" };
     } catch (err) {
       const isBetterAuthError =
-        (err as { body?: { code?: string } } | null)?.body?.code !==
-        undefined;
+        (err as { body?: { code?: string } } | null)?.body?.code !== undefined;
       if (!isBetterAuthError) throw err;
       return { kind: "callback_error", err };
     }

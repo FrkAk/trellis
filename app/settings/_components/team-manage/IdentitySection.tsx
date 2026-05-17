@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-import { useState, useTransition } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { Button } from '@/components/shared/Button';
-import { updateTeamAction } from '@/lib/actions/team';
+import { useState, useTransition } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Button } from "@/components/shared/Button";
+import { updateTeamAction } from "@/lib/actions/team";
 import {
   RESERVED_SLUGS,
   SLUG_MAX,
   SLUG_MIN,
   SLUG_PATTERN,
   TEAM_NAME_MAX,
-} from '@/lib/team/slug-rules';
+} from "@/lib/team/slug-rules";
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent';
+  "w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
 
 interface IdentitySectionProps {
   /** Team UUID — sent with every update. */
@@ -34,10 +34,14 @@ interface IdentitySectionProps {
  * server is still source-of-truth.
  */
 function validateSlug(slug: string): string | null {
-  if (slug.length < SLUG_MIN) return `Slug must be at least ${SLUG_MIN} characters.`;
-  if (slug.length > SLUG_MAX) return `Slug must be at most ${SLUG_MAX} characters.`;
-  if (!SLUG_PATTERN.test(slug)) return 'Slug must be lowercase alphanumeric with hyphens.';
-  if (RESERVED_SLUGS.has(slug)) return 'That URL slug is reserved. Try a different one.';
+  if (slug.length < SLUG_MIN)
+    return `Slug must be at least ${SLUG_MIN} characters.`;
+  if (slug.length > SLUG_MAX)
+    return `Slug must be at most ${SLUG_MAX} characters.`;
+  if (!SLUG_PATTERN.test(slug))
+    return "Slug must be lowercase alphanumeric with hyphens.";
+  if (RESERVED_SLUGS.has(slug))
+    return "That URL slug is reserved. Try a different one.";
   return null;
 }
 
@@ -64,7 +68,8 @@ export function IdentitySection({
 
   const trimmedName = name.trim();
   const trimmedSlug = slug.trim();
-  const slugError = trimmedSlug !== currentSlug ? validateSlug(trimmedSlug) : null;
+  const slugError =
+    trimmedSlug !== currentSlug ? validateSlug(trimmedSlug) : null;
   const nameDirty = trimmedName.length > 0 && trimmedName !== currentName;
   const slugDirty = trimmedSlug !== currentSlug && trimmedSlug.length > 0;
   const dirty = nameDirty || slugDirty;
@@ -107,7 +112,7 @@ export function IdentitySection({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.45, ease: 'easeOut' }}
+              transition={{ duration: 0.45, ease: "easeOut" }}
               className="pointer-events-none absolute inset-0 rounded-xl shadow-[var(--shadow-glow-done)]"
             />
           ) : null}
@@ -129,7 +134,9 @@ export function IdentitySection({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-text-secondary">URL slug</span>
+            <span className="mb-1 block text-xs font-medium text-text-secondary">
+              URL slug
+            </span>
             <input
               type="text"
               value={slug}
@@ -137,16 +144,15 @@ export function IdentitySection({
               maxLength={SLUG_MAX}
               placeholder="my-team"
               className={`${INPUT_CLASS} font-mono ${
-                slugError
-                  ? 'border-cancelled/50 focus:border-cancelled'
-                  : ''
+                slugError ? "border-cancelled/50 focus:border-cancelled" : ""
               }`}
             />
             {slugError ? (
               <p className="mt-1 text-xs text-cancelled">{slugError}</p>
             ) : (
               <p className="mt-1 text-xs text-text-muted">
-                Lowercase letters, numbers, and hyphens. {SLUG_MIN}-{SLUG_MAX} characters.
+                Lowercase letters, numbers, and hyphens. {SLUG_MIN}-{SLUG_MAX}{" "}
+                characters.
               </p>
             )}
           </label>

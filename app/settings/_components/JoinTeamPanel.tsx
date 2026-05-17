@@ -1,19 +1,19 @@
-'use client';
+"use client";
 
-import { useState, useTransition } from 'react';
-import { Button } from '@/components/shared/Button';
-import { joinTeamByCodeAction } from '@/lib/actions/team-invite-code';
+import { useState, useTransition } from "react";
+import { Button } from "@/components/shared/Button";
+import { joinTeamByCodeAction } from "@/lib/actions/team-invite-code";
 import {
   INVITE_CODE_ALPHABET_PATTERN_SOURCE,
   INVITE_CODE_LENGTH,
   INVITE_CODE_PATTERN,
-} from '@/lib/auth/invite-code-shape';
+} from "@/lib/auth/invite-code-shape";
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm font-mono tracking-wider text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent';
+  "w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm font-mono tracking-wider text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
 
 const HTML_PATTERN = `${INVITE_CODE_ALPHABET_PATTERN_SOURCE}{${INVITE_CODE_LENGTH}}`;
-const PLACEHOLDER = '8K3jH-pX9_aW2nQ7vB4mF';
+const PLACEHOLDER = "8K3jH-pX9_aW2nQ7vB4mF";
 
 interface JoinTeamPanelProps {
   /** Called when the user dismisses the panel without joining a team. */
@@ -34,7 +34,7 @@ interface JoinTeamPanelProps {
  * @returns Accent-tinted form rendered above the team list.
  */
 export function JoinTeamPanel({ onCancel, onJoined }: JoinTeamPanelProps) {
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +55,7 @@ export function JoinTeamPanel({ onCancel, onJoined }: JoinTeamPanelProps) {
         onJoined(result.data.organizationId);
       } catch {
         setError(
-          'Something went wrong reaching the server. Check your connection and try again.',
+          "Something went wrong reaching the server. Check your connection and try again.",
         );
       }
     });
@@ -89,7 +89,8 @@ export function JoinTeamPanel({ onCancel, onJoined }: JoinTeamPanelProps) {
           className={INPUT_CLASS}
         />
         <span className="mt-1 block text-xs text-text-muted">
-          Paste the {INVITE_CODE_LENGTH}-character invite code from a team admin.
+          Paste the {INVITE_CODE_LENGTH}-character invite code from a team
+          admin.
         </span>
       </label>
       {error ? (

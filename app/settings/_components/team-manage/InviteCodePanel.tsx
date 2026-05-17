@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { useState, useTransition } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { Button } from '@/components/shared/Button';
-import { formatAbsolute } from '@/lib/ui/relative-time';
+import { useState, useTransition } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Button } from "@/components/shared/Button";
+import { formatAbsolute } from "@/lib/ui/relative-time";
 import {
   regenerateTeamInviteCodeAction,
   revokeTeamInviteCodeAction,
   type InviteCodeMetadata,
-} from '@/lib/actions/team-invite-code';
-import { InlineConfirm } from '@/app/settings/_components/InlineConfirm';
+} from "@/lib/actions/team-invite-code";
+import { InlineConfirm } from "@/app/settings/_components/InlineConfirm";
 
 interface InviteCodePanelProps {
   /** Team UUID — passed to every invite-code action. */
@@ -40,24 +40,26 @@ export function InviteCodePanel({
   onError,
 }: InviteCodePanelProps) {
   const [expanded, setExpanded] = useState(false);
-  const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [pending, startTransition] = useTransition();
 
   const handleCopy = async () => {
     if (!inviteCode) return;
     try {
       await navigator.clipboard.writeText(inviteCode.code);
-      setCopyState('copied');
-      window.setTimeout(() => setCopyState('idle'), 1500);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1500);
     } catch (err) {
-      console.error('clipboard write failed', err);
-      onError('Could not copy to clipboard.');
+      console.error("clipboard write failed", err);
+      onError("Could not copy to clipboard.");
     }
   };
 
   const handleRotate = () => {
     startTransition(async () => {
-      const result = await regenerateTeamInviteCodeAction({ organizationId: teamId });
+      const result = await regenerateTeamInviteCodeAction({
+        organizationId: teamId,
+      });
       if (result.ok) {
         onChanged(result.data);
       } else {
@@ -92,10 +94,10 @@ export function InviteCodePanel({
           </p>
           <p className="mt-0.5 text-sm text-text-primary">
             {isRevoked
-              ? 'Revoked — rotate to issue a new code'
+              ? "Revoked — rotate to issue a new code"
               : inviteCode
-                ? 'One-tap join code for new teammates'
-                : 'No code yet — open to mint one'}
+                ? "One-tap join code for new teammates"
+                : "No code yet — open to mint one"}
           </p>
         </div>
         <motion.svg
@@ -116,21 +118,21 @@ export function InviteCodePanel({
             id="invite-code-body"
             key="invite-code-body"
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
-            style={{ overflow: 'hidden' }}
+            style={{ overflow: "hidden" }}
           >
             <div className="border-t border-border px-5 py-4 space-y-3">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                 <div
                   className={`flex-1 rounded-md border px-3 py-2 font-mono text-sm ${
                     isRevoked
-                      ? 'border-cancelled/25 bg-cancelled/5 text-cancelled line-through'
-                      : 'border-border bg-base text-text-primary'
+                      ? "border-cancelled/25 bg-cancelled/5 text-cancelled line-through"
+                      : "border-border bg-base text-text-primary"
                   }`}
                 >
-                  {inviteCode?.code ?? '—'}
+                  {inviteCode?.code ?? "—"}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -139,9 +141,14 @@ export function InviteCodePanel({
                     onClick={handleCopy}
                     disabled={!inviteCode || isRevoked}
                   >
-                    {copyState === 'copied' ? 'Copied!' : 'Copy'}
+                    {copyState === "copied" ? "Copied!" : "Copy"}
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={handleRotate} isLoading={pending}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRotate}
+                    isLoading={pending}
+                  >
                     Rotate
                   </Button>
                   {!isRevoked ? (
@@ -162,7 +169,8 @@ export function InviteCodePanel({
               </div>
               {inviteCode ? (
                 <p className="text-xs text-text-muted">
-                  Used {inviteCode.useCount} {inviteCode.useCount === 1 ? 'time' : 'times'}
+                  Used {inviteCode.useCount}{" "}
+                  {inviteCode.useCount === 1 ? "time" : "times"}
                   <span aria-hidden="true"> · </span>
                   Last updated {formatAbsolute(inviteCode.createdAt)}
                 </p>

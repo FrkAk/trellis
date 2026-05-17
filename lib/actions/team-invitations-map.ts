@@ -5,7 +5,7 @@ export type InvitationView = {
   /** Recipient email address. */
   email: string;
   /** Role granted on acceptance. Defaults to `'member'` for null BA rows. */
-  role: 'member' | 'admin' | 'owner';
+  role: "member" | "admin" | "owner";
   /** Status string from BA. v1 only surfaces `pending`. */
   status: string;
   /** Expiration timestamp — used to surface "expires in X" copy. */
@@ -39,7 +39,8 @@ export function toInvitationView(
   row: BetterAuthInvitationRow,
   inviterName: string,
 ): InvitationView {
-  const role = row.role === 'admin' || row.role === 'owner' ? row.role : 'member';
+  const role =
+    row.role === "admin" || row.role === "owner" ? row.role : "member";
   return {
     id: row.id,
     email: row.email,

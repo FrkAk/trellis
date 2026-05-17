@@ -1,23 +1,23 @@
-'use server';
+"use server";
 
-import { headers } from 'next/headers';
-import { z } from 'zod/v4';
-import { auth } from '@/lib/auth';
-import { requireSession } from '@/lib/auth/session';
-import { isOrgAdmin } from '@/lib/auth/org-permissions';
+import { headers } from "next/headers";
+import { z } from "zod/v4";
+import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/session";
+import { isOrgAdmin } from "@/lib/auth/org-permissions";
 import {
   mapBetterAuthError,
   parseOrFail,
   teamFail,
   type TeamActionResult,
-} from '@/lib/actions/team-errors';
+} from "@/lib/actions/team-errors";
 import {
   toInvitationView,
   type BetterAuthInvitationRow,
   type InvitationView,
-} from '@/lib/actions/team-invitations-map';
-import { isCallerInInvitationOrg } from '@/lib/data/invitation';
-import { lookupUserNames } from '@/lib/data/membership';
+} from "@/lib/actions/team-invitations-map";
+import { isCallerInInvitationOrg } from "@/lib/data/invitation";
+import { lookupUserNames } from "@/lib/data/membership";
 
 /**
  * Input schema for {@link cancelInvitationAction}. Requires the caller
@@ -61,7 +61,7 @@ export async function listPendingInvitationsAction(input: {
     const session = await requireSession();
     userId = session.user.id;
   } catch {
-    return teamFail('unauthorized');
+    return teamFail("unauthorized");
   }
 
   const parsed = parseOrFail(listInvitationsSchema, input);
@@ -71,13 +71,13 @@ export async function listPendingInvitationsAction(input: {
   try {
     isAdmin = await isOrgAdmin(parsed.data.organizationId);
   } catch (err) {
-    console.error('listPendingInvitationsAction: isOrgAdmin failed', {
+    console.error("listPendingInvitationsAction: isOrgAdmin failed", {
       organizationId: parsed.data.organizationId,
       err,
     });
-    return teamFail('unknown');
+    return teamFail("unknown");
   }
-  if (!isAdmin) return teamFail('forbidden');
+  if (!isAdmin) return teamFail("forbidden");
 
   let raw: BetterAuthInvitationRow[];
   try {
@@ -88,16 +88,17 @@ export async function listPendingInvitationsAction(input: {
     raw = (result ?? []) as BetterAuthInvitationRow[];
   } catch (err) {
     const code = mapBetterAuthError(err);
-    if (code === 'unknown') {
-      console.error('listPendingInvitationsAction failed', err);
+    if (code === "unknown") {
+      console.error("listPendingInvitationsAction failed", err);
     }
     return teamFail(code);
   }
 
   const now = Date.now();
   const pending = raw.filter((row) => {
-    if (row.status !== 'pending') return false;
-    const expiresAt = row.expiresAt instanceof Date ? row.expiresAt : new Date(row.expiresAt);
+    if (row.status !== "pending") return false;
+    const expiresAt =
+      row.expiresAt instanceof Date ? row.expiresAt : new Date(row.expiresAt);
     return expiresAt.getTime() > now;
   });
 
@@ -108,7 +109,7 @@ export async function listPendingInvitationsAction(input: {
   try {
     nameById = await lookupUserNames(userId, inviterIds);
   } catch (err) {
-    console.error('listPendingInvitationsAction: lookupUserNames failed', {
+    console.error("listPendingInvitationsAction: lookupUserNames failed", {
       organizationId: parsed.data.organizationId,
       err,
     });
@@ -117,7 +118,7 @@ export async function listPendingInvitationsAction(input: {
 
   const data = pending
     .map((row) =>
-      toInvitationView(row, nameById.get(row.inviterId) ?? 'Unknown'),
+      toInvitationView(row, nameById.get(row.inviterId) ?? "Unknown"),
     )
     .sort((a, b) => b.createdAt.valueOf() - a.createdAt.valueOf());
 
@@ -148,7 +149,7 @@ export async function cancelInvitationAction(input: {
     const session = await requireSession();
     userId = session.user.id;
   } catch {
-    return teamFail('unauthorized');
+    return teamFail("unauthorized");
   }
 
   const parsed = parseOrFail(cancelSchema, input);
@@ -162,26 +163,26 @@ export async function cancelInvitationAction(input: {
       parsed.data.organizationId,
     );
   } catch (err) {
-    console.error('cancelInvitationAction: isCallerInInvitationOrg failed', {
+    console.error("cancelInvitationAction: isCallerInInvitationOrg failed", {
       invitationId: parsed.data.invitationId,
       organizationId: parsed.data.organizationId,
       err,
     });
-    return teamFail('unknown');
+    return teamFail("unknown");
   }
-  if (!inOrg) return teamFail('not_found');
+  if (!inOrg) return teamFail("not_found");
 
   let isAdmin: boolean;
   try {
     isAdmin = await isOrgAdmin(parsed.data.organizationId);
   } catch (err) {
-    console.error('cancelInvitationAction: isOrgAdmin failed', {
+    console.error("cancelInvitationAction: isOrgAdmin failed", {
       organizationId: parsed.data.organizationId,
       err,
     });
-    return teamFail('unknown');
+    return teamFail("unknown");
   }
-  if (!isAdmin) return teamFail('forbidden');
+  if (!isAdmin) return teamFail("forbidden");
 
   try {
     await auth.api.cancelInvitation({
@@ -191,8 +192,8 @@ export async function cancelInvitationAction(input: {
     return { ok: true };
   } catch (err) {
     const code = mapBetterAuthError(err);
-    if (code === 'unknown') {
-      console.error('cancelInvitationAction failed', err);
+    if (code === "unknown") {
+      console.error("cancelInvitationAction failed", err);
     }
     return teamFail(code);
   }

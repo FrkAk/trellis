@@ -13,7 +13,13 @@ import {
  * PRs, docs, and commit messages — it deserves an explicit gate rather
  * than being folded into `delete`.
  */
-const projectActions = ["create", "read", "update", "delete", "rename"] as const;
+const projectActions = [
+  "create",
+  "read",
+  "update",
+  "delete",
+  "rename",
+] as const;
 const memberProjectActions = ["create", "read", "update"] as const;
 
 /**

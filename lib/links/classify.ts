@@ -74,7 +74,10 @@ function shortenSha(sha: string): string {
  * @param segments - Path segments split on `/`, with empty segments removed.
  * @returns Classified link or null if the path doesn't match.
  */
-function classifyGithub(host: string, segments: string[]): ClassifiedLinkSeed | null {
+function classifyGithub(
+  host: string,
+  segments: string[],
+): ClassifiedLinkSeed | null {
   if (segments.length < 4) return null;
   const [owner, repo, kindSeg, idSeg] = segments;
   if (kindSeg === "pull") {
@@ -121,7 +124,10 @@ function classifyGithub(host: string, segments: string[]): ClassifiedLinkSeed | 
  * @param segments - Path segments.
  * @returns Classified link or null.
  */
-function classifyGitlab(host: string, segments: string[]): ClassifiedLinkSeed | null {
+function classifyGitlab(
+  host: string,
+  segments: string[],
+): ClassifiedLinkSeed | null {
   const dashIdx = segments.indexOf("-");
   if (dashIdx < 2 || dashIdx + 2 >= segments.length) return null;
   const owner = segments.slice(0, dashIdx - 1).join("/");
@@ -171,7 +177,10 @@ function classifyGitlab(host: string, segments: string[]): ClassifiedLinkSeed | 
  * @param segments - Path segments.
  * @returns Classified link or null.
  */
-function classifyLinear(host: string, segments: string[]): ClassifiedLinkSeed | null {
+function classifyLinear(
+  host: string,
+  segments: string[],
+): ClassifiedLinkSeed | null {
   const issueIdx = segments.indexOf("issue");
   if (issueIdx === -1 || issueIdx + 1 >= segments.length) return null;
   const id = segments[issueIdx + 1];
@@ -228,7 +237,9 @@ export function classifyLink(rawUrl: string): ClassifiedLink {
   try {
     parsed = new URL(trimmed);
   } catch {
-    const candidate = trimmed.startsWith("//") ? `https:${trimmed}` : `https://${trimmed}`;
+    const candidate = trimmed.startsWith("//")
+      ? `https:${trimmed}`
+      : `https://${trimmed}`;
     try {
       parsed = new URL(candidate);
     } catch (e) {
@@ -248,7 +259,8 @@ export function classifyLink(rawUrl: string): ClassifiedLink {
   if (host === "github.com") seed = classifyGithub(host, segments);
   else if (host === "gitlab.com") seed = classifyGitlab(host, segments);
   else if (host === "linear.app") seed = classifyLinear(host, segments);
-  else if (host === "notion.so" || host.endsWith(".notion.site")) seed = classifyDoc(host);
+  else if (host === "notion.so" || host.endsWith(".notion.site"))
+    seed = classifyDoc(host);
   else if (host === "docs.google.com") seed = classifyDoc(host);
   else if (host === "figma.com") seed = classifyDoc(host);
 

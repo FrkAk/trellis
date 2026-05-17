@@ -84,7 +84,10 @@ export function levenshtein(a: string, b: string): number {
  * @param existing - Current project tag list.
  * @returns The first matching existing tag, or null.
  */
-export function findVariant(proposed: string, existing: string[]): string | null {
+export function findVariant(
+  proposed: string,
+  existing: string[],
+): string | null {
   const nProposed = normalizeTag(proposed);
   if (nProposed.length === 0) return null;
   const proposedDim = closedDimension(proposed);

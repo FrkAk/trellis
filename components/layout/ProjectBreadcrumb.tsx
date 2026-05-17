@@ -1,14 +1,37 @@
-'use client';
+"use client";
 
-import { motion } from 'motion/react';
-import { TeamChip } from '@/components/shared/TeamChip';
+import { motion } from "motion/react";
+import { TeamChip } from "@/components/shared/TeamChip";
 
 /** Status chip display mapping — mirrors the home ProjectCard. */
-const PROJECT_STATUS_DISPLAY: Record<string, { label: string; dot: string; bg: string; text: string }> = {
-  brainstorming: { label: 'Idea', dot: 'bg-accent', bg: 'bg-accent/15', text: 'text-accent' },
-  decomposing: { label: 'Building', dot: 'bg-progress', bg: 'bg-progress/15', text: 'text-progress' },
-  active: { label: 'Active', dot: 'bg-done', bg: 'bg-done/15', text: 'text-done' },
-  archived: { label: 'Archived', dot: 'bg-draft', bg: 'bg-draft/10', text: 'text-draft' },
+const PROJECT_STATUS_DISPLAY: Record<
+  string,
+  { label: string; dot: string; bg: string; text: string }
+> = {
+  brainstorming: {
+    label: "Idea",
+    dot: "bg-accent",
+    bg: "bg-accent/15",
+    text: "text-accent",
+  },
+  decomposing: {
+    label: "Building",
+    dot: "bg-progress",
+    bg: "bg-progress/15",
+    text: "text-progress",
+  },
+  active: {
+    label: "Active",
+    dot: "bg-done",
+    bg: "bg-done/15",
+    text: "text-done",
+  },
+  archived: {
+    label: "Archived",
+    dot: "bg-draft",
+    bg: "bg-draft/10",
+    text: "text-draft",
+  },
 };
 
 interface ProjectBreadcrumbProps {
@@ -30,7 +53,12 @@ interface ProjectBreadcrumbProps {
  * @param props - Breadcrumb configuration.
  * @returns Button displaying the team chip, project name, status chip, and pencil icon.
  */
-export function ProjectBreadcrumb({ projectName, projectStatus, team, onOpenSettings }: ProjectBreadcrumbProps) {
+export function ProjectBreadcrumb({
+  projectName,
+  projectStatus,
+  team,
+  onOpenSettings,
+}: ProjectBreadcrumbProps) {
   return (
     <motion.button
       whileHover={{ scale: 1.02 }}
@@ -42,12 +70,16 @@ export function ProjectBreadcrumb({ projectName, projectStatus, team, onOpenSett
       className="group/proj flex cursor-pointer items-center gap-2 rounded-md border border-border-strong/40 bg-surface/40 px-2.5 py-1 transition-all hover:border-accent/40 hover:bg-surface-hover"
     >
       {team && <TeamChip team={team} size="xs" />}
-      <span className="text-sm text-text-secondary group-hover/proj:text-text-primary transition-colors">{projectName}</span>
+      <span className="text-sm text-text-secondary group-hover/proj:text-text-primary transition-colors">
+        {projectName}
+      </span>
       {projectStatus && PROJECT_STATUS_DISPLAY[projectStatus] && (
         <span
           className={`hidden sm:inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${PROJECT_STATUS_DISPLAY[projectStatus].bg} ${PROJECT_STATUS_DISPLAY[projectStatus].text}`}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${PROJECT_STATUS_DISPLAY[projectStatus].dot}`} />
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${PROJECT_STATUS_DISPLAY[projectStatus].dot}`}
+          />
           {PROJECT_STATUS_DISPLAY[projectStatus].label}
         </span>
       )}

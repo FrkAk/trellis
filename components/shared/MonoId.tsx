@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 /**
  * Visual tone for the identifier — uses the same vocabulary as
@@ -11,15 +11,15 @@ import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
  * colour as the matching glyph (and, in lists, the matching group header).
  */
 export type MonoIdTone =
-  | 'default'
-  | 'draft'
-  | 'plannable'
-  | 'planned'
-  | 'ready'
-  | 'in_progress'
-  | 'blocked'
-  | 'done'
-  | 'cancelled';
+  | "default"
+  | "draft"
+  | "plannable"
+  | "planned"
+  | "ready"
+  | "in_progress"
+  | "blocked"
+  | "done"
+  | "cancelled";
 
 interface MonoIdProps {
   /** @param id - Identifier to render and copy (e.g. `MYMR-104`). */
@@ -59,24 +59,24 @@ interface MonoIdProps {
  * @returns CSS color value referencing a token.
  */
 function toneColor(dim: boolean, tone: MonoIdTone): string {
-  if (dim) return 'var(--color-text-muted)';
+  if (dim) return "var(--color-text-muted)";
   switch (tone) {
-    case 'plannable':
-    case 'planned':
-      return 'var(--color-glyph-planned)';
-    case 'ready':
-    case 'in_progress':
-      return 'var(--color-glyph-progress)';
-    case 'blocked':
-      return 'var(--color-glyph-blocked)';
-    case 'done':
-      return 'var(--color-glyph-done)';
-    case 'cancelled':
-      return 'var(--color-glyph-cancelled)';
-    case 'draft':
-    case 'default':
+    case "plannable":
+    case "planned":
+      return "var(--color-glyph-planned)";
+    case "ready":
+    case "in_progress":
+      return "var(--color-glyph-progress)";
+    case "blocked":
+      return "var(--color-glyph-blocked)";
+    case "done":
+      return "var(--color-glyph-done)";
+    case "cancelled":
+      return "var(--color-glyph-cancelled)";
+    case "draft":
+    case "default":
     default:
-      return 'var(--color-text-secondary)';
+      return "var(--color-text-secondary)";
   }
 }
 
@@ -97,9 +97,9 @@ const MOUNT_HINT_DELAY_MS = 200;
 export function MonoId({
   id,
   dim = false,
-  tone = 'default',
+  tone = "default",
   copyable = true,
-  className = '',
+  className = "",
   hintOnMount = false,
 }: MonoIdProps) {
   const { status, copy } = useCopyToClipboard();
@@ -113,7 +113,10 @@ export function MonoId({
 
   useEffect(() => {
     if (!hintOnMount || !copyable) return;
-    const showTimer = window.setTimeout(() => setShowMountHint(true), MOUNT_HINT_DELAY_MS);
+    const showTimer = window.setTimeout(
+      () => setShowMountHint(true),
+      MOUNT_HINT_DELAY_MS,
+    );
     const hideTimer = window.setTimeout(
       () => setShowMountHint(false),
       MOUNT_HINT_DELAY_MS + MOUNT_HINT_DURATION_MS,
@@ -128,24 +131,28 @@ export function MonoId({
   const baseStyle = {
     fontSize: 11,
     fontWeight: 500,
-    letterSpacing: '0.02em',
-    transition: 'color 120ms ease',
+    letterSpacing: "0.02em",
+    transition: "color 120ms ease",
   } as const;
 
   if (!copyable) {
     return (
-      <span className={baseClass} style={{ ...baseStyle, color: toneColor(dim, tone) }}>
+      <span
+        className={baseClass}
+        style={{ ...baseStyle, color: toneColor(dim, tone) }}
+      >
         {id}
       </span>
     );
   }
 
-  const view: 'copied' | 'hint' | 'id' =
-    status === 'copied' ? 'copied' : showMountHint ? 'hint' : 'id';
-  const label = view === 'copied' ? 'Copied' : view === 'hint' ? 'Copy' : id;
-  const color = view === 'copied' || view === 'hint'
-    ? 'var(--color-accent-light)'
-    : toneColor(dim, tone);
+  const view: "copied" | "hint" | "id" =
+    status === "copied" ? "copied" : showMountHint ? "hint" : "id";
+  const label = view === "copied" ? "Copied" : view === "hint" ? "Copy" : id;
+  const color =
+    view === "copied" || view === "hint"
+      ? "var(--color-accent-light)"
+      : toneColor(dim, tone);
 
   return (
     <button
@@ -157,11 +164,13 @@ export function MonoId({
       }}
       className={`${baseClass} relative inline-block cursor-pointer overflow-hidden whitespace-nowrap hover:text-text-primary`}
       style={{ ...baseStyle, color }}
-      aria-label={status === 'copied' ? `${id} copied` : `Copy ${id}`}
-      title={status === 'copied' ? 'Copied!' : 'Click to copy'}
+      aria-label={status === "copied" ? `${id} copied` : `Copy ${id}`}
+      title={status === "copied" ? "Copied!" : "Click to copy"}
     >
       {/* Invisible sizer keeps the button width stable across label swaps. */}
-      <span aria-hidden="true" className="invisible">{id}</span>
+      <span aria-hidden="true" className="invisible">
+        {id}
+      </span>
 
       <AnimatePresence initial={false} mode="popLayout">
         <motion.span
@@ -169,7 +178,7 @@ export function MonoId({
           initial={{ opacity: 0, y: 3 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -3 }}
-          transition={{ duration: 0.16, ease: 'easeOut' }}
+          transition={{ duration: 0.16, ease: "easeOut" }}
           className="absolute inset-0 text-left"
         >
           {label}

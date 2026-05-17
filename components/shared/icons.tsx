@@ -1,17 +1,18 @@
-import type { SVGProps } from 'react';
+import type { SVGProps } from "react";
 
 /** Common props for every icon — single `size` controls width and height; color follows `currentColor`. */
-export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'width' | 'height'> {
+export interface IconProps
+  extends Omit<SVGProps<SVGSVGElement>, "width" | "height"> {
   /** @param size - Pixel dimension applied to width and height. Defaults to 14. */
   size?: number;
 }
 
 const STROKE = {
-  fill: 'none',
-  stroke: 'currentColor',
+  fill: "none",
+  stroke: "currentColor",
   strokeWidth: 1.5,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
 } as const;
 
 /**
@@ -19,7 +20,11 @@ const STROKE = {
  * @param props - SVG props plus an optional `size` override and child paths.
  * @returns A 16-unit viewBox SVG element with shared stroke defaults.
  */
-function IconBase({ size = 14, children, ...rest }: IconProps & { children: React.ReactNode }) {
+function IconBase({
+  size = 14,
+  children,
+  ...rest
+}: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       width={size}
@@ -37,22 +42,38 @@ function IconBase({ size = 14, children, ...rest }: IconProps & { children: Reac
 
 /** Chevron pointing down — disclosure indicator. */
 export function IconChevronDown(props: IconProps) {
-  return <IconBase {...props}><path d="M4 6l4 4 4-4" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M4 6l4 4 4-4" />
+    </IconBase>
+  );
 }
 
 /** Chevron pointing right — breadcrumb separator and disclosure. */
 export function IconChevronRight(props: IconProps) {
-  return <IconBase {...props}><path d="M6 4l4 4-4 4" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M6 4l4 4-4 4" />
+    </IconBase>
+  );
 }
 
 /** Chevron pointing up. */
 export function IconChevronUp(props: IconProps) {
-  return <IconBase {...props}><path d="M4 10l4-4 4 4" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M4 10l4-4 4 4" />
+    </IconBase>
+  );
 }
 
 /** Chevron pointing left. */
 export function IconChevronLeft(props: IconProps) {
-  return <IconBase {...props}><path d="M10 4l-4 4 4 4" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M10 4l-4 4 4 4" />
+    </IconBase>
+  );
 }
 
 /**
@@ -82,7 +103,11 @@ export function IconPanelRight(props: IconProps) {
 
 /** Magnifying glass — search and ⌘K trigger. */
 export function IconSearch(props: IconProps) {
-  return <IconBase {...props}><path d="M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM10.5 10.5l3 3" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM10.5 10.5l3 3" />
+    </IconBase>
+  );
 }
 
 /** Inbox tray — sidebar nav. */
@@ -129,12 +154,20 @@ export function IconUsers(props: IconProps) {
 
 /** Plus / add. */
 export function IconPlus(props: IconProps) {
-  return <IconBase {...props}><path d="M8 3v10M3 8h10" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M8 3v10M3 8h10" />
+    </IconBase>
+  );
 }
 
 /** Filter funnel. */
 export function IconFilter(props: IconProps) {
-  return <IconBase {...props}><path d="M2 4h12l-4.5 5.5V13l-3 1.5v-5L2 4z" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M2 4h12l-4.5 5.5V13l-3 1.5v-5L2 4z" />
+    </IconBase>
+  );
 }
 
 /** Sort glyph — three stacked bars descending. */
@@ -211,7 +244,11 @@ export function IconSettings(props: IconProps) {
 
 /** Crescent moon — dark theme. */
 export function IconMoon(props: IconProps) {
-  return <IconBase {...props}><path d="M13 9.5A5.5 5.5 0 1 1 6.5 3a4.5 4.5 0 0 0 6.5 6.5z" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M13 9.5A5.5 5.5 0 1 1 6.5 3a4.5 4.5 0 0 0 6.5 6.5z" />
+    </IconBase>
+  );
 }
 
 /** Sun rays — light theme. */
@@ -233,7 +270,11 @@ export function IconSun(props: IconProps) {
 
 /** Checkmark. */
 export function IconCheck(props: IconProps) {
-  return <IconBase {...props}><path d="M3 8.5L6.5 12 13 5" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M3 8.5L6.5 12 13 5" />
+    </IconBase>
+  );
 }
 
 /** X / close. */
@@ -259,7 +300,11 @@ export function IconMore(props: IconProps) {
 
 /** Right arrow with line — go to / continue. */
 export function IconArrowRight(props: IconProps) {
-  return <IconBase {...props}><path d="M3 8h10M9 4l4 4-4 4" /></IconBase>;
+  return (
+    <IconBase {...props}>
+      <path d="M3 8h10M9 4l4 4-4 4" />
+    </IconBase>
+  );
 }
 
 /** Single ⌘ command glyph — keyboard cue. */
@@ -403,4 +448,3 @@ export function IconUndo(props: IconProps) {
     </IconBase>
   );
 }
-

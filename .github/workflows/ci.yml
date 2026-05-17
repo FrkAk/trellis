@@ -52,6 +52,8 @@ jobs:
             echo "  Examples: 'feat: add task graph', 'fix(ai): rate limiter timing'"
             exit 1
           fi
+      - name: Format check
+        run: bun run format:check
       - name: Lint
         run: bun run lint
       - name: Typecheck

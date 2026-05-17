@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useEffect, useRef } from 'react';
-import type React from 'react';
+import { useEffect, useRef } from "react";
+import type React from "react";
 
 /** CSS selector matching tabbable descendants inside the dialog panel. */
 const FOCUSABLE_SELECTOR =
@@ -53,16 +53,16 @@ let globalListenerInstalled = false;
 function ensureGlobalListenerInstalled(): void {
   if (globalListenerInstalled) return;
   globalListenerInstalled = true;
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener("keydown", (e) => {
     const top = modalStack[modalStack.length - 1];
     if (!top) return;
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
       top.onClose();
       return;
     }
-    if (e.key === 'Tab') {
+    if (e.key === "Tab") {
       trapTabFocus(e, top.panelRef.current);
     }
   });

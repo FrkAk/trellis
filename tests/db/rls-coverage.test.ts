@@ -6,7 +6,11 @@ describe("RLS coverage — every public.* table is enabled + forced", () => {
     const sql = superuserPool();
     try {
       const rows = await sql<
-        { relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[]
+        {
+          relname: string;
+          relrowsecurity: boolean;
+          relforcerowsecurity: boolean;
+        }[]
       >`
         SELECT relname, relrowsecurity, relforcerowsecurity
         FROM pg_class
@@ -46,7 +50,9 @@ describe("RLS coverage — every public.* table is enabled + forced", () => {
         WHERE rolname IN ('app_user', 'service_role', 'auth_role')
         ORDER BY rolname
       `;
-      const byName = Object.fromEntries(rows.map((r) => [r.rolname, r.rolbypassrls]));
+      const byName = Object.fromEntries(
+        rows.map((r) => [r.rolname, r.rolbypassrls]),
+      );
       expect(byName.app_user).toBe(false);
       expect(byName.auth_role).toBe(false);
       expect(byName.service_role).toBe(true);
@@ -58,9 +64,7 @@ describe("RLS coverage — every public.* table is enabled + forced", () => {
   test("every public.* table has at least one policy attached", async () => {
     const sql = superuserPool();
     try {
-      const rows = await sql<
-        { tablename: string; policy_count: number }[]
-      >`
+      const rows = await sql<{ tablename: string; policy_count: number }[]>`
         SELECT c.relname AS tablename, count(p.polname)::int AS policy_count
         FROM pg_class c
         LEFT JOIN pg_policy p ON p.polrelid = c.oid

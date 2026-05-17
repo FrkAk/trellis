@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { motion } from 'motion/react';
+import { useState } from "react";
+import { motion } from "motion/react";
 import {
   deleteProjectCategory,
   renameProjectCategory,
   updateProjectSettings,
-} from '@/lib/actions/project';
+} from "@/lib/actions/project";
 
 interface CategoriesSectionProps {
   projectId: string;
@@ -15,7 +15,7 @@ interface CategoriesSectionProps {
 }
 
 const SECTION_LABEL_CLASS =
-  'font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted';
+  "font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted";
 
 /**
  * Minimal inline category editor — chips with hover-remove + add-new input.
@@ -23,11 +23,15 @@ const SECTION_LABEL_CLASS =
  * @param props - Section props.
  * @returns Categories row.
  */
-export function CategoriesSection({ projectId, categories, onUpdated }: CategoriesSectionProps) {
+export function CategoriesSection({
+  projectId,
+  categories,
+  onUpdated,
+}: CategoriesSectionProps) {
   const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
+  const [renameValue, setRenameValue] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -36,7 +40,11 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
    */
   const handleAdd = async () => {
     const name = newName.trim();
-    if (!name) { setAdding(false); setNewName(''); return; }
+    if (!name) {
+      setAdding(false);
+      setNewName("");
+      return;
+    }
     if (categories.includes(name)) {
       setError(`"${name}" already exists`);
       return;
@@ -45,9 +53,12 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
     const result = await updateProjectSettings(projectId, {
       categories: [...categories, name],
     });
-    if (!result.ok) { setError(result.message); return; }
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
     setAdding(false);
-    setNewName('');
+    setNewName("");
     onUpdated?.();
   };
 
@@ -59,7 +70,10 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
   const handleRemove = async (name: string) => {
     setError(null);
     const result = await deleteProjectCategory(projectId, name);
-    if (!result.ok) { setError(result.message); return; }
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
     onUpdated?.();
   };
 
@@ -82,7 +96,10 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
     setError(null);
     const result = await renameProjectCategory(projectId, oldName, trimmed);
     setRenaming(null);
-    if (!result.ok) { setError(result.message); return; }
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
     onUpdated?.();
   };
 
@@ -99,8 +116,8 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitRename(cat);
-                  if (e.key === 'Escape') setRenaming(null);
+                  if (e.key === "Enter") commitRename(cat);
+                  if (e.key === "Escape") setRenaming(null);
                 }}
                 onBlur={() => commitRename(cat)}
                 autoFocus
@@ -117,7 +134,10 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 type="button"
-                onClick={() => { setRenaming(cat); setRenameValue(cat); }}
+                onClick={() => {
+                  setRenaming(cat);
+                  setRenameValue(cat);
+                }}
                 className="cursor-pointer hover:underline"
                 title="Rename category"
               >
@@ -131,7 +151,11 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
                 className="cursor-pointer rounded-sm opacity-0 transition-opacity group-hover/cat:opacity-100 hover:text-accent"
                 title={`Remove category "${cat}"`}
               >
-                <svg viewBox="0 0 16 16" fill="currentColor" className="h-2.5 w-2.5">
+                <svg
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  className="h-2.5 w-2.5"
+                >
                   <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
                 </svg>
               </motion.button>
@@ -145,8 +169,11 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAdd();
-              if (e.key === 'Escape') { setAdding(false); setNewName(''); }
+              if (e.key === "Enter") handleAdd();
+              if (e.key === "Escape") {
+                setAdding(false);
+                setNewName("");
+              }
             }}
             onBlur={handleAdd}
             autoFocus
@@ -158,16 +185,17 @@ export function CategoriesSection({ projectId, categories, onUpdated }: Categori
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             type="button"
-            onClick={() => { setAdding(true); setNewName(''); }}
+            onClick={() => {
+              setAdding(true);
+              setNewName("");
+            }}
             className="cursor-pointer rounded-md border border-dashed border-border-strong px-1.5 py-0.5 font-mono text-[10px] font-medium text-text-muted transition-colors hover:border-accent/40 hover:text-accent-light"
           >
             + Add category
           </motion.button>
         )}
       </div>
-      {error && (
-        <p className="font-mono text-[10px] text-danger">{error}</p>
-      )}
+      {error && <p className="font-mono text-[10px] text-danger">{error}</p>}
     </section>
   );
 }

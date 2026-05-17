@@ -110,7 +110,9 @@ test("isAtConnectionLimit — scoped per user", () => {
 });
 
 test("tryAttach — returns true under cap, false at cap, true after detach reopens room", () => {
-  const conns = Array.from({ length: MAX_CONNECTIONS_PER_USER }, () => fakeConn());
+  const conns = Array.from({ length: MAX_CONNECTIONS_PER_USER }, () =>
+    fakeConn(),
+  );
   for (const c of conns) {
     expect(broker.tryAttach("u-cap", c)).toBe(true);
   }
@@ -148,9 +150,9 @@ test("clearTaskSubs — no-op when user has no submap", () => {
 });
 
 test("pruneExpired — drops expired entries, leaves null-expiry and unexpired entries", async () => {
-  broker.register("u1", "project:p1");                  // null expiry — keep
-  broker.register("u1", "task:short", 5);               // expires in 5ms — drop
-  broker.register("u1", "task:long", 60_000);           // expires far in future — keep
+  broker.register("u1", "project:p1"); // null expiry — keep
+  broker.register("u1", "task:short", 5); // expires in 5ms — drop
+  broker.register("u1", "task:long", 60_000); // expires far in future — keep
   await new Promise((r) => setTimeout(r, 10));
 
   broker.pruneExpired("u1");

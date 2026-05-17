@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import { signUp } from '@/lib/auth-client';
-import { AuthInput } from './AuthInput';
-import { AuthSubmit } from './AuthSubmit';
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { signUp } from "@/lib/auth-client";
+import { AuthInput } from "./AuthInput";
+import { AuthSubmit } from "./AuthSubmit";
 
 /**
  * Email/password sign-up form.
@@ -17,9 +17,9 @@ import { AuthSubmit } from './AuthSubmit';
  */
 export function SignUpForm() {
   const router = useRouter();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -38,12 +38,12 @@ export function SignUpForm() {
     const { error: authError } = await signUp.email({ name, email, password });
 
     if (authError) {
-      setError(authError.message ?? 'Sign up failed');
+      setError(authError.message ?? "Sign up failed");
       setLoading(false);
       return;
     }
 
-    router.push('/');
+    router.push("/");
     router.refresh();
   }
 
@@ -84,9 +84,10 @@ export function SignUpForm() {
           role="alert"
           className="rounded-md border px-3 py-2 text-[12px] text-danger"
           style={{
-            background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)',
+            background:
+              "color-mix(in srgb, var(--color-danger) 10%, transparent)",
             borderColor:
-              'color-mix(in srgb, var(--color-danger) 24%, transparent)',
+              "color-mix(in srgb, var(--color-danger) 24%, transparent)",
           }}
         >
           {error}

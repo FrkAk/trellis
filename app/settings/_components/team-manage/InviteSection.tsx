@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import type { InvitationView } from '@/lib/actions/team-invitations-map';
-import type { InviteCodeMetadata } from '@/lib/actions/team-invite-code';
-import { InviteForm } from './InviteForm';
-import { PendingInvitationsList } from './PendingInvitationsList';
-import { InviteCodePanel } from './InviteCodePanel';
+import type { InvitationView } from "@/lib/actions/team-invitations-map";
+import type { InviteCodeMetadata } from "@/lib/actions/team-invite-code";
+import { InviteForm } from "./InviteForm";
+import { PendingInvitationsList } from "./PendingInvitationsList";
+import { InviteCodePanel } from "./InviteCodePanel";
 
 interface InviteSectionProps {
   /** Team UUID — passed to every target-scoped action. */

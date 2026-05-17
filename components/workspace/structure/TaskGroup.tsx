@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import type { TaskStatus } from '@/lib/types';
+import type { TaskStatus } from "@/lib/types";
 
 /**
  * Optional virtual groups — derived sub-stages, not schema statuses.
@@ -10,4 +10,4 @@ import type { TaskStatus } from '@/lib/types';
  * sticky header + children lives inline in `StructureView`'s
  * virtualised renderer (`TaskGroupHeader`) now.
  */
-export type TaskGroupKey = TaskStatus | 'ready' | 'plannable';
+export type TaskGroupKey = TaskStatus | "ready" | "plannable";

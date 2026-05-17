@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'motion/react';
-import { IconCheck, IconChevronDown } from '@/components/shared/icons';
-import { popoverFixedStyle, usePopoverAnchor } from '@/hooks/usePopoverAnchor';
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "motion/react";
+import { IconCheck, IconChevronDown } from "@/components/shared/icons";
+import { popoverFixedStyle, usePopoverAnchor } from "@/hooks/usePopoverAnchor";
 
 export interface DropdownOption<V extends string = string> {
   /** Option value — what gets passed to onChange. */
@@ -27,11 +27,14 @@ interface DropdownProps<V extends string> {
   /** Update the selected value. */
   onChange: (next: V) => void;
   /** Trigger renderer — receives the currently selected option. */
-  renderTrigger: (option: DropdownOption<V> | undefined, open: boolean) => React.ReactNode;
+  renderTrigger: (
+    option: DropdownOption<V> | undefined,
+    open: boolean,
+  ) => React.ReactNode;
   /** Match panel width to trigger when true; defaults to false (intrinsic). */
   matchTriggerWidth?: boolean;
   /** Panel anchor — defaults to `start` (left edge of the trigger). */
-  align?: 'start' | 'end';
+  align?: "start" | "end";
   /** Optional minimum panel width in px. */
   minWidth?: number;
   /** Optional native title for the trigger. */
@@ -60,7 +63,7 @@ export function Dropdown<V extends string>({
   onChange,
   renderTrigger,
   matchTriggerWidth = false,
-  align = 'start',
+  align = "start",
   minWidth = 160,
   title,
   ariaLabel,
@@ -89,13 +92,13 @@ export function Dropdown<V extends string>({
       if (!inTrigger && !inPopover) setOpen(false);
     };
     const escape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('keydown', escape);
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", escape);
     return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('keydown', escape);
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", escape);
     };
   }, [open]);
 
@@ -111,7 +114,7 @@ export function Dropdown<V extends string>({
   }, [measureNow]);
 
   const active = options.find((o) => o.value === value);
-  const flipped = anchor?.vertical === 'above';
+  const flipped = anchor?.vertical === "above";
 
   const panelStyle: React.CSSProperties | null = anchor
     ? {
@@ -137,58 +140,66 @@ export function Dropdown<V extends string>({
         {renderTrigger(active, open)}
       </button>
 
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {open && panelStyle && (
-            <motion.div
-              ref={popoverRef}
-              id={listId}
-              role="listbox"
-              initial={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
-              transition={{ duration: 0.11, ease: 'easeOut' }}
-              className="z-50 max-h-[280px] overflow-y-auto rounded-md border border-border-strong bg-surface-raised py-1 shadow-float"
-              style={panelStyle}
-            >
-              {options.map((option) => {
-                const selected = option.value === value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    disabled={option.disabled}
-                    onClick={() => {
-                      if (option.disabled) return;
-                      onChange(option.value);
-                      setOpen(false);
-                    }}
-                    className={`flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
-                      selected
-                        ? 'bg-accent/10 text-accent-light'
-                        : option.disabled
-                          ? 'text-text-faint cursor-not-allowed'
-                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                    }`}
-                  >
-                    {option.leading && <span aria-hidden="true" className="inline-flex shrink-0">{option.leading}</span>}
-                    <span className="flex-1 truncate">{option.label}</span>
-                    {option.trailing}
-                    {selected && (
-                      <span aria-hidden="true" className="text-accent-light">
-                        <IconCheck size={11} />
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {open && panelStyle && (
+              <motion.div
+                ref={popoverRef}
+                id={listId}
+                role="listbox"
+                initial={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: flipped ? 4 : -4, scale: 0.97 }}
+                transition={{ duration: 0.11, ease: "easeOut" }}
+                className="z-50 max-h-[280px] overflow-y-auto rounded-md border border-border-strong bg-surface-raised py-1 shadow-float"
+                style={panelStyle}
+              >
+                {options.map((option) => {
+                  const selected = option.value === value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      disabled={option.disabled}
+                      onClick={() => {
+                        if (option.disabled) return;
+                        onChange(option.value);
+                        setOpen(false);
+                      }}
+                      className={`flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                        selected
+                          ? "bg-accent/10 text-accent-light"
+                          : option.disabled
+                            ? "text-text-faint cursor-not-allowed"
+                            : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+                      }`}
+                    >
+                      {option.leading && (
+                        <span
+                          aria-hidden="true"
+                          className="inline-flex shrink-0"
+                        >
+                          {option.leading}
+                        </span>
+                      )}
+                      <span className="flex-1 truncate">{option.label}</span>
+                      {option.trailing}
+                      {selected && (
+                        <span aria-hidden="true" className="text-accent-light">
+                          <IconCheck size={11} />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </>
   );
 }

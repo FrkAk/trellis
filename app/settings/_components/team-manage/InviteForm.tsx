@@ -1,16 +1,19 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, useTransition } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { Button } from '@/components/shared/Button';
-import { inviteMemberAction } from '@/lib/actions/team';
+import { useEffect, useRef, useState, useTransition } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Button } from "@/components/shared/Button";
+import { inviteMemberAction } from "@/lib/actions/team";
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent';
+  "w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
 
-const ROLE_OPTIONS: ReadonlyArray<{ value: 'member' | 'admin'; label: string }> = [
-  { value: 'member', label: 'Member' },
-  { value: 'admin', label: 'Admin' },
+const ROLE_OPTIONS: ReadonlyArray<{
+  value: "member" | "admin";
+  label: string;
+}> = [
+  { value: "member", label: "Member" },
+  { value: "admin", label: "Admin" },
 ];
 
 interface InviteFormProps {
@@ -36,31 +39,35 @@ interface InviteFormProps {
  * @returns Email + role picker row with Send button.
  */
 export function InviteForm({ teamId, onInvited, onError }: InviteFormProps) {
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'member' | 'admin'>('member');
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"member" | "admin">("member");
   const [pending, startTransition] = useTransition();
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
 
   const trimmed = email.trim();
-  const canSubmit = trimmed.length > 0 && trimmed.includes('@') && !pending;
-  const selectedRoleLabel = ROLE_OPTIONS.find((option) => option.value === role)?.label ?? '';
+  const canSubmit = trimmed.length > 0 && trimmed.includes("@") && !pending;
+  const selectedRoleLabel =
+    ROLE_OPTIONS.find((option) => option.value === role)?.label ?? "";
 
   useEffect(() => {
     if (!roleMenuOpen) return;
     function handleClickOutside(event: MouseEvent) {
-      if (roleMenuRef.current && !roleMenuRef.current.contains(event.target as Node)) {
+      if (
+        roleMenuRef.current &&
+        !roleMenuRef.current.contains(event.target as Node)
+      ) {
         setRoleMenuOpen(false);
       }
     }
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setRoleMenuOpen(false);
+      if (event.key === "Escape") setRoleMenuOpen(false);
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [roleMenuOpen]);
 
@@ -77,7 +84,7 @@ export function InviteForm({ teamId, onInvited, onError }: InviteFormProps) {
         onError(result.message);
         return;
       }
-      setEmail('');
+      setEmail("");
       await onInvited();
     });
   };
@@ -105,7 +112,10 @@ export function InviteForm({ teamId, onInvited, onError }: InviteFormProps) {
           />
         </label>
         <div className="lg:w-40">
-          <span id="invite-role-label" className="mb-1 block text-xs font-medium text-text-secondary">
+          <span
+            id="invite-role-label"
+            className="mb-1 block text-xs font-medium text-text-secondary"
+          >
             Role
           </span>
           <div className="relative" ref={roleMenuRef}>
@@ -125,10 +135,14 @@ export function InviteForm({ teamId, onInvited, onError }: InviteFormProps) {
                 stroke="currentColor"
                 strokeWidth="1.5"
                 className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${
-                  roleMenuOpen ? 'rotate-180' : ''
+                  roleMenuOpen ? "rotate-180" : ""
                 }`}
               >
-                <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  d="M4 6l4 4 4-4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </button>
             <AnimatePresence>
@@ -155,7 +169,9 @@ export function InviteForm({ teamId, onInvited, onError }: InviteFormProps) {
                             setRoleMenuOpen(false);
                           }}
                           className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover hover:text-text-primary ${
-                            selected ? 'text-text-primary' : 'text-text-secondary'
+                            selected
+                              ? "text-text-primary"
+                              : "text-text-secondary"
                           }`}
                         >
                           <span>{option.label}</span>
@@ -168,7 +184,11 @@ export function InviteForm({ teamId, onInvited, onError }: InviteFormProps) {
                               strokeWidth="2"
                               className="h-3.5 w-3.5 text-accent"
                             >
-                              <path d="M3.5 8.5l3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
+                              <path
+                                d="M3.5 8.5l3 3 6-7"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
                             </svg>
                           ) : null}
                         </button>
@@ -180,13 +200,19 @@ export function InviteForm({ teamId, onInvited, onError }: InviteFormProps) {
             </AnimatePresence>
           </div>
         </div>
-        <Button type="submit" variant="primary" size="md" disabled={!canSubmit} isLoading={pending}>
+        <Button
+          type="submit"
+          variant="primary"
+          size="md"
+          disabled={!canSubmit}
+          isLoading={pending}
+        >
           Send invitation
         </Button>
       </div>
       <p className="mt-3 text-xs text-text-muted">
-        We&apos;ll add a row to the pending list. Email delivery ships with the next release; for
-        now share the invite code below.
+        We&apos;ll add a row to the pending list. Email delivery ships with the
+        next release; for now share the invite code below.
       </p>
     </form>
   );

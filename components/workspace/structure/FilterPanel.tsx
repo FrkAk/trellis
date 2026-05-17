@@ -1,21 +1,21 @@
-'use client';
+"use client";
 
-import { motion, AnimatePresence } from 'motion/react';
-import { PriorityIcon } from '@/components/shared/PriorityIcon';
-import { STATUS_META } from '@/components/shared/StatusGlyph';
-import { UNPRIORITIZED_KEY } from '@/lib/ui/priority';
-import type { Priority, TaskStatus } from '@/lib/types';
+import { motion, AnimatePresence } from "motion/react";
+import { PriorityIcon } from "@/components/shared/PriorityIcon";
+import { STATUS_META } from "@/components/shared/StatusGlyph";
+import { UNPRIORITIZED_KEY } from "@/lib/ui/priority";
+import type { Priority, TaskStatus } from "@/lib/types";
 
 /** Status filter options exposed in the sheet — `ready` and `plannable` are derived. */
 const STATUS_FILTERS: readonly { id: string; label: string }[] = [
-  { id: 'in_progress', label: STATUS_META.in_progress.label },
-  { id: 'in_review',   label: STATUS_META.in_review.label },
-  { id: 'ready',       label: 'Ready' },
-  { id: 'planned',     label: STATUS_META.planned.label },
-  { id: 'plannable',   label: 'Plannable' },
-  { id: 'draft',       label: STATUS_META.draft.label },
-  { id: 'done',        label: STATUS_META.done.label },
-  { id: 'cancelled',   label: STATUS_META.cancelled.label },
+  { id: "in_progress", label: STATUS_META.in_progress.label },
+  { id: "in_review", label: STATUS_META.in_review.label },
+  { id: "ready", label: "Ready" },
+  { id: "planned", label: STATUS_META.planned.label },
+  { id: "plannable", label: "Plannable" },
+  { id: "draft", label: STATUS_META.draft.label },
+  { id: "done", label: STATUS_META.done.label },
+  { id: "cancelled", label: STATUS_META.cancelled.label },
 ];
 
 interface FilterPanelProps {
@@ -65,8 +65,8 @@ interface FilterPanelProps {
 function chipClass(active: boolean): string {
   return `cursor-pointer rounded-md border px-2 py-[3px] font-mono text-[10px] transition-colors ${
     active
-      ? 'border-accent/30 bg-accent/10 text-accent-light font-semibold'
-      : 'border-border bg-surface-raised/40 text-text-secondary hover:border-border-strong hover:bg-surface-hover hover:text-text-primary'
+      ? "border-accent/30 bg-accent/10 text-accent-light font-semibold"
+      : "border-border bg-surface-raised/40 text-text-secondary hover:border-border-strong hover:bg-surface-hover hover:text-text-primary"
   }`;
 }
 
@@ -102,7 +102,7 @@ export function FilterPanel({
       {open && (
         <motion.div
           initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
+          animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
           transition={{ duration: 0.18, ease: [0.25, 0.46, 0.45, 0.94] }}
           className="overflow-hidden border-b border-border bg-surface"
@@ -111,7 +111,8 @@ export function FilterPanel({
             {totalActive > 0 && (
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[10px] uppercase tracking-wider text-accent-light">
-                  {totalActive} {totalActive === 1 ? 'filter' : 'filters'} active
+                  {totalActive} {totalActive === 1 ? "filter" : "filters"}{" "}
+                  active
                 </span>
                 <button
                   type="button"
@@ -129,9 +130,16 @@ export function FilterPanel({
                 if (count === 0 && !activeStatuses.has(s.id)) return null;
                 const active = activeStatuses.has(s.id);
                 return (
-                  <button key={s.id} type="button" onClick={() => onStatusToggle(s.id)} className={chipClass(active)}>
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => onStatusToggle(s.id)}
+                    className={chipClass(active)}
+                  >
                     {s.label}
-                    <span className={`ml-1 tabular-nums ${active ? 'text-accent-light/70' : 'text-text-faint'}`}>
+                    <span
+                      className={`ml-1 tabular-nums ${active ? "text-accent-light/70" : "text-text-faint"}`}
+                    >
                       {count}
                     </span>
                   </button>
@@ -139,15 +147,23 @@ export function FilterPanel({
               })}
             </FilterSection>
 
-            {(categories.length > 0 || (categoryCounts.__uncategorized__ ?? 0) > 0) && (
+            {(categories.length > 0 ||
+              (categoryCounts.__uncategorized__ ?? 0) > 0) && (
               <FilterSection title="Categories">
                 {categories.map((cat) => {
                   const count = categoryCounts[cat] ?? 0;
                   const active = activeCategories.has(cat);
                   return (
-                    <button key={cat} type="button" onClick={() => onCategoryToggle(cat)} className={chipClass(active)}>
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => onCategoryToggle(cat)}
+                      className={chipClass(active)}
+                    >
                       {cat}
-                      <span className={`ml-1 tabular-nums ${active ? 'text-accent-light/70' : 'text-text-faint'}`}>
+                      <span
+                        className={`ml-1 tabular-nums ${active ? "text-accent-light/70" : "text-text-faint"}`}
+                      >
                         {count}
                       </span>
                     </button>
@@ -156,11 +172,13 @@ export function FilterPanel({
                 {(categoryCounts.__uncategorized__ ?? 0) > 0 && (
                   <button
                     type="button"
-                    onClick={() => onCategoryToggle('Uncategorized')}
-                    className={chipClass(activeCategories.has('Uncategorized'))}
+                    onClick={() => onCategoryToggle("Uncategorized")}
+                    className={chipClass(activeCategories.has("Uncategorized"))}
                   >
                     Uncategorized
-                    <span className={`ml-1 tabular-nums ${activeCategories.has('Uncategorized') ? 'text-accent-light/70' : 'text-text-faint'}`}>
+                    <span
+                      className={`ml-1 tabular-nums ${activeCategories.has("Uncategorized") ? "text-accent-light/70" : "text-text-faint"}`}
+                    >
                       {categoryCounts.__uncategorized__}
                     </span>
                   </button>
@@ -196,7 +214,9 @@ export function FilterPanel({
                       >
                         <PriorityIcon priority={p} />
                         {p}
-                        <span className={`tabular-nums ${active ? 'text-accent-light/70' : 'text-text-faint'}`}>
+                        <span
+                          className={`tabular-nums ${active ? "text-accent-light/70" : "text-text-faint"}`}
+                        >
                           {count}
                         </span>
                       </button>
@@ -210,7 +230,9 @@ export function FilterPanel({
                     >
                       <PriorityIcon priority={null} />
                       Unprioritized
-                      <span className={`tabular-nums ${activePriorities.has(UNPRIORITIZED_KEY) ? 'text-accent-light/70' : 'text-text-faint'}`}>
+                      <span
+                        className={`tabular-nums ${activePriorities.has(UNPRIORITIZED_KEY) ? "text-accent-light/70" : "text-text-faint"}`}
+                      >
                         {priorityCounts[UNPRIORITIZED_KEY] ?? 0}
                       </span>
                     </button>
@@ -224,9 +246,16 @@ export function FilterPanel({
                 {tags.map(([tag, count]) => {
                   const active = activeTags.has(tag);
                   return (
-                    <button key={tag} type="button" onClick={() => onTagToggle(tag)} className={chipClass(active)}>
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => onTagToggle(tag)}
+                      className={chipClass(active)}
+                    >
                       {tag}
-                      <span className={`ml-1 tabular-nums ${active ? 'text-accent-light/70' : 'text-text-faint'}`}>
+                      <span
+                        className={`ml-1 tabular-nums ${active ? "text-accent-light/70" : "text-text-faint"}`}
+                      >
                         {count}
                       </span>
                     </button>

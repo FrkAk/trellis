@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { Modal } from '@/components/shared/Modal';
-import { TeamSection } from './TeamSection';
-import { StatusSection } from './StatusSection';
-import { TitleSection } from './TitleSection';
-import { DescriptionSection } from './DescriptionSection';
-import { IdentifierSection } from './IdentifierSection';
-import { CategoriesSection } from './CategoriesSection';
-import type { ProjectStatus } from '@/lib/types';
+import { Modal } from "@/components/shared/Modal";
+import { TeamSection } from "./TeamSection";
+import { StatusSection } from "./StatusSection";
+import { TitleSection } from "./TitleSection";
+import { DescriptionSection } from "./DescriptionSection";
+import { IdentifierSection } from "./IdentifierSection";
+import { CategoriesSection } from "./CategoriesSection";
+import type { ProjectStatus } from "@/lib/types";
 
 interface ProjectSettingsModalProps {
   /** @param open - Whether the modal is visible. */
@@ -17,7 +17,13 @@ interface ProjectSettingsModalProps {
   /** @param projectId - UUID of the project being edited. */
   projectId: string;
   /** @param project - Current project fields reflected by the form. */
-  project: { title: string; description: string; identifier: string; status: ProjectStatus; categories: string[] };
+  project: {
+    title: string;
+    description: string;
+    identifier: string;
+    status: ProjectStatus;
+    categories: string[];
+  };
   /** @param team - Owning team. Read-only — project ownership is fixed at creation. */
   team: { id: string; name: string };
   /** @param taskCount - Number of tasks affected by an identifier rename. */

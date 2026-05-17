@@ -5,11 +5,16 @@
  */
 export function statusChip(status: string): string {
   switch (status) {
-    case 'done': return 'bg-done/10 text-done';
-    case 'in_progress': return 'bg-progress/10 text-progress';
-    case 'planned': return 'bg-planned/10 text-planned';
-    case 'cancelled': return 'bg-cancelled/10 text-cancelled line-through';
-    default: return 'bg-draft/10 text-draft';
+    case "done":
+      return "bg-done/10 text-done";
+    case "in_progress":
+      return "bg-progress/10 text-progress";
+    case "planned":
+      return "bg-planned/10 text-planned";
+    case "cancelled":
+      return "bg-cancelled/10 text-cancelled line-through";
+    default:
+      return "bg-draft/10 text-draft";
   }
 }
 
@@ -20,11 +25,16 @@ export function statusChip(status: string): string {
  */
 export function statusChipText(status: string): string {
   switch (status) {
-    case 'done': return 'text-done';
-    case 'in_progress': return 'text-progress';
-    case 'planned': return 'text-planned';
-    case 'cancelled': return 'text-cancelled line-through';
-    default: return 'text-draft';
+    case "done":
+      return "text-done";
+    case "in_progress":
+      return "text-progress";
+    case "planned":
+      return "text-planned";
+    case "cancelled":
+      return "text-cancelled line-through";
+    default:
+      return "text-draft";
   }
 }
 
@@ -35,11 +45,16 @@ export function statusChipText(status: string): string {
  */
 export function statusDot(status: string): string {
   switch (status) {
-    case 'done': return 'bg-done';
-    case 'in_progress': return 'bg-progress';
-    case 'planned': return 'bg-planned';
-    case 'cancelled': return 'bg-cancelled';
-    default: return 'bg-draft';
+    case "done":
+      return "bg-done";
+    case "in_progress":
+      return "bg-progress";
+    case "planned":
+      return "bg-planned";
+    case "cancelled":
+      return "bg-cancelled";
+    default:
+      return "bg-draft";
   }
 }
 
@@ -50,10 +65,15 @@ export function statusDot(status: string): string {
  */
 export function statusLabel(status: string): string {
   switch (status) {
-    case 'done': return 'Done';
-    case 'planned': return 'Planned';
-    case 'in_progress': return 'In Progress';
-    case 'cancelled': return 'Cancelled';
-    default: return 'Draft';
+    case "done":
+      return "Done";
+    case "planned":
+      return "Planned";
+    case "in_progress":
+      return "In Progress";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Draft";
   }
 }

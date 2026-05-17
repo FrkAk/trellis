@@ -159,9 +159,7 @@ test("attack: malformed JSON body issues no session cookie", async () => {
 });
 
 test("attack: empty body issues no session cookie", async () => {
-  const response = await auth.handler(
-    signInRequest("", "", "127.0.0.14", ""),
-  );
+  const response = await auth.handler(signInRequest("", "", "127.0.0.14", ""));
   expect(response.status).toBeGreaterThanOrEqual(400);
   expect(findSessionCookie(response)).toBeUndefined();
 });

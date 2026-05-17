@@ -42,7 +42,10 @@ test("addTaskLink raises ForbiddenError for callers outside the task's team", as
   const stranger = await seedUserOrgProject("links-add-x2");
   const ownerCtx = makeAuthContext(owner.userId);
   const strangerCtx = makeAuthContext(stranger.userId);
-  const task = await createTask(ownerCtx, { projectId: owner.projectId, title: "T" });
+  const task = await createTask(ownerCtx, {
+    projectId: owner.projectId,
+    title: "T",
+  });
 
   await expect(
     addTaskLink(strangerCtx, task.id, "https://github.com/o/r/pull/1"),
@@ -54,8 +57,15 @@ test("removeTaskLink raises ForbiddenError for callers outside the task's team",
   const stranger = await seedUserOrgProject("links-rm-x2");
   const ownerCtx = makeAuthContext(owner.userId);
   const strangerCtx = makeAuthContext(stranger.userId);
-  const task = await createTask(ownerCtx, { projectId: owner.projectId, title: "T" });
-  const link = await addTaskLink(ownerCtx, task.id, "https://github.com/o/r/pull/2");
+  const task = await createTask(ownerCtx, {
+    projectId: owner.projectId,
+    title: "T",
+  });
+  const link = await addTaskLink(
+    ownerCtx,
+    task.id,
+    "https://github.com/o/r/pull/2",
+  );
 
   await expect(removeTaskLink(strangerCtx, link.id)).rejects.toBeInstanceOf(
     ForbiddenError,
@@ -145,7 +155,11 @@ test("addTaskLink dedupes scheme-less + canonical inputs of the same URL", async
   const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
 
   const first = await addTaskLink(ctx, task.id, "github.com/o/r/pull/1");
-  const second = await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/1");
+  const second = await addTaskLink(
+    ctx,
+    task.id,
+    "https://github.com/o/r/pull/1",
+  );
 
   expect(second.id).toBe(first.id);
   expect((await linksAs(task.id, f.userId)).length).toBe(1);
@@ -155,12 +169,22 @@ test("updateTaskLink rewrites the URL in place and preserves id and createdAt", 
   const f = await seedUserOrgProject("links-edit");
   const ctx = makeAuthContext(f.userId);
   const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
-  const original = await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/1");
+  const original = await addTaskLink(
+    ctx,
+    task.id,
+    "https://github.com/o/r/pull/1",
+  );
 
-  const updated = await updateTaskLink(ctx, original.id, "github.com/o/r/issues/2");
+  const updated = await updateTaskLink(
+    ctx,
+    original.id,
+    "github.com/o/r/issues/2",
+  );
 
   expect(updated.id).toBe(original.id);
-  expect(updated.createdAt.toISOString()).toBe(original.createdAt.toISOString());
+  expect(updated.createdAt.toISOString()).toBe(
+    original.createdAt.toISOString(),
+  );
   expect(updated.url).toBe("https://github.com/o/r/issues/2");
   expect(updated.kind).toBe("issue");
 });
@@ -170,8 +194,15 @@ test("updateTaskLink raises ForbiddenError for callers outside the task's team",
   const stranger = await seedUserOrgProject("links-edit-x2");
   const ownerCtx = makeAuthContext(owner.userId);
   const strangerCtx = makeAuthContext(stranger.userId);
-  const task = await createTask(ownerCtx, { projectId: owner.projectId, title: "T" });
-  const link = await addTaskLink(ownerCtx, task.id, "https://github.com/o/r/pull/1");
+  const task = await createTask(ownerCtx, {
+    projectId: owner.projectId,
+    title: "T",
+  });
+  const link = await addTaskLink(
+    ownerCtx,
+    task.id,
+    "https://github.com/o/r/pull/1",
+  );
 
   await expect(
     updateTaskLink(strangerCtx, link.id, "https://github.com/o/r/pull/2"),
@@ -187,12 +218,12 @@ test("updateTaskLink rejects a malformed URL and leaves the row untouched", asyn
   const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
   const link = await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/1");
 
-  await expect(updateTaskLink(ctx, link.id, "javascript:alert(1)")).rejects.toBeInstanceOf(
-    ForbiddenError,
-  );
-  await expect(updateTaskLink(ctx, link.id, "not a url")).rejects.toBeInstanceOf(
-    ForbiddenError,
-  );
+  await expect(
+    updateTaskLink(ctx, link.id, "javascript:alert(1)"),
+  ).rejects.toBeInstanceOf(ForbiddenError);
+  await expect(
+    updateTaskLink(ctx, link.id, "not a url"),
+  ).rejects.toBeInstanceOf(ForbiddenError);
 
   const rows = await linksAs(task.id, f.userId);
   expect(rows[0].url).toBe("https://github.com/o/r/pull/1");
@@ -203,7 +234,11 @@ test("updateTaskLink raises ForbiddenError when the new URL collides with anothe
   const ctx = makeAuthContext(f.userId);
   const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
   await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/1");
-  const second = await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/2");
+  const second = await addTaskLink(
+    ctx,
+    task.id,
+    "https://github.com/o/r/pull/2",
+  );
 
   await expect(
     updateTaskLink(ctx, second.id, "https://github.com/o/r/pull/1"),
@@ -235,8 +270,16 @@ test("addTaskLink is idempotent: re-adding the same URL returns the existing row
   const ctx = makeAuthContext(f.userId);
   const task = await createTask(ctx, { projectId: f.projectId, title: "T" });
 
-  const first = await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/1");
-  const second = await addTaskLink(ctx, task.id, "https://github.com/o/r/pull/1");
+  const first = await addTaskLink(
+    ctx,
+    task.id,
+    "https://github.com/o/r/pull/1",
+  );
+  const second = await addTaskLink(
+    ctx,
+    task.id,
+    "https://github.com/o/r/pull/1",
+  );
 
   expect(second.id).toBe(first.id);
   const rows = await linksAs(task.id, f.userId);
@@ -337,8 +380,13 @@ test("buildAgentContext denies cross-team callers, blocking any link leak", asyn
   const stranger = await seedUserOrgProject("ctx-agent-x2");
   const ownerCtx = makeAuthContext(owner.userId);
   const strangerCtx = makeAuthContext(stranger.userId);
-  const task = await createTask(ownerCtx, { projectId: owner.projectId, title: "T" });
-  await updateTask(ownerCtx, task.id, { prUrl: "https://github.com/o/r/pull/10" });
+  const task = await createTask(ownerCtx, {
+    projectId: owner.projectId,
+    title: "T",
+  });
+  await updateTask(ownerCtx, task.id, {
+    prUrl: "https://github.com/o/r/pull/10",
+  });
 
   await expect(buildAgentContext(strangerCtx, task.id)).rejects.toBeInstanceOf(
     ForbiddenError,
@@ -350,8 +398,13 @@ test("buildWorkingContext denies cross-team callers, blocking any link leak", as
   const stranger = await seedUserOrgProject("ctx-working-x2");
   const ownerCtx = makeAuthContext(owner.userId);
   const strangerCtx = makeAuthContext(stranger.userId);
-  const task = await createTask(ownerCtx, { projectId: owner.projectId, title: "T" });
-  await updateTask(ownerCtx, task.id, { prUrl: "https://github.com/o/r/pull/11" });
+  const task = await createTask(ownerCtx, {
+    projectId: owner.projectId,
+    title: "T",
+  });
+  await updateTask(ownerCtx, task.id, {
+    prUrl: "https://github.com/o/r/pull/11",
+  });
 
   await expect(
     buildWorkingContext(strangerCtx, task.id),
@@ -363,8 +416,13 @@ test("buildSummaryContext denies cross-team callers, blocking any link leak", as
   const stranger = await seedUserOrgProject("ctx-summary-x2");
   const ownerCtx = makeAuthContext(owner.userId);
   const strangerCtx = makeAuthContext(stranger.userId);
-  const task = await createTask(ownerCtx, { projectId: owner.projectId, title: "T" });
-  await updateTask(ownerCtx, task.id, { prUrl: "https://github.com/o/r/pull/12" });
+  const task = await createTask(ownerCtx, {
+    projectId: owner.projectId,
+    title: "T",
+  });
+  await updateTask(ownerCtx, task.id, {
+    prUrl: "https://github.com/o/r/pull/12",
+  });
 
   await expect(
     buildSummaryContext(strangerCtx, task.id),
@@ -376,12 +434,17 @@ test("buildReviewContext denies cross-team callers, blocking any link leak", asy
   const stranger = await seedUserOrgProject("ctx-review-x2");
   const ownerCtx = makeAuthContext(owner.userId);
   const strangerCtx = makeAuthContext(stranger.userId);
-  const task = await createTask(ownerCtx, { projectId: owner.projectId, title: "T" });
-  await updateTask(ownerCtx, task.id, { prUrl: "https://github.com/o/r/pull/13" });
+  const task = await createTask(ownerCtx, {
+    projectId: owner.projectId,
+    title: "T",
+  });
+  await updateTask(ownerCtx, task.id, {
+    prUrl: "https://github.com/o/r/pull/13",
+  });
 
-  await expect(
-    buildReviewContext(strangerCtx, task.id),
-  ).rejects.toBeInstanceOf(ForbiddenError);
+  await expect(buildReviewContext(strangerCtx, task.id)).rejects.toBeInstanceOf(
+    ForbiddenError,
+  );
 });
 
 // ---------------------------------------------------------------------------

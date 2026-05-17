@@ -73,7 +73,11 @@ export async function checkActionRateLimit(
   const ip = await getActionClientIp();
 
   const checks: Promise<RateLimitResult>[] = [
-    backend.check(`action:${config.action}:ip:${ip}`, config.perIpMax, config.windowSeconds),
+    backend.check(
+      `action:${config.action}:ip:${ip}`,
+      config.perIpMax,
+      config.windowSeconds,
+    ),
   ];
   if (userId) {
     checks.push(

@@ -32,7 +32,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session.isPending, session.data, pathname, router]);
 
-  const shouldHide = !session.isPending && !session.data && !PUBLIC_PATHS.includes(pathname);
+  const shouldHide =
+    !session.isPending && !session.data && !PUBLIC_PATHS.includes(pathname);
 
   return (
     <SessionContext.Provider value={session}>

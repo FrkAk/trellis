@@ -61,8 +61,8 @@ function SocialButton({ label, icon, tooltip }: SocialButtonProps) {
       style={{
         height: 38,
         borderRadius: 8,
-        border: '1px solid var(--color-border-strong)',
-        boxShadow: 'var(--shadow-button)',
+        border: "1px solid var(--color-border-strong)",
+        boxShadow: "var(--shadow-button)",
       }}
     >
       {icon}
@@ -76,23 +76,23 @@ function EmailDivider() {
   return (
     <div
       className="my-5 flex items-center gap-2.5"
-      style={{ color: 'var(--color-text-faint)' }}
+      style={{ color: "var(--color-text-faint)" }}
     >
       <span
         aria-hidden="true"
         className="h-px flex-1"
-        style={{ background: 'var(--color-border)' }}
+        style={{ background: "var(--color-border)" }}
       />
       <span
         className="font-mono text-[10px] font-semibold uppercase"
-        style={{ letterSpacing: '0.10em' }}
+        style={{ letterSpacing: "0.10em" }}
       >
         or with email
       </span>
       <span
         aria-hidden="true"
         className="h-px flex-1"
-        style={{ background: 'var(--color-border)' }}
+        style={{ background: "var(--color-border)" }}
       />
     </div>
   );

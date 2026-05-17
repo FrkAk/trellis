@@ -260,7 +260,8 @@ export async function diagnoseTeamInviteCode(
           : new Date(row.expires_at).getTime();
       if (expiresAtMs <= Date.now()) return "expired";
     }
-    if (row.max_uses !== null && row.use_count >= row.max_uses) return "exhausted";
+    if (row.max_uses !== null && row.use_count >= row.max_uses)
+      return "exhausted";
     return "unknown";
   } catch (err) {
     console.error("[invite-code] diagnose failed:", err);

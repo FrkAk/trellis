@@ -93,7 +93,10 @@ describe("team_invite_code RLS — admin-only writes", () => {
       await seed.end({ timeout: 5 });
     }
 
-    const reserved = await reserveInviteCodeSlot(makeAuthContext(joiner.userId), "SAGA-OK");
+    const reserved = await reserveInviteCodeSlot(
+      makeAuthContext(joiner.userId),
+      "SAGA-OK",
+    );
     expect(reserved).not.toBeNull();
     expect(reserved?.orgId).toBe(owner.organizationId);
 
@@ -102,7 +105,11 @@ describe("team_invite_code RLS — admin-only writes", () => {
     const verify = superuserPool();
     try {
       const [row] = await verify<
-        Array<{ use_count: number; reserved_by: string | null; reserved_until: Date | null }>
+        Array<{
+          use_count: number;
+          reserved_by: string | null;
+          reserved_until: Date | null;
+        }>
       >`
         SELECT use_count, reserved_by, reserved_until
         FROM team_invite_code
@@ -130,7 +137,10 @@ describe("team_invite_code RLS — admin-only writes", () => {
       await seed.end({ timeout: 5 });
     }
 
-    const reserved = await reserveInviteCodeSlot(makeAuthContext(joiner.userId), "SAGA-FAIL");
+    const reserved = await reserveInviteCodeSlot(
+      makeAuthContext(joiner.userId),
+      "SAGA-FAIL",
+    );
     expect(reserved).not.toBeNull();
     await releaseInviteCodeSlot(joiner.userId, reserved!.id, false);
 
@@ -229,7 +239,10 @@ describe("team_invite_code RLS — admin-only writes", () => {
       await seed.end({ timeout: 5 });
     }
 
-    const reserved = await reserveInviteCodeSlot(makeAuthContext(joiner.userId), "REPLAY-FAIL");
+    const reserved = await reserveInviteCodeSlot(
+      makeAuthContext(joiner.userId),
+      "REPLAY-FAIL",
+    );
     expect(reserved).not.toBeNull();
     await releaseInviteCodeSlot(joiner.userId, reserved!.id, false);
 
@@ -283,7 +296,10 @@ describe("team_invite_code RLS — admin-only writes", () => {
       await seed.end({ timeout: 5 });
     }
 
-    const reserved = await reserveInviteCodeSlot(makeAuthContext(joiner.userId), "REPLAY-MIX");
+    const reserved = await reserveInviteCodeSlot(
+      makeAuthContext(joiner.userId),
+      "REPLAY-MIX",
+    );
     expect(reserved).not.toBeNull();
     await releaseInviteCodeSlot(joiner.userId, reserved!.id, true);
     await releaseInviteCodeSlot(joiner.userId, reserved!.id, false);

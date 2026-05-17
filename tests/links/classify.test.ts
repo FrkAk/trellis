@@ -42,9 +42,7 @@ test("classifies a GitLab issue URL", () => {
 });
 
 test("classifies a Linear issue URL", () => {
-  const result = classifyLink(
-    "https://linear.app/myws/issue/MYM-42/some-slug",
-  );
+  const result = classifyLink("https://linear.app/myws/issue/MYM-42/some-slug");
   expect(result.kind).toBe("issue");
   expect(result.label).toBe("MYM-42");
   expect(result.host).toBe("linear.app");

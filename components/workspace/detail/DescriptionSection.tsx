@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState, useRef, useCallback } from 'react';
-import { AutoGrowTextarea } from '@/components/shared/AutoGrowTextarea';
-import { Markdown } from '@/components/shared/Markdown';
-import { updateTask } from '@/lib/graph/mutations';
-import { SectionHeader } from './SectionHeader';
+import { useState, useRef, useCallback } from "react";
+import { AutoGrowTextarea } from "@/components/shared/AutoGrowTextarea";
+import { Markdown } from "@/components/shared/Markdown";
+import { updateTask } from "@/lib/graph/mutations";
+import { SectionHeader } from "./SectionHeader";
 
 interface DescriptionSectionProps {
   /** Task UUID. */
@@ -22,7 +22,11 @@ interface DescriptionSectionProps {
  * @param props - Section configuration.
  * @returns Section with markdown body or auto-grow textarea.
  */
-export function DescriptionSection({ taskId, description, onGraphChange }: DescriptionSectionProps) {
+export function DescriptionSection({
+  taskId,
+  description,
+  onGraphChange,
+}: DescriptionSectionProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(description);
   const [prevDescription, setPrevDescription] = useState(description);
@@ -57,7 +61,12 @@ export function DescriptionSection({ taskId, description, onGraphChange }: Descr
               void handleSave();
             }
           }}
-          onKeyDown={(e) => { if (e.key === 'Escape') { cancelRef.current = true; e.currentTarget.blur(); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              cancelRef.current = true;
+              e.currentTarget.blur();
+            }
+          }}
           autoFocus
           rows={3}
           className="w-full resize-none rounded-md border border-border-strong bg-surface px-3 py-2 text-[13.5px] text-text-primary outline-none transition-colors focus:border-accent"
@@ -68,9 +77,13 @@ export function DescriptionSection({ taskId, description, onGraphChange }: Descr
           className="group/edit relative cursor-text rounded-md border border-transparent px-3 py-2 transition-all hover:border-border hover:bg-surface/40"
         >
           {description ? (
-            <Markdown className="text-[13.5px] leading-relaxed text-text-secondary">{description}</Markdown>
+            <Markdown className="text-[13.5px] leading-relaxed text-text-secondary">
+              {description}
+            </Markdown>
           ) : (
-            <p className="text-[13.5px] italic text-text-muted">Click to add a description…</p>
+            <p className="text-[13.5px] italic text-text-muted">
+              Click to add a description…
+            </p>
           )}
         </div>
       )}

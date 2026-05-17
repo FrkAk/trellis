@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { AnimatePresence, motion } from 'motion/react';
-import type { MemberView } from '@/lib/actions/team-members-map';
-import { MemberRow } from './MemberRow';
+import { AnimatePresence, motion } from "motion/react";
+import type { MemberView } from "@/lib/actions/team-members-map";
+import { MemberRow } from "./MemberRow";
 
 interface MembersSectionProps {
   /** Team UUID — threaded down to MemberRow for role/remove calls. */
@@ -16,7 +16,10 @@ interface MembersSectionProps {
   /** Member id whose row should briefly glow after a role transition. */
   glowMemberId: string | null;
   /** Called from MemberRow after a successful role change. */
-  onRoleChanged: (memberId: string, newRole: 'member' | 'admin' | 'owner') => void;
+  onRoleChanged: (
+    memberId: string,
+    newRole: "member" | "admin" | "owner",
+  ) => void;
   /** Called from MemberRow after a successful remove. */
   onRemoved: (memberId: string) => void;
   /** Surface a transient error from any row action. */
@@ -41,7 +44,7 @@ export function MembersSection({
   onRemoved,
   onError,
 }: MembersSectionProps) {
-  const ownerCount = members.filter((m) => m.role === 'owner').length;
+  const ownerCount = members.filter((m) => m.role === "owner").length;
 
   return (
     <section className="space-y-3">

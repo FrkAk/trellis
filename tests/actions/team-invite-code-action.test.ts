@@ -107,9 +107,13 @@ async function readRow(id: string): Promise<{
 describe("joinTeamByCodeAction — saga compensation paths (H6)", () => {
   test("joining when caller is already a member of the org refunds use_count and surfaces already_member", async () => {
     const owner = await seedUserOrgProject("h6-already-owner");
-    const seeded = await seedCode(owner.organizationId, "h6alreadymemberxxxxxx", {
-      maxUses: 1,
-    });
+    const seeded = await seedCode(
+      owner.organizationId,
+      "h6alreadymemberxxxxxx",
+      {
+        maxUses: 1,
+      },
+    );
     setSession({ user: { id: owner.userId } });
 
     nextAddMember = async () => {
@@ -121,7 +125,9 @@ describe("joinTeamByCodeAction — saga compensation paths (H6)", () => {
     const { joinTeamByCodeAction } = await import(
       "@/lib/actions/team-invite-code"
     );
-    const result = await joinTeamByCodeAction({ code: "h6alreadymemberxxxxxx" });
+    const result = await joinTeamByCodeAction({
+      code: "h6alreadymemberxxxxxx",
+    });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -137,9 +143,13 @@ describe("joinTeamByCodeAction — saga compensation paths (H6)", () => {
   test("joining a fresh code by a non-member succeeds and the slot is consumed", async () => {
     const owner = await seedUserOrgProject("h6-fresh-owner");
     const joiner = await seedUserOrgProject("h6-fresh-joiner");
-    const seeded = await seedCode(owner.organizationId, "h6freshnonmemberxxxxx", {
-      maxUses: 1,
-    });
+    const seeded = await seedCode(
+      owner.organizationId,
+      "h6freshnonmemberxxxxx",
+      {
+        maxUses: 1,
+      },
+    );
     setSession({ user: { id: joiner.userId } });
 
     nextAddMember = async () => ({ id: "stub-member-id" });
@@ -147,7 +157,9 @@ describe("joinTeamByCodeAction — saga compensation paths (H6)", () => {
     const { joinTeamByCodeAction } = await import(
       "@/lib/actions/team-invite-code"
     );
-    const result = await joinTeamByCodeAction({ code: "h6freshnonmemberxxxxx" });
+    const result = await joinTeamByCodeAction({
+      code: "h6freshnonmemberxxxxx",
+    });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -162,9 +174,13 @@ describe("joinTeamByCodeAction — saga compensation paths (H6)", () => {
 
   test("joining an invalid code returns invalid_code and does not change DB state", async () => {
     const owner = await seedUserOrgProject("h6-invalid-owner");
-    const seeded = await seedCode(owner.organizationId, "h6invalidcodeseeded01", {
-      maxUses: 1,
-    });
+    const seeded = await seedCode(
+      owner.organizationId,
+      "h6invalidcodeseeded01",
+      {
+        maxUses: 1,
+      },
+    );
     setSession({ user: { id: owner.userId } });
 
     nextAddMember = async () => {
@@ -174,7 +190,9 @@ describe("joinTeamByCodeAction — saga compensation paths (H6)", () => {
     const { joinTeamByCodeAction } = await import(
       "@/lib/actions/team-invite-code"
     );
-    const result = await joinTeamByCodeAction({ code: "h6notseededcodeunused" });
+    const result = await joinTeamByCodeAction({
+      code: "h6notseededcodeunused",
+    });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {

@@ -95,8 +95,9 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
 
     const verify = superuserPool();
     try {
-      const rows =
-        await verify<{ code: string }[]>`SELECT code FROM team_invite_code WHERE organization_id = ${fx.organizationId}`;
+      const rows = await verify<
+        { code: string }[]
+      >`SELECT code FROM team_invite_code WHERE organization_id = ${fx.organizationId}`;
       expect(rows.length).toBe(1);
       expect(rows[0].code).toBe("NEW-CREATE-CODE");
     } finally {
@@ -176,8 +177,9 @@ describe("RLS data-ring discipline — withUserContext wrappers", () => {
 
     const verify = superuserPool();
     try {
-      const rows =
-        await verify<{ code: string }[]>`SELECT code FROM team_invite_code WHERE organization_id = ${teamA.organizationId}`;
+      const rows = await verify<
+        { code: string }[]
+      >`SELECT code FROM team_invite_code WHERE organization_id = ${teamA.organizationId}`;
       expect(rows.length).toBe(1);
       expect(rows[0].code).toBe("TEAM-A-ROTATE");
     } finally {

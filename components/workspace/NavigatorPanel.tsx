@@ -1,11 +1,16 @@
-'use client';
+"use client";
 
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
-import { FilterBar, type GroupKey, type SortKey, type WorkspaceView } from './structure/FilterBar';
-import { StructureView } from './structure/StructureView';
-import type { TaskEdge } from '@/lib/db/schema';
-import type { TaskGraphSlim } from '@/lib/data/views';
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
+import {
+  FilterBar,
+  type GroupKey,
+  type SortKey,
+  type WorkspaceView,
+} from "./structure/FilterBar";
+import { StructureView } from "./structure/StructureView";
+import type { TaskEdge } from "@/lib/db/schema";
+import type { TaskGraphSlim } from "@/lib/data/views";
 
 interface NavigatorPanelProps {
   /** All project tasks (slim, augmented with composed `taskRef`). */
@@ -37,11 +42,11 @@ interface NavigatorPanelProps {
  */
 function readFilterCount(searchParams: URLSearchParams): number {
   let count = 0;
-  for (const key of ['tags', 'cat', 'status', 'pri'] as const) {
+  for (const key of ["tags", "cat", "status", "pri"] as const) {
     const value = searchParams.get(key);
-    if (value) count += value.split(',').filter(Boolean).length;
+    if (value) count += value.split(",").filter(Boolean).length;
   }
-  if (searchParams.get('q')?.trim()) count += 1;
+  if (searchParams.get("q")?.trim()) count += 1;
   return count;
 }
 
@@ -53,8 +58,8 @@ function readFilterCount(searchParams: URLSearchParams): number {
  * @returns Workspace view identifier.
  */
 function readView(raw: string | null): WorkspaceView {
-  if (raw === 'graph') return 'graph';
-  return 'structure';
+  if (raw === "graph") return "graph";
+  return "structure";
 }
 
 /**
@@ -64,8 +69,9 @@ function readView(raw: string | null): WorkspaceView {
  * @returns Sort key.
  */
 function readSort(raw: string | null): SortKey {
-  if (raw === 'updated' || raw === 'identifier' || raw === 'priority') return raw;
-  return 'status';
+  if (raw === "updated" || raw === "identifier" || raw === "priority")
+    return raw;
+  return "status";
 }
 
 /**
@@ -76,8 +82,8 @@ function readSort(raw: string | null): SortKey {
  * @returns Group key.
  */
 function readGroup(raw: string | null): GroupKey {
-  if (raw === 'category' || raw === 'none') return raw;
-  return 'status';
+  if (raw === "category" || raw === "none") return raw;
+  return "status";
 }
 
 /**
@@ -98,43 +104,60 @@ export function NavigatorPanel({
   selectedNodeId,
   onSelectNode,
   onGraphChange,
-  className = '',
+  className = "",
 }: NavigatorPanelProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const view = readView(searchParams.get('view'));
-  const sort = readSort(searchParams.get('sort'));
-  const group = readGroup(searchParams.get('group'));
-  const filterCount = useMemo(() => readFilterCount(new URLSearchParams(searchParams.toString())), [searchParams]);
+  const view = readView(searchParams.get("view"));
+  const sort = readSort(searchParams.get("sort"));
+  const group = readGroup(searchParams.get("group"));
+  const filterCount = useMemo(
+    () => readFilterCount(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
   const [filterOpen, setFilterOpen] = useState(false);
 
-  const updateParam = useCallback((key: string, value: string | null) => {
-    const next = new URLSearchParams(searchParams.toString());
-    if (value === null || value === '') next.delete(key);
-    else next.set(key, value);
-    const nextQs = next.toString();
-    const currentQs = searchParams.toString();
-    // Skip when nothing changed — e.g. clicking the already-active option.
-    // Each `router.replace` triggers an RSC refetch of the project layout,
-    // so eliding no-op replaces avoids unnecessary server work.
-    if (nextQs === currentQs) return;
-    router.replace(nextQs ? `${pathname}?${nextQs}` : pathname, { scroll: false });
-  }, [router, pathname, searchParams]);
+  const updateParam = useCallback(
+    (key: string, value: string | null) => {
+      const next = new URLSearchParams(searchParams.toString());
+      if (value === null || value === "") next.delete(key);
+      else next.set(key, value);
+      const nextQs = next.toString();
+      const currentQs = searchParams.toString();
+      // Skip when nothing changed — e.g. clicking the already-active option.
+      // Each `router.replace` triggers an RSC refetch of the project layout,
+      // so eliding no-op replaces avoids unnecessary server work.
+      if (nextQs === currentQs) return;
+      router.replace(nextQs ? `${pathname}?${nextQs}` : pathname, {
+        scroll: false,
+      });
+    },
+    [router, pathname, searchParams],
+  );
 
-  const handleViewChange = useCallback((next: WorkspaceView) => {
-    updateParam('view', next === 'structure' ? null : next);
-    if (next !== 'structure') setFilterOpen(false);
-  }, [updateParam]);
+  const handleViewChange = useCallback(
+    (next: WorkspaceView) => {
+      updateParam("view", next === "structure" ? null : next);
+      if (next !== "structure") setFilterOpen(false);
+    },
+    [updateParam],
+  );
 
-  const handleSortChange = useCallback((next: SortKey) => {
-    updateParam('sort', next === 'status' ? null : next);
-  }, [updateParam]);
+  const handleSortChange = useCallback(
+    (next: SortKey) => {
+      updateParam("sort", next === "status" ? null : next);
+    },
+    [updateParam],
+  );
 
-  const handleGroupChange = useCallback((next: GroupKey) => {
-    updateParam('group', next === 'status' ? null : next);
-  }, [updateParam]);
+  const handleGroupChange = useCallback(
+    (next: GroupKey) => {
+      updateParam("group", next === "status" ? null : next);
+    },
+    [updateParam],
+  );
 
   return (
     <div className={`flex h-full flex-col ${className}`} data-panel="navigator">

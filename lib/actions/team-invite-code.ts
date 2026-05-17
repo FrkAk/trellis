@@ -6,7 +6,10 @@ import { auth } from "@/lib/auth";
 import { requireSession } from "@/lib/auth/session";
 import { isOrgAdmin } from "@/lib/auth/org-permissions";
 import { makeAuthContext } from "@/lib/auth/context";
-import { generateInviteCode, INVITE_CODE_PATTERN } from "@/lib/auth/invite-code";
+import {
+  generateInviteCode,
+  INVITE_CODE_PATTERN,
+} from "@/lib/auth/invite-code";
 import {
   createTeamInviteCode,
   diagnoseTeamInviteCode,
@@ -107,11 +110,13 @@ const orgInputSchema = z.object({
  * @param organizationId - Target team UUID (already shape-validated).
  * @returns The signed-in caller's `userId` on success, or a typed failure.
  */
-async function resolveAdminContext(
-  organizationId: string,
-): Promise<
+async function resolveAdminContext(organizationId: string): Promise<
   | { ok: true; userId: string }
-  | { ok: false; code: "unauthorized" | "forbidden" | "unknown"; message: string }
+  | {
+      ok: false;
+      code: "unauthorized" | "forbidden" | "unknown";
+      message: string;
+    }
 > {
   let userId: string;
   try {
@@ -177,7 +182,8 @@ export async function getOrCreateTeamInviteCodeAction(input: {
     return {
       ok: false,
       code: "invalid_input",
-      message: parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
+      message:
+        parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
     };
   }
   const orgId = parsed.data.organizationId;
@@ -244,7 +250,8 @@ export async function regenerateTeamInviteCodeAction(input: {
     return {
       ok: false,
       code: "invalid_input",
-      message: parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
+      message:
+        parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
     };
   }
   const orgId = parsed.data.organizationId;
@@ -260,10 +267,13 @@ export async function regenerateTeamInviteCodeAction(input: {
     });
     if (updated) return { ok: true, data: toMetadata(updated) };
   } catch (err) {
-    console.error("regenerateTeamInviteCodeAction rotateTeamInviteCode failed", {
-      orgId,
-      err,
-    });
+    console.error(
+      "regenerateTeamInviteCodeAction rotateTeamInviteCode failed",
+      {
+        orgId,
+        err,
+      },
+    );
     return {
       ok: false,
       code: "unknown",
@@ -321,7 +331,8 @@ export async function revokeTeamInviteCodeAction(input: {
     return {
       ok: false,
       code: "invalid_input",
-      message: parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
+      message:
+        parsed.error.issues[0]?.message ?? TEAM_ACTION_MESSAGES.invalid_input,
     };
   }
   const orgId = parsed.data.organizationId;

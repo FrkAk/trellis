@@ -14,10 +14,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { DeferredLoadingSpinner } from "@/components/shared/DeferredLoadingSpinner";
 import { projectKeys, taskKeys } from "@/lib/query/keys";
 import { fetchProjectGraph, fetchTaskBody } from "@/lib/query/queries";
-import type {
-  ProjectGraphSlim,
-  TaskGraphSlim,
-} from "@/lib/data/views";
+import type { ProjectGraphSlim, TaskGraphSlim } from "@/lib/data/views";
 import type { TaskEdge } from "@/lib/db/schema";
 
 /** Workspace view identifier — mirrors the navigator's FilterBar value. */
@@ -88,9 +85,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
    * when the slim graph no longer contains the selected id (deleted by us
    * or by another tab via SSE).
    */
-  const selectedTaskSlim: TaskGraphSlim | null = selectedTaskId && graph
-    ? graph.tasks.find((t) => t.id === selectedTaskId) ?? null
-    : null;
+  const selectedTaskSlim: TaskGraphSlim | null =
+    selectedTaskId && graph
+      ? (graph.tasks.find((t) => t.id === selectedTaskId) ?? null)
+      : null;
 
   /**
    * Render-phase reset: when the slim graph has refreshed and the selected
@@ -119,7 +117,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       else next.set(key, value);
       const nextQs = next.toString();
       if (nextQs === searchParams.toString()) return;
-      router.replace(nextQs ? `${pathname}?${nextQs}` : pathname, { scroll: false });
+      router.replace(nextQs ? `${pathname}?${nextQs}` : pathname, {
+        scroll: false,
+      });
     },
     [router, pathname, searchParams],
   );
@@ -165,8 +165,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }
 
   const taskMap = useMemo(() => {
-    if (!graph) return new Map<string, { title: string; status: string; taskRef: string }>();
-    const map = new Map<string, { title: string; status: string; taskRef: string }>();
+    if (!graph)
+      return new Map<
+        string,
+        { title: string; status: string; taskRef: string }
+      >();
+    const map = new Map<
+      string,
+      { title: string; status: string; taskRef: string }
+    >();
     for (const t of graph.tasks) {
       map.set(t.id, { title: t.title, status: t.status, taskRef: t.taskRef });
     }
@@ -270,14 +277,30 @@ interface WorkspaceBodyWithSelectionProps extends SharedLayoutProps {
  * @param props - Layout + selected slim row.
  * @returns Layout with populated detail and prop rail slots.
  */
-function WorkspaceBodyWithSelection(
-  props: WorkspaceBodyWithSelectionProps,
-) {
-  const { projectId, graph, view, isXl, taskSlim, taskMap, projectTags, refreshAll, handleSelectNode, handleClose, drawerOpen, setDrawerOpen, navigatorClosed, setNavigatorClosed, showNavigatorToggle, propRailOpen, setPropRailOpen } = props;
+function WorkspaceBodyWithSelection(props: WorkspaceBodyWithSelectionProps) {
+  const {
+    projectId,
+    graph,
+    view,
+    isXl,
+    taskSlim,
+    taskMap,
+    projectTags,
+    refreshAll,
+    handleSelectNode,
+    handleClose,
+    drawerOpen,
+    setDrawerOpen,
+    navigatorClosed,
+    setNavigatorClosed,
+    showNavigatorToggle,
+    propRailOpen,
+    setPropRailOpen,
+  } = props;
   // The property-rail toggle is only meaningful inside the graph overlay
   // (xl + graph view + selection). In structure mode the rail sits beside
   // the detail column with no overlay to shrink, so the toggle is hidden.
-  const showPropRailToggle = view === 'graph' && isXl;
+  const showPropRailToggle = view === "graph" && isXl;
   const qc = useQueryClient();
   const taskId = taskSlim.id;
 
@@ -294,36 +317,36 @@ function WorkspaceBodyWithSelection(
     [graph.edges, taskId],
   );
 
-  const taskFullMatches =
-    selectedTaskFull && selectedTaskFull.id === taskId;
+  const taskFullMatches = selectedTaskFull && selectedTaskFull.id === taskId;
 
-  const detail = taskFullMatches && selectedTaskFull ? (
-    <DetailPanel
-      taskId={taskId}
-      projectId={projectId}
-      task={selectedTaskFull}
-      parentName={graph.project.title}
-      edges={taskEdges}
-      allEdges={graph.edges}
-      allTasks={graph.tasks}
-      taskMap={taskMap}
-      drawerOpen={drawerOpen}
-      onToggleDrawer={() => setDrawerOpen((v) => !v)}
-      onClose={handleClose}
-      onSelectNode={handleSelectNode}
-      onGraphChange={refreshAll}
-      navigatorClosed={showNavigatorToggle ? navigatorClosed : undefined}
-      onToggleNavigator={
-        showNavigatorToggle ? () => setNavigatorClosed((v) => !v) : undefined
-      }
-      propRailOpen={showPropRailToggle ? propRailOpen : undefined}
-      onTogglePropRail={
-        showPropRailToggle ? () => setPropRailOpen((v) => !v) : undefined
-      }
-    />
-  ) : (
-    <DetailLoading />
-  );
+  const detail =
+    taskFullMatches && selectedTaskFull ? (
+      <DetailPanel
+        taskId={taskId}
+        projectId={projectId}
+        task={selectedTaskFull}
+        parentName={graph.project.title}
+        edges={taskEdges}
+        allEdges={graph.edges}
+        allTasks={graph.tasks}
+        taskMap={taskMap}
+        drawerOpen={drawerOpen}
+        onToggleDrawer={() => setDrawerOpen((v) => !v)}
+        onClose={handleClose}
+        onSelectNode={handleSelectNode}
+        onGraphChange={refreshAll}
+        navigatorClosed={showNavigatorToggle ? navigatorClosed : undefined}
+        onToggleNavigator={
+          showNavigatorToggle ? () => setNavigatorClosed((v) => !v) : undefined
+        }
+        propRailOpen={showPropRailToggle ? propRailOpen : undefined}
+        onTogglePropRail={
+          showPropRailToggle ? () => setPropRailOpen((v) => !v) : undefined
+        }
+      />
+    ) : (
+      <DetailLoading />
+    );
 
   const propRail =
     taskFullMatches && selectedTaskFull ? (
@@ -415,11 +438,11 @@ function WorkspaceLayout(props: WorkspaceLayoutProps) {
   // and a brief input freeze. Keying an `AnimatePresence` on this value with
   // `mode="wait"` defers the new tree until the old one has faded out, so the
   // mount cost is hidden inside the opacity-0 phase of the transition.
-  const layoutShape: 'graph' | 'xl' | 'narrow' =
-    view === 'graph' ? 'graph' : isXl ? 'xl' : 'narrow';
+  const layoutShape: "graph" | "xl" | "narrow" =
+    view === "graph" ? "graph" : isXl ? "xl" : "narrow";
 
   let layoutBody: React.ReactNode;
-  if (layoutShape === 'graph') {
+  if (layoutShape === "graph") {
     const showOverlay = isXl && Boolean(taskSlim);
     layoutBody = (
       <div className="flex h-[calc(var(--viewport-height)-var(--topbar-h))]">
@@ -439,7 +462,7 @@ function WorkspaceLayout(props: WorkspaceLayoutProps) {
         </div>
       </div>
     );
-  } else if (layoutShape === 'xl') {
+  } else if (layoutShape === "xl") {
     layoutBody = (
       <div className="flex h-[calc(var(--viewport-height)-var(--topbar-h))]">
         <motion.div
@@ -454,7 +477,10 @@ function WorkspaceLayout(props: WorkspaceLayoutProps) {
         <motion.div
           aria-hidden="true"
           className="bg-gradient-to-b from-border-strong via-border to-transparent"
-          animate={{ width: navigatorClosed ? 0 : 1, opacity: navigatorClosed ? 0 : 1 }}
+          animate={{
+            width: navigatorClosed ? 0 : 1,
+            opacity: navigatorClosed ? 0 : 1,
+          }}
           initial={false}
           transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
           style={{ flexShrink: 0 }}

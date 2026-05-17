@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { motion } from 'motion/react';
-import { DeleteTeamDialog } from './DeleteTeamDialog';
+import { useState } from "react";
+import { motion } from "motion/react";
+import { DeleteTeamDialog } from "./DeleteTeamDialog";
 
 interface DangerZoneProps {
   /** Team UUID — passed to the delete action. */
@@ -34,11 +34,14 @@ export function DangerZone({ teamId, teamName, onError }: DangerZoneProps) {
       <div className="rounded-xl border border-danger/25 bg-danger/5 p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-text-primary">Delete this team</p>
+            <p className="text-sm font-semibold text-text-primary">
+              Delete this team
+            </p>
             <p className="mt-1 text-xs text-text-muted">
-              Removes every project, task, dependency, and pending invitation in this team. All
-              members lose access immediately. User accounts are not touched — members keep their
-              accounts and any other teams. This action cannot be undone.
+              Removes every project, task, dependency, and pending invitation in
+              this team. All members lose access immediately. User accounts are
+              not touched — members keep their accounts and any other teams.
+              This action cannot be undone.
             </p>
           </div>
           <motion.button

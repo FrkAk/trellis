@@ -6,9 +6,7 @@ import { executeRaw, type Conn } from "@/lib/db/raw";
  * folded into JSON-aggregated arrays in one round-trip.
  */
 export type TaskChildrenRow = {
-  acceptance_criteria:
-    | { id: string; text: string; checked: boolean }[]
-    | null;
+  acceptance_criteria: { id: string; text: string; checked: boolean }[] | null;
   decisions:
     | { id: string; text: string; source: string; date: string }[]
     | null;

@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   createContext,
@@ -6,10 +6,10 @@ import {
   useContext,
   useSyncExternalStore,
   type ReactNode,
-} from 'react';
+} from "react";
 
 /** Cookie name for the graph-rail collapsed-state preference. Server-readable so SSR can render the correct width on first paint and avoid a hydration flash. */
-const COOKIE_NAME = 'mymir-graph-rail-collapsed';
+const COOKIE_NAME = "mymir-graph-rail-collapsed";
 /** Cookie max-age in seconds (1 year). */
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
@@ -37,7 +37,7 @@ function readCookie(): boolean {
     const match = document.cookie.match(
       new RegExp(`(?:^|; )${COOKIE_NAME}=([^;]*)`),
     );
-    return match?.[1] === '1';
+    return match?.[1] === "1";
   } catch {
     return false;
   }
@@ -50,7 +50,7 @@ function readCookie(): boolean {
  */
 function writeCookie(next: boolean): void {
   try {
-    document.cookie = `${COOKIE_NAME}=${next ? '1' : '0'}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`;
+    document.cookie = `${COOKIE_NAME}=${next ? "1" : "0"}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`;
   } catch {
     /* swallow cookie errors — preference is non-critical */
   }
@@ -146,9 +146,9 @@ export function GraphRailCollapseProvider({
 export function useGraphRailCollapse(): GraphRailCollapseValue {
   const ctx = useContext(GraphRailCollapseContext);
   if (ctx) return ctx;
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== "production") {
     throw new Error(
-      'useGraphRailCollapse must be used within <GraphRailCollapseProvider>',
+      "useGraphRailCollapse must be used within <GraphRailCollapseProvider>",
     );
   }
   return { collapsed: false, toggle: () => {} };

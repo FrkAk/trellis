@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { AnimatePresence, motion } from 'motion/react';
-import { Button } from '@/components/shared/Button';
-import { formatAbsolute } from '@/lib/ui/relative-time';
-import { roleStyle } from '@/lib/ui/role-badge';
-import { cancelInvitationAction } from '@/lib/actions/team-invitations';
-import type { InvitationView } from '@/lib/actions/team-invitations-map';
-import { InlineConfirm } from '@/app/settings/_components/InlineConfirm';
+import { AnimatePresence, motion } from "motion/react";
+import { Button } from "@/components/shared/Button";
+import { formatAbsolute } from "@/lib/ui/relative-time";
+import { roleStyle } from "@/lib/ui/role-badge";
+import { cancelInvitationAction } from "@/lib/actions/team-invitations";
+import type { InvitationView } from "@/lib/actions/team-invitations-map";
+import { InlineConfirm } from "@/app/settings/_components/InlineConfirm";
 
 interface PendingInvitationsListProps {
   /** Team UUID — used to bind the cancel call to the invitation's org. */
@@ -26,7 +26,7 @@ interface PendingInvitationsListProps {
  */
 function formatExpiry(date: Date): string {
   const sec = Math.round((date.getTime() - Date.now()) / 1000);
-  if (sec <= 0) return 'expired';
+  if (sec <= 0) return "expired";
   if (sec < 3600) return `in ${Math.max(1, Math.round(sec / 60))}m`;
   if (sec < 86400) return `in ${Math.round(sec / 3600)}h`;
   if (sec < 86400 * 30) return `in ${Math.round(sec / 86400)}d`;
@@ -96,7 +96,9 @@ export function PendingInvitationsList({
                           className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ${role.bg} ${role.text}`}
                         >
                           {role.dot ? (
-                            <span className={`h-1.5 w-1.5 rounded-full ${role.dot}`} />
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${role.dot}`}
+                            />
                           ) : null}
                           {role.label}
                         </span>

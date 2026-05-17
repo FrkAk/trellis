@@ -1,9 +1,14 @@
-'use client';
+"use client";
 
-import { createContext, useContext, useSyncExternalStore, useCallback } from 'react';
-import { subscribeTheme, getTheme, setTheme as applyTheme } from '@/lib/theme';
+import {
+  createContext,
+  useContext,
+  useSyncExternalStore,
+  useCallback,
+} from "react";
+import { subscribeTheme, getTheme, setTheme as applyTheme } from "@/lib/theme";
 
-type Theme = 'light' | 'dark';
+type Theme = "light" | "dark";
 
 interface ThemeContextValue {
   /** @returns Current theme. */
@@ -13,7 +18,7 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: 'dark',
+  theme: "dark",
   setTheme: () => {},
 });
 
@@ -31,17 +36,17 @@ interface ThemeProviderProps {
  * @returns Context provider wrapping children.
  */
 export function ThemeProvider({ initialTheme, children }: ThemeProviderProps) {
-  const theme = useSyncExternalStore(subscribeTheme, getTheme, () => initialTheme);
+  const theme = useSyncExternalStore(
+    subscribeTheme,
+    getTheme,
+    () => initialTheme,
+  );
 
   const setTheme = useCallback((next: Theme) => {
     applyTheme(next);
   }, []);
 
-  return (
-    <ThemeContext value={{ theme, setTheme }}>
-      {children}
-    </ThemeContext>
-  );
+  return <ThemeContext value={{ theme, setTheme }}>{children}</ThemeContext>;
 }
 
 /**

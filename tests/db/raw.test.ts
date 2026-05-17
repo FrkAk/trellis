@@ -27,9 +27,7 @@ test("normalizeExecuteResult unwraps neon QueryResult.rows", () => {
 });
 
 test("normalizeExecuteResult throws on unrecognized shape", () => {
-  expect(() => normalizeExecuteResult({ foo: "bar" })).toThrow(
-    /unrecognized/i,
-  );
+  expect(() => normalizeExecuteResult({ foo: "bar" })).toThrow(/unrecognized/i);
 });
 
 test("sql template tag still works (sanity)", () => {

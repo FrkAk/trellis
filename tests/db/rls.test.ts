@@ -31,9 +31,9 @@ describe("withUserContext userId validation", () => {
   });
 
   test("rejects non-UUID payload (e.g., session token)", async () => {
-    await expect(
-      withUserContext("not-a-uuid", async () => 1),
-    ).rejects.toThrow(/valid UUID/i);
+    await expect(withUserContext("not-a-uuid", async () => 1)).rejects.toThrow(
+      /valid UUID/i,
+    );
   });
 
   test("rejects null/undefined userId types", async () => {

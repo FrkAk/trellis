@@ -1,21 +1,21 @@
-'use client';
+"use client";
 
-import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'motion/react';
-import { Button } from '@/components/shared/Button';
-import { initials } from '@/lib/ui/initials';
-import { teamAvatarGradient } from '@/lib/ui/team-avatar';
-import { formatAbsolute } from '@/lib/ui/relative-time';
-import { updateProfileAction } from '@/lib/actions/profile';
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
+import { Button } from "@/components/shared/Button";
+import { initials } from "@/lib/ui/initials";
+import { teamAvatarGradient } from "@/lib/ui/team-avatar";
+import { formatAbsolute } from "@/lib/ui/relative-time";
+import { updateProfileAction } from "@/lib/actions/profile";
 
 const NAME_MAX = 80;
 
 const INPUT_CLASS =
-  'w-full rounded-md border border-border-strong bg-base px-3 py-2.5 text-[13px] text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent';
+  "w-full rounded-md border border-border-strong bg-base px-3 py-2.5 text-[13px] text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
 
 const FIELD_LABEL_CLASS =
-  'mb-1.5 block text-[11.5px] font-medium text-text-muted';
+  "mb-1.5 block text-[11.5px] font-medium text-text-muted";
 
 interface AccountTabProps {
   /** Identity slice for the signed-in user. */
@@ -87,7 +87,7 @@ export function AccountTab({ user }: AccountTabProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.45, ease: 'easeOut' }}
+              transition={{ duration: 0.45, ease: "easeOut" }}
               className="pointer-events-none absolute inset-0 rounded-[10px] shadow-[var(--shadow-glow-done)]"
             />
           ) : null}

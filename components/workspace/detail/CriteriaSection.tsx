@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { AutoGrowTextarea } from '@/components/shared/AutoGrowTextarea';
-import { Checkbox } from '@/components/shared/Checkbox';
-import { Markdown } from '@/components/shared/Markdown';
-import { useUndo, UndoButton } from '@/hooks/useUndo';
-import { updateTask } from '@/lib/graph/mutations';
-import { IconPlus, IconTrash } from '@/components/shared/icons';
-import type { AcceptanceCriterion } from '@/lib/types';
-import { SectionHeader } from './SectionHeader';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { AutoGrowTextarea } from "@/components/shared/AutoGrowTextarea";
+import { Checkbox } from "@/components/shared/Checkbox";
+import { Markdown } from "@/components/shared/Markdown";
+import { useUndo, UndoButton } from "@/hooks/useUndo";
+import { updateTask } from "@/lib/graph/mutations";
+import { IconPlus, IconTrash } from "@/components/shared/icons";
+import type { AcceptanceCriterion } from "@/lib/types";
+import { SectionHeader } from "./SectionHeader";
 
 /**
  * Hash criteria into a stable string so reference-changing prop updates
@@ -19,7 +19,7 @@ import { SectionHeader } from './SectionHeader';
  * @returns Pipe-joined `<checked>|<text>` signature.
  */
 function signatureFor(items: AcceptanceCriterion[] | undefined | null): string {
-  return (items ?? []).map((c) => `${c.checked}|${c.text}`).join('||');
+  return (items ?? []).map((c) => `${c.checked}|${c.text}`).join("||");
 }
 
 interface CriteriaSectionProps {
@@ -39,7 +39,11 @@ interface CriteriaSectionProps {
  * @param props - Section configuration.
  * @returns Checklist plus add affordance.
  */
-export function CriteriaSection({ taskId, criteria, onGraphChange }: CriteriaSectionProps) {
+export function CriteriaSection({
+  taskId,
+  criteria,
+  onGraphChange,
+}: CriteriaSectionProps) {
   const [local, setLocal] = useState(() => criteria ?? []);
   const [syncedSig, setSyncedSig] = useState(() => signatureFor(criteria));
   const [prevTaskId, setPrevTaskId] = useState(taskId);
@@ -50,10 +54,16 @@ export function CriteriaSection({ taskId, criteria, onGraphChange }: CriteriaSec
   const [adding, setAdding] = useState(false);
   const cancelRef = useRef(false);
 
-  useEffect(() => { localRef.current = local; }, [local]);
-  useEffect(() => () => {
-    if (suppressTimerRef.current !== null) window.clearTimeout(suppressTimerRef.current);
-  }, []);
+  useEffect(() => {
+    localRef.current = local;
+  }, [local]);
+  useEffect(
+    () => () => {
+      if (suppressTimerRef.current !== null)
+        window.clearTimeout(suppressTimerRef.current);
+    },
+    [],
+  );
 
   /**
    * Mark a 1-second window where incoming SSE refreshes should not
@@ -61,7 +71,8 @@ export function CriteriaSection({ taskId, criteria, onGraphChange }: CriteriaSec
    */
   const markMutation = () => {
     setSuppressing(true);
-    if (suppressTimerRef.current !== null) window.clearTimeout(suppressTimerRef.current);
+    if (suppressTimerRef.current !== null)
+      window.clearTimeout(suppressTimerRef.current);
     suppressTimerRef.current = window.setTimeout(() => {
       setSuppressing(false);
       suppressTimerRef.current = null;
@@ -80,62 +91,98 @@ export function CriteriaSection({ taskId, criteria, onGraphChange }: CriteriaSec
     setAdding(false);
   }
 
-  const handleToggle = useCallback(async (id: string) => {
-    const next = localRef.current.map((c) => (c.id === id ? { ...c, checked: !c.checked } : c));
-    setLocal(next);
-    markMutation();
-    await updateTask(taskId, { acceptanceCriteria: next }, true);
-  }, [taskId]);
+  const handleToggle = useCallback(
+    async (id: string) => {
+      const next = localRef.current.map((c) =>
+        c.id === id ? { ...c, checked: !c.checked } : c,
+      );
+      setLocal(next);
+      markMutation();
+      await updateTask(taskId, { acceptanceCriteria: next }, true);
+    },
+    [taskId],
+  );
 
-  const handleRename = useCallback(async (id: string, text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) { setEditingId(null); return; }
-    const target = localRef.current.find((c) => c.id === id);
-    if (target && trimmed === target.text) { setEditingId(null); return; }
-    const next = localRef.current.map((c) => (c.id === id ? { ...c, text: trimmed } : c));
-    setLocal(next);
-    setEditingId(null);
-    markMutation();
-    await updateTask(taskId, { acceptanceCriteria: next }, true);
-  }, [taskId]);
+  const handleRename = useCallback(
+    async (id: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        setEditingId(null);
+        return;
+      }
+      const target = localRef.current.find((c) => c.id === id);
+      if (target && trimmed === target.text) {
+        setEditingId(null);
+        return;
+      }
+      const next = localRef.current.map((c) =>
+        c.id === id ? { ...c, text: trimmed } : c,
+      );
+      setLocal(next);
+      setEditingId(null);
+      markMutation();
+      await updateTask(taskId, { acceptanceCriteria: next }, true);
+    },
+    [taskId],
+  );
 
-  const handleRestore = useCallback(async (item: { criterion: AcceptanceCriterion; index: number }) => {
-    const next = [...localRef.current];
-    next.splice(item.index, 0, item.criterion);
-    setLocal(next);
-    markMutation();
-    await updateTask(taskId, { acceptanceCriteria: next }, true);
-  }, [taskId]);
+  const handleRestore = useCallback(
+    async (item: { criterion: AcceptanceCriterion; index: number }) => {
+      const next = [...localRef.current];
+      next.splice(item.index, 0, item.criterion);
+      setLocal(next);
+      markMutation();
+      await updateTask(taskId, { acceptanceCriteria: next }, true);
+    },
+    [taskId],
+  );
 
-  const { canUndo, push: pushUndo, undo } = useUndo<{ criterion: AcceptanceCriterion; index: number }>({
+  const {
+    canUndo,
+    push: pushUndo,
+    undo,
+  } = useUndo<{ criterion: AcceptanceCriterion; index: number }>({
     onUndo: handleRestore,
     resetOn: taskId,
     keyboard: true,
   });
 
-  const handleDelete = useCallback(async (id: string) => {
-    const index = localRef.current.findIndex((c) => c.id === id);
-    if (index === -1) return;
-    const removed = localRef.current[index];
-    const next = localRef.current.filter((c) => c.id !== id);
-    setLocal(next);
-    setEditingId(null);
-    pushUndo({ criterion: removed, index });
-    markMutation();
-    await updateTask(taskId, { acceptanceCriteria: next }, true);
-  }, [taskId, pushUndo]);
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const index = localRef.current.findIndex((c) => c.id === id);
+      if (index === -1) return;
+      const removed = localRef.current[index];
+      const next = localRef.current.filter((c) => c.id !== id);
+      setLocal(next);
+      setEditingId(null);
+      pushUndo({ criterion: removed, index });
+      markMutation();
+      await updateTask(taskId, { acceptanceCriteria: next }, true);
+    },
+    [taskId, pushUndo],
+  );
 
-  const handleAdd = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) { setAdding(false); return; }
-    const newCriterion: AcceptanceCriterion = { id: crypto.randomUUID(), text: trimmed, checked: false };
-    const next = [...localRef.current, newCriterion];
-    setLocal(next);
-    setAdding(false);
-    markMutation();
-    await updateTask(taskId, { acceptanceCriteria: next }, true);
-    onGraphChange?.();
-  }, [taskId, onGraphChange]);
+  const handleAdd = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        setAdding(false);
+        return;
+      }
+      const newCriterion: AcceptanceCriterion = {
+        id: crypto.randomUUID(),
+        text: trimmed,
+        checked: false,
+      };
+      const next = [...localRef.current, newCriterion];
+      setLocal(next);
+      setAdding(false);
+      markMutation();
+      await updateTask(taskId, { acceptanceCriteria: next }, true);
+      onGraphChange?.();
+    },
+    [taskId, onGraphChange],
+  );
 
   const totalCount = local.length;
   const doneCount = local.filter((c) => c.checked).length;
@@ -171,7 +218,10 @@ export function CriteriaSection({ taskId, criteria, onGraphChange }: CriteriaSec
             onToggle={() => handleToggle(c.id)}
             onStartEdit={() => setEditingId(c.id)}
             onCommit={(text) => handleRename(c.id, text)}
-            onCancel={() => { cancelRef.current = false; setEditingId(null); }}
+            onCancel={() => {
+              cancelRef.current = false;
+              setEditingId(null);
+            }}
             onDelete={() => handleDelete(c.id)}
             cancelRef={cancelRef}
           />
@@ -204,11 +254,14 @@ interface CriterionAddFormProps {
  * @returns Form element.
  */
 function CriterionAddForm({ onSubmit, onCancel }: CriterionAddFormProps) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState("");
 
   const submit = () => {
     const trimmed = text.trim();
-    if (!trimmed) { onCancel(); return; }
+    if (!trimmed) {
+      onCancel();
+      return;
+    }
     onSubmit(trimmed);
   };
 
@@ -221,8 +274,14 @@ function CriterionAddForm({ onSubmit, onCancel }: CriterionAddFormProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-            if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
           }}
           placeholder="What needs to be true for this task to be done?"
           className="w-full resize-none rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent"
@@ -274,10 +333,23 @@ interface CriterionRowProps {
  * @param props - Row configuration.
  * @returns Row element.
  */
-function CriterionRow({ criterion, editing, onToggle, onStartEdit, onCommit, onCancel, onDelete, cancelRef }: CriterionRowProps) {
+function CriterionRow({
+  criterion,
+  editing,
+  onToggle,
+  onStartEdit,
+  onCommit,
+  onCancel,
+  onDelete,
+  cancelRef,
+}: CriterionRowProps) {
   return (
     <div className="group/criterion flex items-start gap-2.5 rounded-md border border-border bg-surface-raised/40 px-3 py-2 transition-colors">
-      <Checkbox checked={criterion.checked} onChange={onToggle} className="!min-h-0 mt-0.5 shrink-0" />
+      <Checkbox
+        checked={criterion.checked}
+        onChange={onToggle}
+        className="!min-h-0 mt-0.5 shrink-0"
+      />
       <div className="min-w-0 flex-1">
         {editing ? (
           <AutoGrowTextarea
@@ -285,12 +357,20 @@ function CriterionRow({ criterion, editing, onToggle, onStartEdit, onCommit, onC
             autoFocus
             rows={1}
             onBlur={(e) => {
-              if (cancelRef.current) { cancelRef.current = false; onCancel(); }
-              else onCommit(e.target.value);
+              if (cancelRef.current) {
+                cancelRef.current = false;
+                onCancel();
+              } else onCommit(e.target.value);
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
-              if (e.key === 'Escape') { cancelRef.current = true; e.currentTarget.blur(); }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+              if (e.key === "Escape") {
+                cancelRef.current = true;
+                e.currentTarget.blur();
+              }
             }}
             className="w-full resize-none rounded-md border border-border-strong bg-surface px-2 py-1 text-[13px] text-text-primary outline-none transition-colors focus:border-accent"
           />
@@ -298,7 +378,9 @@ function CriterionRow({ criterion, editing, onToggle, onStartEdit, onCommit, onC
           <div
             onClick={onStartEdit}
             className={`cursor-text rounded-md text-[13px] leading-snug transition-colors ${
-              criterion.checked ? 'text-text-muted line-through' : 'text-text-secondary'
+              criterion.checked
+                ? "text-text-muted line-through"
+                : "text-text-secondary"
             }`}
           >
             <Markdown>{criterion.text}</Markdown>

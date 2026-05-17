@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
+import Link from "next/link";
 import {
   type Dispatch,
   type ReactNode,
@@ -8,31 +8,31 @@ import {
   useCallback,
   useEffect,
   useState,
-} from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { AnimatePresence, motion } from 'motion/react';
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
 import {
   IconAgent,
   IconBell,
   IconTag,
   IconUser,
   IconUsers,
-} from '@/components/shared/icons';
-import type { OAuthSessionView } from '@/lib/actions/oauth-session';
-import type { TeamView } from '@/lib/actions/team-list';
-import { listTeamMembersAction } from '@/lib/actions/team-members';
-import { listPendingInvitationsAction } from '@/lib/actions/team-invitations';
-import { getOrCreateTeamInviteCodeAction } from '@/lib/actions/team-invite-code';
-import { AccountTab } from './AccountTab';
-import { AgentsTab } from './AgentsTab';
-import { PlaceholderTab } from './PlaceholderTab';
-import { TeamsTab } from './TeamsTab';
-import { TeamManageModal } from './TeamManageModal';
+} from "@/components/shared/icons";
+import type { OAuthSessionView } from "@/lib/actions/oauth-session";
+import type { TeamView } from "@/lib/actions/team-list";
+import { listTeamMembersAction } from "@/lib/actions/team-members";
+import { listPendingInvitationsAction } from "@/lib/actions/team-invitations";
+import { getOrCreateTeamInviteCodeAction } from "@/lib/actions/team-invite-code";
+import { AccountTab } from "./AccountTab";
+import { AgentsTab } from "./AgentsTab";
+import { PlaceholderTab } from "./PlaceholderTab";
+import { TeamsTab } from "./TeamsTab";
+import { TeamManageModal } from "./TeamManageModal";
 import {
   clearTeamManageCache,
   readTeamManageCache,
   writeTeamManageCache,
-} from './team-manage-cache';
+} from "./team-manage-cache";
 
 interface SettingsTab {
   /** URL slug used in `?tab=…`. */
@@ -44,21 +44,21 @@ interface SettingsTab {
 }
 
 const TABS: readonly SettingsTab[] = [
-  { id: 'account', label: 'Account', icon: <IconUser size={13} /> },
-  { id: 'teams', label: 'Teams', icon: <IconUsers size={13} /> },
-  { id: 'agents', label: 'Agents & devices', icon: <IconAgent size={13} /> },
-  { id: 'notifications', label: 'Notifications', icon: <IconBell size={13} /> },
-  { id: 'billing', label: 'Billing', icon: <IconTag size={13} /> },
+  { id: "account", label: "Account", icon: <IconUser size={13} /> },
+  { id: "teams", label: "Teams", icon: <IconUsers size={13} /> },
+  { id: "agents", label: "Agents & devices", icon: <IconAgent size={13} /> },
+  { id: "notifications", label: "Notifications", icon: <IconBell size={13} /> },
+  { id: "billing", label: "Billing", icon: <IconTag size={13} /> },
 ];
 
-type TabId = 'account' | 'teams' | 'agents' | 'notifications' | 'billing';
+type TabId = "account" | "teams" | "agents" | "notifications" | "billing";
 
 const TAB_IDS: ReadonlySet<TabId> = new Set<TabId>([
-  'account',
-  'teams',
-  'agents',
-  'notifications',
-  'billing',
+  "account",
+  "teams",
+  "agents",
+  "notifications",
+  "billing",
 ]);
 
 const ROLE_ORDER: Record<string, number> = {
@@ -75,7 +75,7 @@ const ROLE_ORDER: Record<string, number> = {
  */
 function resolveTab(raw: string | null): TabId {
   if (raw && (TAB_IDS as Set<string>).has(raw)) return raw as TabId;
-  return 'account';
+  return "account";
 }
 
 /** Owner > admin > member, alphabetical within a role tier. */
@@ -119,8 +119,8 @@ export function SettingsView({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const tab = resolveTab(searchParams.get('tab'));
-  const teamParam = searchParams.get('team');
+  const tab = resolveTab(searchParams.get("tab"));
+  const teamParam = searchParams.get("team");
 
   const [teams, setTeams] = useState<TeamView[]>(() => sortTeams(initialTeams));
 
@@ -134,18 +134,18 @@ export function SettingsView({
   }, [user.id]);
 
   const activeTeam =
-    tab === 'teams' && teamParam
+    tab === "teams" && teamParam
       ? (teams.find((t) => t.id === teamParam) ?? null)
       : null;
 
   const buildHref = useCallback(
     (next: TabId, options?: { teamId?: string | null }): string => {
       const params = new URLSearchParams(searchParams.toString());
-      if (next === 'account') params.delete('tab');
-      else params.set('tab', next);
+      if (next === "account") params.delete("tab");
+      else params.set("tab", next);
       if (options?.teamId !== undefined) {
-        if (options.teamId) params.set('team', options.teamId);
-        else params.delete('team');
+        if (options.teamId) params.set("team", options.teamId);
+        else params.delete("team");
       }
       const query = params.toString();
       return query ? `${pathname}?${query}` : pathname;
@@ -155,53 +155,56 @@ export function SettingsView({
 
   const openManage = useCallback(
     (teamId: string) => {
-      router.replace(buildHref('teams', { teamId }), { scroll: false });
+      router.replace(buildHref("teams", { teamId }), { scroll: false });
     },
     [buildHref, router],
   );
 
   const closeManage = useCallback(() => {
-    router.replace(buildHref('teams', { teamId: null }), { scroll: false });
+    router.replace(buildHref("teams", { teamId: null }), { scroll: false });
   }, [buildHref, router]);
 
-  const prefetchManage = useCallback((teamId: string) => {
-    if (readTeamManageCache(teamId)) return;
-    const team = teams.find((t) => t.id === teamId);
-    if (!team) return;
-    const isAdmin = team.role === 'owner' || team.role === 'admin';
+  const prefetchManage = useCallback(
+    (teamId: string) => {
+      if (readTeamManageCache(teamId)) return;
+      const team = teams.find((t) => t.id === teamId);
+      if (!team) return;
+      const isAdmin = team.role === "owner" || team.role === "admin";
 
-    Promise.all([
-      listTeamMembersAction({ organizationId: teamId }),
-      isAdmin
-        ? listPendingInvitationsAction({ organizationId: teamId })
-        : Promise.resolve(null),
-      isAdmin
-        ? getOrCreateTeamInviteCodeAction({ organizationId: teamId })
-        : Promise.resolve(null),
-    ])
-      .then(([membersResult, invitationsResult, inviteCodeResult]) => {
-        if (!membersResult.ok) return;
-        writeTeamManageCache(teamId, {
-          members: membersResult.data,
-          invitations: invitationsResult?.ok ? invitationsResult.data : [],
-          inviteCode: inviteCodeResult?.ok ? inviteCodeResult.data : null,
-          teamName: team.name,
-          teamSlug: team.slug,
+      Promise.all([
+        listTeamMembersAction({ organizationId: teamId }),
+        isAdmin
+          ? listPendingInvitationsAction({ organizationId: teamId })
+          : Promise.resolve(null),
+        isAdmin
+          ? getOrCreateTeamInviteCodeAction({ organizationId: teamId })
+          : Promise.resolve(null),
+      ])
+        .then(([membersResult, invitationsResult, inviteCodeResult]) => {
+          if (!membersResult.ok) return;
+          writeTeamManageCache(teamId, {
+            members: membersResult.data,
+            invitations: invitationsResult?.ok ? invitationsResult.data : [],
+            inviteCode: inviteCodeResult?.ok ? inviteCodeResult.data : null,
+            teamName: team.name,
+            teamSlug: team.slug,
+          });
+        })
+        .catch(() => {
+          // Prefetch is best-effort — if the network fails, the panel's
+          // own fetch on click will surface the error in-context. Silent
+          // failure here prevents an UnhandledRejection from a hover.
         });
-      })
-      .catch(() => {
-        // Prefetch is best-effort — if the network fails, the panel's
-        // own fetch on click will surface the error in-context. Silent
-        // failure here prevents an UnhandledRejection from a hover.
-      });
-  }, [teams]);
+    },
+    [teams],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <aside
         aria-label="Settings sections"
         className="hidden w-60 shrink-0 flex-col gap-px overflow-y-auto border-r border-border px-3 py-5 md:flex"
-        style={{ background: 'var(--color-base-2)' }}
+        style={{ background: "var(--color-base-2)" }}
       >
         <p className="px-2 pb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted">
           Settings
@@ -220,7 +223,7 @@ export function SettingsView({
       <nav
         aria-label="Settings sections"
         className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 py-2 md:hidden"
-        style={{ background: 'var(--color-base-2)' }}
+        style={{ background: "var(--color-base-2)" }}
       >
         {TABS.map((t) => (
           <Link
@@ -228,15 +231,15 @@ export function SettingsView({
             href={buildHref(t.id, { teamId: null })}
             replace
             scroll={false}
-            aria-current={tab === t.id ? 'page' : undefined}
+            aria-current={tab === t.id ? "page" : undefined}
             className={`flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium transition-colors ${
               tab === t.id
-                ? 'bg-surface-hover text-text-primary'
-                : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+                ? "bg-surface-hover text-text-primary"
+                : "text-text-muted hover:bg-surface-hover hover:text-text-secondary"
             }`}
           >
             <span
-              className={tab === t.id ? 'text-accent-light' : ''}
+              className={tab === t.id ? "text-accent-light" : ""}
               aria-hidden="true"
             >
               {t.icon}
@@ -254,10 +257,10 @@ export function SettingsView({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -3 }}
-              transition={{ duration: 0.16, ease: 'easeOut' }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
             >
-              {tab === 'account' && <AccountTab user={user} />}
-              {tab === 'teams' && (
+              {tab === "account" && <AccountTab user={user} />}
+              {tab === "teams" && (
                 <TeamsTab
                   teams={teams}
                   setTeams={setTeams as Dispatch<SetStateAction<TeamView[]>>}
@@ -267,16 +270,16 @@ export function SettingsView({
                   onPrefetch={prefetchManage}
                 />
               )}
-              {tab === 'agents' && (
+              {tab === "agents" && (
                 <AgentsTab initialSessions={initialSessions} />
               )}
-              {tab === 'notifications' && (
+              {tab === "notifications" && (
                 <PlaceholderTab
                   title="Notifications"
                   subhead="Inbox, email, and digest preferences will live here."
                 />
               )}
-              {tab === 'billing' && (
+              {tab === "billing" && (
                 <PlaceholderTab
                   title="Billing"
                   subhead="Subscription tiers and invoices will appear here when billing ships."
@@ -288,7 +291,7 @@ export function SettingsView({
       </div>
 
       <TeamManageModal
-        team={tab === 'teams' ? activeTeam : null}
+        team={tab === "teams" ? activeTeam : null}
         currentUserId={user.id}
         onClose={closeManage}
       />
@@ -320,14 +323,14 @@ function NavItem({ href, active, icon, label }: NavItemProps) {
       href={href}
       replace
       scroll={false}
-      aria-current={active ? 'page' : undefined}
+      aria-current={active ? "page" : undefined}
       className={`flex h-7 items-center gap-2 rounded-md px-2 text-[12.5px] font-medium transition-colors ${
         active
-          ? 'bg-surface-hover text-text-primary'
-          : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+          ? "bg-surface-hover text-text-primary"
+          : "text-text-muted hover:bg-surface-hover hover:text-text-secondary"
       }`}
     >
-      <span className={active ? 'text-accent-light' : ''} aria-hidden="true">
+      <span className={active ? "text-accent-light" : ""} aria-hidden="true">
         {icon}
       </span>
       <span className="truncate">{label}</span>

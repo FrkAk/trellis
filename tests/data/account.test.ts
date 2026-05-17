@@ -40,13 +40,16 @@ describe("clearOrgMembershipArtifacts", () => {
       `;
       expect(activePtr).toBeNull();
 
-      const at = await sqlc`SELECT id FROM neon_auth."oauthAccessToken" WHERE "userId" = ${f.userId}`;
+      const at =
+        await sqlc`SELECT id FROM neon_auth."oauthAccessToken" WHERE "userId" = ${f.userId}`;
       expect(at.length).toBe(0);
 
-      const rt = await sqlc`SELECT id FROM neon_auth."oauthRefreshToken" WHERE "userId" = ${f.userId}`;
+      const rt =
+        await sqlc`SELECT id FROM neon_auth."oauthRefreshToken" WHERE "userId" = ${f.userId}`;
       expect(rt.length).toBe(0);
 
-      const cs = await sqlc`SELECT id FROM neon_auth."oauthConsent" WHERE "userId" = ${f.userId}`;
+      const cs =
+        await sqlc`SELECT id FROM neon_auth."oauthConsent" WHERE "userId" = ${f.userId}`;
       expect(cs.length).toBe(0);
     } finally {
       await sqlc.end({ timeout: 5 });

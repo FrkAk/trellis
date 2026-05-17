@@ -1,32 +1,28 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  AnimatePresence,
-  motion,
-  useReducedMotion,
-} from 'motion/react';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
-import { listTeamMembersAction } from '@/lib/actions/team-members';
-import { listPendingInvitationsAction } from '@/lib/actions/team-invitations';
+import { listTeamMembersAction } from "@/lib/actions/team-members";
+import { listPendingInvitationsAction } from "@/lib/actions/team-invitations";
 import {
   getOrCreateTeamInviteCodeAction,
   type InviteCodeMetadata,
-} from '@/lib/actions/team-invite-code';
-import type { MemberView } from '@/lib/actions/team-members-map';
-import type { InvitationView } from '@/lib/actions/team-invitations-map';
-import type { TeamView } from '@/lib/actions/team-list';
+} from "@/lib/actions/team-invite-code";
+import type { MemberView } from "@/lib/actions/team-members-map";
+import type { InvitationView } from "@/lib/actions/team-invitations-map";
+import type { TeamView } from "@/lib/actions/team-list";
 
-import { initials } from '@/lib/ui/initials';
-import { teamAvatarGradient } from '@/lib/ui/team-avatar';
-import { roleStyle } from '@/lib/ui/role-badge';
-import { IconX } from '@/components/shared/icons';
-import { useModalChrome } from '@/hooks/useModalChrome';
+import { initials } from "@/lib/ui/initials";
+import { teamAvatarGradient } from "@/lib/ui/team-avatar";
+import { roleStyle } from "@/lib/ui/role-badge";
+import { IconX } from "@/components/shared/icons";
+import { useModalChrome } from "@/hooks/useModalChrome";
 
-import { MembersSection } from './team-manage/MembersSection';
-import { InviteSection } from './team-manage/InviteSection';
-import { IdentitySection } from './team-manage/IdentitySection';
-import { DangerZone } from './team-manage/DangerZone';
+import { MembersSection } from "./team-manage/MembersSection";
+import { InviteSection } from "./team-manage/InviteSection";
+import { IdentitySection } from "./team-manage/IdentitySection";
+import { DangerZone } from "./team-manage/DangerZone";
 
 import {
   invalidateTeamManageCache,
@@ -34,7 +30,7 @@ import {
   updateTeamManageCache,
   writeTeamManageCache,
   type TeamManagePayload,
-} from './team-manage-cache';
+} from "./team-manage-cache";
 
 interface TeamManageModalProps {
   /** Team being managed, or `null` when no modal should render. */
@@ -46,7 +42,7 @@ interface TeamManageModalProps {
 }
 
 /** Discriminated state machine for the modal body. */
-type ModalPhase = 'loading' | 'ready' | 'forbidden' | 'error';
+type ModalPhase = "loading" | "ready" | "forbidden" | "error";
 
 const ROLE_ORDER: Record<string, number> = {
   owner: 0,
@@ -77,33 +73,34 @@ function sortMembers(list: MemberView[]): MemberView[] {
 async function fetchTeamManagePayload(
   team: TeamView,
 ): Promise<
-  | { kind: 'ready'; payload: TeamManagePayload }
-  | { kind: 'forbidden' }
-  | { kind: 'error'; message: string }
+  | { kind: "ready"; payload: TeamManagePayload }
+  | { kind: "forbidden" }
+  | { kind: "error"; message: string }
 > {
-  const isAdminOrOwner = team.role === 'owner' || team.role === 'admin';
-  const [membersResult, invitationsResult, inviteCodeResult] = await Promise.all([
-    listTeamMembersAction({ organizationId: team.id }),
-    isAdminOrOwner
-      ? listPendingInvitationsAction({ organizationId: team.id })
-      : Promise.resolve(null),
-    isAdminOrOwner
-      ? getOrCreateTeamInviteCodeAction({ organizationId: team.id })
-      : Promise.resolve(null),
-  ]);
+  const isAdminOrOwner = team.role === "owner" || team.role === "admin";
+  const [membersResult, invitationsResult, inviteCodeResult] =
+    await Promise.all([
+      listTeamMembersAction({ organizationId: team.id }),
+      isAdminOrOwner
+        ? listPendingInvitationsAction({ organizationId: team.id })
+        : Promise.resolve(null),
+      isAdminOrOwner
+        ? getOrCreateTeamInviteCodeAction({ organizationId: team.id })
+        : Promise.resolve(null),
+    ]);
 
   if (!membersResult.ok) {
     if (
-      membersResult.code === 'forbidden' ||
-      membersResult.code === 'not_found'
+      membersResult.code === "forbidden" ||
+      membersResult.code === "not_found"
     ) {
-      return { kind: 'forbidden' };
+      return { kind: "forbidden" };
     }
-    return { kind: 'error', message: membersResult.message };
+    return { kind: "error", message: membersResult.message };
   }
 
   return {
-    kind: 'ready',
+    kind: "ready",
     payload: {
       members: sortMembers(membersResult.data),
       invitations: invitationsResult?.ok ? invitationsResult.data : [],
@@ -168,9 +165,7 @@ function ModalInner({ team, currentUserId, onClose }: ModalInnerProps) {
   useModalChrome(true, onClose, panelRef);
 
   const cached = readTeamManageCache(team.id);
-  const [phase, setPhase] = useState<ModalPhase>(
-    cached ? 'ready' : 'loading',
-  );
+  const [phase, setPhase] = useState<ModalPhase>(cached ? "ready" : "loading");
   const [members, setMembers] = useState<MemberView[]>(
     cached?.payload.members ?? [],
   );
@@ -180,14 +175,18 @@ function ModalInner({ team, currentUserId, onClose }: ModalInnerProps) {
   const [inviteCode, setInviteCode] = useState<InviteCodeMetadata | null>(
     cached?.payload.inviteCode ?? null,
   );
-  const [teamName, setTeamName] = useState(cached?.payload.teamName ?? team.name);
-  const [teamSlug, setTeamSlug] = useState(cached?.payload.teamSlug ?? team.slug);
+  const [teamName, setTeamName] = useState(
+    cached?.payload.teamName ?? team.name,
+  );
+  const [teamSlug, setTeamSlug] = useState(
+    cached?.payload.teamSlug ?? team.slug,
+  );
   const [error, setError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [glowMemberId, setGlowMemberId] = useState<string | null>(null);
 
-  const isAdminOrOwner = team.role === 'owner' || team.role === 'admin';
-  const isOwner = team.role === 'owner';
+  const isAdminOrOwner = team.role === "owner" || team.role === "admin";
+  const isOwner = team.role === "owner";
 
   useEffect(() => {
     let cancelled = false;
@@ -195,19 +194,19 @@ function ModalInner({ team, currentUserId, onClose }: ModalInnerProps) {
       try {
         const result = await fetchTeamManagePayload(team);
         if (cancelled) return;
-        if (result.kind === 'ready') {
+        if (result.kind === "ready") {
           setMembers(result.payload.members);
           setInvitations(result.payload.invitations);
           setInviteCode(result.payload.inviteCode);
           setTeamName(result.payload.teamName);
           setTeamSlug(result.payload.teamSlug);
-          setPhase('ready');
+          setPhase("ready");
           writeTeamManageCache(team.id, result.payload);
-        } else if (result.kind === 'forbidden') {
+        } else if (result.kind === "forbidden") {
           invalidateTeamManageCache(team.id);
-          setPhase('forbidden');
+          setPhase("forbidden");
         } else {
-          setPhase((prev) => (prev === 'ready' ? 'ready' : 'error'));
+          setPhase((prev) => (prev === "ready" ? "ready" : "error"));
           setErrorMessage(result.message);
         }
       } catch {
@@ -215,7 +214,7 @@ function ModalInner({ team, currentUserId, onClose }: ModalInnerProps) {
         // A server action threw (network drop, server crash). Route to
         // the error state so the user can retry — never let the modal
         // get stuck on the skeleton or surface as an UnhandledRejection.
-        setPhase((prev) => (prev === 'ready' ? 'ready' : 'error'));
+        setPhase((prev) => (prev === "ready" ? "ready" : "error"));
         setErrorMessage(
           "We couldn't reach the server. Check your connection and try again.",
         );
@@ -260,7 +259,7 @@ function ModalInner({ team, currentUserId, onClose }: ModalInnerProps) {
   }, [team.id]);
 
   const handleRoleChanged = useCallback(
-    (memberId: string, newRole: 'member' | 'admin' | 'owner') => {
+    (memberId: string, newRole: "member" | "admin" | "owner") => {
       setError(null);
       setMembers((prev) => {
         const next = sortMembers(
@@ -317,7 +316,7 @@ function ModalInner({ team, currentUserId, onClose }: ModalInnerProps) {
       exit={{ opacity: 0 }}
       transition={{
         duration: reducedMotion ? 0.12 : 0.18,
-        ease: 'easeOut',
+        ease: "easeOut",
       }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -341,22 +340,18 @@ function ModalInner({ team, currentUserId, onClose }: ModalInnerProps) {
         transition={{ duration: 0.18, ease: [0.25, 0.46, 0.45, 0.94] }}
         className="relative flex max-h-[calc(100vh-128px)] w-full max-w-[640px] flex-col overflow-hidden rounded-[10px] border border-border bg-surface shadow-[var(--shadow-float)]"
       >
-        <ModalHeader
-          team={team}
-          teamName={teamName}
-          onClose={onClose}
-        />
+        <ModalHeader team={team} teamName={teamName} onClose={onClose} />
 
         <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-          {phase === 'loading' ? (
+          {phase === "loading" ? (
             <ModalSkeleton isAdminOrOwner={isAdminOrOwner} />
-          ) : phase === 'forbidden' ? (
+          ) : phase === "forbidden" ? (
             <ForbiddenState onClose={onClose} />
-          ) : phase === 'error' && members.length === 0 ? (
+          ) : phase === "error" && members.length === 0 ? (
             <ErrorState
               message={errorMessage ?? "We couldn't load this team."}
               onRetry={() => {
-                setPhase('loading');
+                setPhase("loading");
                 setErrorMessage(null);
               }}
             />
@@ -468,7 +463,10 @@ interface ModalBodyProps {
   refreshMembers: () => Promise<void>;
   refreshInvitations: () => Promise<void>;
   refreshInviteCode: () => Promise<void>;
-  onRoleChanged: (memberId: string, newRole: 'member' | 'admin' | 'owner') => void;
+  onRoleChanged: (
+    memberId: string,
+    newRole: "member" | "admin" | "owner",
+  ) => void;
   onMemberRemoved: (memberId: string) => void;
   onRenamed: (next: { name?: string; slug?: string }) => void;
   onInviteCodeChanged: (next: InviteCodeMetadata) => void;
@@ -616,8 +614,8 @@ function ForbiddenState({ onClose }: ForbiddenStateProps) {
         No longer a member
       </p>
       <p className="mx-auto mt-2 max-w-sm text-[12px] leading-relaxed text-text-muted">
-        This team is no longer accessible to you. Either you left, your
-        access was revoked, or the team was deleted.
+        This team is no longer accessible to you. Either you left, your access
+        was revoked, or the team was deleted.
       </p>
       <button
         type="button"

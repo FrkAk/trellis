@@ -1,12 +1,16 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ComponentType } from 'react';
-import { useUndo, UndoButton } from '@/hooks/useUndo';
-import { addTaskLink, removeTaskLink, updateTaskLink } from '@/lib/graph/mutations';
-import { classifyLink } from '@/lib/links/classify';
-import { IconPencil, IconPlus, IconTrash } from '@/components/shared/icons';
-import type { IconProps } from '@/components/shared/icons';
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ComponentType } from "react";
+import { useUndo, UndoButton } from "@/hooks/useUndo";
+import {
+  addTaskLink,
+  removeTaskLink,
+  updateTaskLink,
+} from "@/lib/graph/mutations";
+import { classifyLink } from "@/lib/links/classify";
+import { IconPencil, IconPlus, IconTrash } from "@/components/shared/icons";
+import type { IconProps } from "@/components/shared/icons";
 import {
   IconFigma,
   IconGitHub,
@@ -17,33 +21,33 @@ import {
   IconNotion,
   IconReddit,
   IconStackOverflow,
-} from '@/components/shared/host-icons';
-import type { TaskLinkRef } from '@/lib/data/views';
-import { SectionHeader } from './SectionHeader';
+} from "@/components/shared/host-icons";
+import type { TaskLinkRef } from "@/lib/data/views";
+import { SectionHeader } from "./SectionHeader";
 
 /**
  * Host -> glyph map. Hosts in the classifier's recognised set get their own
  * mark; everything else falls back to the globe.
  */
 const HOST_ICONS: Record<string, ComponentType<IconProps>> = {
-  'github.com': IconGitHub,
-  'www.github.com': IconGitHub,
-  'gitlab.com': IconGitLab,
-  'www.gitlab.com': IconGitLab,
-  'linear.app': IconLinear,
-  'notion.so': IconNotion,
-  'www.notion.so': IconNotion,
-  'figma.com': IconFigma,
-  'www.figma.com': IconFigma,
-  'google.com': IconGoogle,
-  'www.google.com': IconGoogle,
-  'docs.google.com': IconGoogle,
-  'drive.google.com': IconGoogle,
-  'reddit.com': IconReddit,
-  'www.reddit.com': IconReddit,
-  'old.reddit.com': IconReddit,
-  'stackoverflow.com': IconStackOverflow,
-  'www.stackoverflow.com': IconStackOverflow,
+  "github.com": IconGitHub,
+  "www.github.com": IconGitHub,
+  "gitlab.com": IconGitLab,
+  "www.gitlab.com": IconGitLab,
+  "linear.app": IconLinear,
+  "notion.so": IconNotion,
+  "www.notion.so": IconNotion,
+  "figma.com": IconFigma,
+  "www.figma.com": IconFigma,
+  "google.com": IconGoogle,
+  "www.google.com": IconGoogle,
+  "docs.google.com": IconGoogle,
+  "drive.google.com": IconGoogle,
+  "reddit.com": IconReddit,
+  "www.reddit.com": IconReddit,
+  "old.reddit.com": IconReddit,
+  "stackoverflow.com": IconStackOverflow,
+  "www.stackoverflow.com": IconStackOverflow,
 };
 
 /**
@@ -70,11 +74,11 @@ function HostGlyph({ host, size = 14 }: { host: string; size?: number }) {
  * doc is violet ("knowledge"), fallback link is neutral muted.
  */
 const KIND_COLORS: Record<string, string> = {
-  pull_request: 'var(--color-accent)',
-  issue: 'var(--color-glyph-progress)',
-  commit: 'var(--color-glyph-done)',
-  doc: 'var(--color-glyph-review)',
-  link: 'var(--color-text-muted)',
+  pull_request: "var(--color-accent)",
+  issue: "var(--color-glyph-progress)",
+  commit: "var(--color-glyph-done)",
+  doc: "var(--color-glyph-review)",
+  link: "var(--color-text-muted)",
 };
 
 /**
@@ -91,8 +95,8 @@ function KindDot({ kind }: { kind: string }) {
   const color = KIND_COLORS[kind] ?? KIND_COLORS.link;
   return (
     <span
-      aria-label={`kind: ${kind.replace(/_/g, ' ')}`}
-      title={kind.replace(/_/g, ' ')}
+      aria-label={`kind: ${kind.replace(/_/g, " ")}`}
+      title={kind.replace(/_/g, " ")}
       className="shrink-0 rounded-full"
       style={{
         width: 6,
@@ -116,7 +120,7 @@ function hostOf(url: string): string {
   try {
     return new URL(url).host;
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -129,7 +133,7 @@ function hostOf(url: string): string {
  * @returns Pipe-joined signature.
  */
 function signatureFor(items: TaskLinkRef[] | undefined | null): string {
-  return (items ?? []).map((l) => `${l.id}|${l.url}`).join('||');
+  return (items ?? []).map((l) => `${l.id}|${l.url}`).join("||");
 }
 
 interface LinksSectionProps {
@@ -151,7 +155,11 @@ interface LinksSectionProps {
  * @param props - Section configuration.
  * @returns Links list plus add affordance.
  */
-export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps) {
+export function LinksSection({
+  taskId,
+  links,
+  onGraphChange,
+}: LinksSectionProps) {
   const [local, setLocal] = useState<TaskLinkRef[]>(() => links ?? []);
   const [syncedSig, setSyncedSig] = useState(() => signatureFor(links));
   const [prevTaskId, setPrevTaskId] = useState(taskId);
@@ -163,11 +171,18 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
   const suppressTimerRef = useRef<number | null>(null);
   const errorTimerRef = useRef<number | null>(null);
 
-  useEffect(() => { localRef.current = local; }, [local]);
-  useEffect(() => () => {
-    if (suppressTimerRef.current !== null) window.clearTimeout(suppressTimerRef.current);
-    if (errorTimerRef.current !== null) window.clearTimeout(errorTimerRef.current);
-  }, []);
+  useEffect(() => {
+    localRef.current = local;
+  }, [local]);
+  useEffect(
+    () => () => {
+      if (suppressTimerRef.current !== null)
+        window.clearTimeout(suppressTimerRef.current);
+      if (errorTimerRef.current !== null)
+        window.clearTimeout(errorTimerRef.current);
+    },
+    [],
+  );
 
   /**
    * Mark a 1s window where SSE refreshes won't clobber the optimistic
@@ -175,7 +190,8 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
    */
   const markMutation = () => {
     setSuppressing(true);
-    if (suppressTimerRef.current !== null) window.clearTimeout(suppressTimerRef.current);
+    if (suppressTimerRef.current !== null)
+      window.clearTimeout(suppressTimerRef.current);
     suppressTimerRef.current = window.setTimeout(() => {
       setSuppressing(false);
       suppressTimerRef.current = null;
@@ -188,7 +204,8 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
    */
   const flashError = (message: string) => {
     setError(message);
-    if (errorTimerRef.current !== null) window.clearTimeout(errorTimerRef.current);
+    if (errorTimerRef.current !== null)
+      window.clearTimeout(errorTimerRef.current);
     errorTimerRef.current = window.setTimeout(() => {
       setError(null);
       errorTimerRef.current = null;
@@ -218,13 +235,17 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
         setLocal(next);
         onGraphChange?.();
       } catch {
-        flashError('Could not restore link.');
+        flashError("Could not restore link.");
       }
     },
     [taskId, onGraphChange],
   );
 
-  const { canUndo, push: pushUndo, undo } = useUndo<{ url: string; index: number }>({
+  const {
+    canUndo,
+    push: pushUndo,
+    undo,
+  } = useUndo<{ url: string; index: number }>({
     onUndo: handleRestore,
     resetOn: taskId,
   });
@@ -241,7 +262,7 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
         await removeTaskLink(linkId);
         onGraphChange?.();
       } catch {
-        flashError('Delete failed.');
+        flashError("Delete failed.");
       }
     },
     [pushUndo, onGraphChange],
@@ -250,14 +271,17 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
   const handleAdd = useCallback(
     async (url: string) => {
       const trimmed = url.trim();
-      if (!trimmed) { setAdding(false); return; }
+      if (!trimmed) {
+        setAdding(false);
+        return;
+      }
       // Light client-side validation so the user gets immediate feedback;
       // shares the same classifier the server runs, so scheme-less input
       // (`google.com`) and non-http schemes stay consistent across surfaces.
       try {
         classifyLink(trimmed);
       } catch {
-        flashError('Invalid URL.');
+        flashError("Invalid URL.");
         return;
       }
       setAdding(false);
@@ -271,7 +295,7 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
         }
         onGraphChange?.();
       } catch {
-        flashError('Could not add link.');
+        flashError("Could not add link.");
       }
     },
     [taskId, onGraphChange],
@@ -280,13 +304,19 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
   const handleEdit = useCallback(
     async (linkId: string, url: string) => {
       const trimmed = url.trim();
-      if (!trimmed) { setEditingId(null); return; }
+      if (!trimmed) {
+        setEditingId(null);
+        return;
+      }
       const target = localRef.current.find((l) => l.id === linkId);
-      if (target && trimmed === target.url) { setEditingId(null); return; }
+      if (target && trimmed === target.url) {
+        setEditingId(null);
+        return;
+      }
       try {
         classifyLink(trimmed);
       } catch {
-        flashError('Invalid URL.');
+        flashError("Invalid URL.");
         return;
       }
       setEditingId(null);
@@ -299,7 +329,7 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
         setLocal(next);
         onGraphChange?.();
       } catch {
-        flashError('Could not update link.');
+        flashError("Could not update link.");
       }
     },
     [onGraphChange],
@@ -359,7 +389,10 @@ export function LinksSection({ taskId, links, onGraphChange }: LinksSectionProps
       {adding && (
         <LinkAddForm
           onSubmit={(url) => void handleAdd(url)}
-          onCancel={() => { setAdding(false); setError(null); }}
+          onCancel={() => {
+            setAdding(false);
+            setError(null);
+          }}
         />
       )}
 
@@ -432,7 +465,7 @@ function LinkCard({
         {display}
       </a>
       <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint opacity-0 transition-opacity group-hover/link:opacity-100">
-        {link.kind.replace(/_/g, ' ')}
+        {link.kind.replace(/_/g, " ")}
       </span>
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/link:opacity-100">
         <button
@@ -478,7 +511,10 @@ function LinkEditForm({ initialUrl, onSubmit, onCancel }: LinkEditFormProps) {
 
   const submit = () => {
     const trimmed = url.trim();
-    if (!trimmed) { onCancel(); return; }
+    if (!trimmed) {
+      onCancel();
+      return;
+    }
     onSubmit(trimmed);
   };
 
@@ -492,8 +528,14 @@ function LinkEditForm({ initialUrl, onSubmit, onCancel }: LinkEditFormProps) {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); submit(); }
-            if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
           }}
           className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 font-mono text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent"
         />
@@ -535,11 +577,14 @@ interface LinkAddFormProps {
  * @returns Form element.
  */
 function LinkAddForm({ onSubmit, onCancel }: LinkAddFormProps) {
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState("");
 
   const submit = () => {
     const trimmed = url.trim();
-    if (!trimmed) { onCancel(); return; }
+    if (!trimmed) {
+      onCancel();
+      return;
+    }
     onSubmit(trimmed);
   };
 
@@ -553,8 +598,14 @@ function LinkAddForm({ onSubmit, onCancel }: LinkAddFormProps) {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); submit(); }
-            if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
           }}
           placeholder="github.com/owner/repo/pull/1"
           className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 font-mono text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent"

@@ -48,8 +48,9 @@ describe("RLS — defense-in-depth on team isolation", () => {
     try {
       await c.begin(async (tx) => {
         await tx`SELECT set_config('app.user_id', ${fx.userId}, true)`;
-        const found =
-          await tx<{ id: string }[]>`SELECT id FROM projects WHERE id = ${fx.projectId}`;
+        const found = await tx<
+          { id: string }[]
+        >`SELECT id FROM projects WHERE id = ${fx.projectId}`;
         expect(found.length).toBe(1);
         expect(found[0].id).toBe(fx.projectId);
       });
@@ -66,8 +67,9 @@ describe("RLS — defense-in-depth on team isolation", () => {
     try {
       await c.begin(async (tx) => {
         await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
-        const leaked =
-          await tx<{ id: string }[]>`SELECT id FROM projects WHERE id = ${teamA.projectId}`;
+        const leaked = await tx<
+          { id: string }[]
+        >`SELECT id FROM projects WHERE id = ${teamA.projectId}`;
         expect(leaked.length).toBe(0);
       });
     } finally {
@@ -99,8 +101,9 @@ describe("RLS — defense-in-depth on team isolation", () => {
     try {
       await c.begin(async (tx) => {
         await tx`SELECT set_config('app.user_id', ${teamB.userId}, true)`;
-        const leaked =
-          await tx<{ id: string }[]>`SELECT id FROM tasks WHERE project_id = ${teamA.projectId}`;
+        const leaked = await tx<
+          { id: string }[]
+        >`SELECT id FROM tasks WHERE project_id = ${teamA.projectId}`;
         expect(leaked.length).toBe(0);
       });
     } finally {
@@ -146,8 +149,9 @@ describe("RLS — defense-in-depth on team isolation", () => {
     const fx = await seedUserOrgProject("rls-i");
     const c = serviceRoleConnect();
     try {
-      const rows =
-        await c<{ id: string }[]>`SELECT id FROM projects WHERE id = ${fx.projectId}`;
+      const rows = await c<
+        { id: string }[]
+      >`SELECT id FROM projects WHERE id = ${fx.projectId}`;
       expect(rows.length).toBe(1);
       expect(rows[0].id).toBe(fx.projectId);
     } finally {
@@ -276,7 +280,9 @@ describe("RLS — defense-in-depth on team isolation", () => {
     try {
       await c.begin(async (tx) => {
         await tx`SELECT set_config('app.user_id', ${fxB.userId}, true)`;
-        const visible = await tx<{ source_task_id: string; target_task_id: string }[]>`
+        const visible = await tx<
+          { source_task_id: string; target_task_id: string }[]
+        >`
           SELECT source_task_id, target_task_id FROM task_edges
           WHERE target_task_id = ${taskBId}
         `;
@@ -341,7 +347,9 @@ describe("RLS — defense-in-depth on team isolation", () => {
     try {
       await c.begin(async (tx) => {
         await tx`SELECT set_config('app.user_id', ${fxA.userId}, true)`;
-        const visible = await tx<{ source_task_id: string; target_task_id: string }[]>`
+        const visible = await tx<
+          { source_task_id: string; target_task_id: string }[]
+        >`
           SELECT source_task_id, target_task_id FROM task_edges
           WHERE source_task_id = ${taskAId}
         `;

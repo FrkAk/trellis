@@ -14,9 +14,7 @@ export type TaskContextBundles = {
   working: string;
 };
 
-type Fn<T> = (
-  ctx: QueryFunctionContext<readonly unknown[]>,
-) => Promise<T>;
+type Fn<T> = (ctx: QueryFunctionContext<readonly unknown[]>) => Promise<T>;
 
 /**
  * QueryFn factory for the home-grid project list.

@@ -2,7 +2,10 @@ import { test, expect, describe, afterEach } from "bun:test";
 import { truncateAll } from "@/tests/setup/schema";
 import { superuserPool } from "@/tests/setup/global";
 import { seedUserOrgProject } from "@/tests/setup/seed";
-import { listMembershipsWithCounts, demoteMemberWithGuard } from "@/lib/data/membership";
+import {
+  listMembershipsWithCounts,
+  demoteMemberWithGuard,
+} from "@/lib/data/membership";
 
 afterEach(async () => {
   await truncateAll();
@@ -176,7 +179,8 @@ describe("demoteMemberWithGuard", () => {
     );
 
     expect(outcome.kind).toBe("fail");
-    if (outcome.kind === "fail") expect(outcome.code).toBe("cannot_leave_only_owner");
+    if (outcome.kind === "fail")
+      expect(outcome.code).toBe("cannot_leave_only_owner");
     expect(demoteCalled).toBe(false);
   });
 

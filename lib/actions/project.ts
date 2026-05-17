@@ -1,25 +1,25 @@
-'use server';
+"use server";
 
-import { z } from 'zod/v4';
-import { parseIdentifier } from '@/lib/graph/identifier';
+import { z } from "zod/v4";
+import { parseIdentifier } from "@/lib/graph/identifier";
 import {
   deleteCategory,
   renameCategory,
   renameProjectIdentifier,
   updateProject,
   type ProjectUpdate,
-} from '@/lib/graph/mutations';
-import { deleteProject as deleteProjectCore } from '@/lib/data/project';
-import { ProjectNotFoundError } from '@/lib/graph/errors';
-import { getAuthContext } from '@/lib/auth/context';
+} from "@/lib/graph/mutations";
+import { deleteProject as deleteProjectCore } from "@/lib/data/project";
+import { ProjectNotFoundError } from "@/lib/graph/errors";
+import { getAuthContext } from "@/lib/auth/context";
 import {
   ForbiddenError,
   InsufficientRoleError,
-} from '@/lib/auth/authorization';
-import { isUniqueViolation } from '@/lib/db/errors';
+} from "@/lib/auth/authorization";
+import { isUniqueViolation } from "@/lib/db/errors";
 
 /** Statuses the web app is allowed to set. Coding agents handle brainstorming/decomposing via MCP. */
-const WEB_ALLOWED_STATUSES = ['active', 'archived'] as const;
+const WEB_ALLOWED_STATUSES = ["active", "archived"] as const;
 export type WebAllowedStatus = (typeof WEB_ALLOWED_STATUSES)[number];
 const webStatusSchema = z.enum(WEB_ALLOWED_STATUSES);
 
@@ -34,8 +34,11 @@ const projectIdSchema = uuidSchema;
 const categoryNameSchema = z
   .string()
   .trim()
-  .min(1, 'Category name is required')
-  .max(CATEGORY_NAME_MAX, `Category name must be ${CATEGORY_NAME_MAX} characters or less`);
+  .min(1, "Category name is required")
+  .max(
+    CATEGORY_NAME_MAX,
+    `Category name must be ${CATEGORY_NAME_MAX} characters or less`,
+  );
 
 const projectSettingsChangesSchema = z.strictObject({
   title: z.string().trim().min(1).max(TITLE_MAX).optional(),
@@ -45,7 +48,9 @@ const projectSettingsChangesSchema = z.strictObject({
 });
 
 /** Fields the settings modal can update. All optional. */
-export type ProjectSettingsChanges = z.infer<typeof projectSettingsChangesSchema>;
+export type ProjectSettingsChanges = z.infer<
+  typeof projectSettingsChangesSchema
+>;
 
 /** Result of a project settings update action. */
 export type ProjectSettingsResult =
@@ -53,13 +58,13 @@ export type ProjectSettingsResult =
   | {
       ok: false;
       code:
-        | 'unauthorized'
-        | 'forbidden'
-        | 'invalid_input'
-        | 'invalid_identifier'
-        | 'identifier_conflict'
-        | 'not_found'
-        | 'unknown';
+        | "unauthorized"
+        | "forbidden"
+        | "invalid_input"
+        | "invalid_identifier"
+        | "identifier_conflict"
+        | "not_found"
+        | "unknown";
       message: string;
     };
 
@@ -69,11 +74,11 @@ export type ProjectCategoryResult =
   | {
       ok: false;
       code:
-        | 'unauthorized'
-        | 'forbidden'
-        | 'invalid_input'
-        | 'not_found'
-        | 'unknown';
+        | "unauthorized"
+        | "forbidden"
+        | "invalid_input"
+        | "not_found"
+        | "unknown";
       message: string;
     };
 
@@ -83,11 +88,11 @@ export type ProjectStatusResult =
   | {
       ok: false;
       code:
-        | 'unauthorized'
-        | 'forbidden'
-        | 'invalid_input'
-        | 'not_found'
-        | 'unknown';
+        | "unauthorized"
+        | "forbidden"
+        | "invalid_input"
+        | "not_found"
+        | "unknown";
       message: string;
     };
 
@@ -97,29 +102,30 @@ export type ProjectDeleteResult =
   | {
       ok: false;
       code:
-        | 'unauthorized'
-        | 'forbidden'
-        | 'invalid_input'
-        | 'not_found'
-        | 'unknown';
+        | "unauthorized"
+        | "forbidden"
+        | "invalid_input"
+        | "not_found"
+        | "unknown";
       message: string;
     };
 
-const UNAUTHORIZED_MESSAGE = 'You must be signed in to perform this action.';
+const UNAUTHORIZED_MESSAGE = "You must be signed in to perform this action.";
 const FORBIDDEN_MESSAGE = "You don't have access to this project.";
 
 /**
  * Resolve auth context and translate auth failures into typed error results.
  * @returns The resolved AuthContext, or a typed `unauthorized` failure.
  */
-async function resolveAuthOrFail():
-  Promise<{ ok: true; ctx: Awaited<ReturnType<typeof getAuthContext>> }
-    | { ok: false; code: 'unauthorized'; message: string }> {
+async function resolveAuthOrFail(): Promise<
+  | { ok: true; ctx: Awaited<ReturnType<typeof getAuthContext>> }
+  | { ok: false; code: "unauthorized"; message: string }
+> {
   try {
     const ctx = await getAuthContext();
     return { ok: true, ctx };
   } catch {
-    return { ok: false, code: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
+    return { ok: false, code: "unauthorized", message: UNAUTHORIZED_MESSAGE };
   }
 }
 
@@ -138,7 +144,7 @@ export async function deleteProjectAction(
 
   const idParsed = projectIdSchema.safeParse(projectId);
   if (!idParsed.success) {
-    return { ok: false, code: 'invalid_input', message: 'Invalid project id.' };
+    return { ok: false, code: "invalid_input", message: "Invalid project id." };
   }
 
   try {
@@ -148,21 +154,24 @@ export async function deleteProjectAction(
     if (err instanceof InsufficientRoleError) {
       return {
         ok: false,
-        code: 'forbidden',
-        message: 'Only team admins can delete projects.',
+        code: "forbidden",
+        message: "Only team admins can delete projects.",
       };
     }
     if (err instanceof ForbiddenError) {
-      return { ok: false, code: 'not_found', message: 'Project not found.' };
+      return { ok: false, code: "not_found", message: "Project not found." };
     }
     if (err instanceof ProjectNotFoundError) {
-      return { ok: false, code: 'not_found', message: 'Project not found.' };
+      return { ok: false, code: "not_found", message: "Project not found." };
     }
-    console.error('deleteProjectAction failed', { projectId: idParsed.data, err });
+    console.error("deleteProjectAction failed", {
+      projectId: idParsed.data,
+      err,
+    });
     return {
       ok: false,
-      code: 'unknown',
-      message: 'Something went wrong. Please try again.',
+      code: "unknown",
+      message: "Something went wrong. Please try again.",
     };
   }
 }
@@ -183,24 +192,37 @@ export async function updateProjectStatus(
   const idParsed = projectIdSchema.safeParse(projectId);
   const statusParsed = webStatusSchema.safeParse(status);
   if (!idParsed.success || !statusParsed.success) {
-    return { ok: false, code: 'invalid_input', message: 'Invalid project id or status.' };
+    return {
+      ok: false,
+      code: "invalid_input",
+      message: "Invalid project id or status.",
+    };
   }
 
   try {
-    const updated = await updateProject(idParsed.data, { status: statusParsed.data });
+    const updated = await updateProject(idParsed.data, {
+      status: statusParsed.data,
+    });
     if (!updated) {
-      return { ok: false, code: 'not_found', message: 'Project not found.' };
+      return { ok: false, code: "not_found", message: "Project not found." };
     }
     return { ok: true };
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
+      return { ok: false, code: "forbidden", message: FORBIDDEN_MESSAGE };
     }
     if (err instanceof ProjectNotFoundError) {
-      return { ok: false, code: 'not_found', message: 'Project not found.' };
+      return { ok: false, code: "not_found", message: "Project not found." };
     }
-    console.error('updateProjectStatus failed', { projectId: idParsed.data, err });
-    return { ok: false, code: 'unknown', message: 'Something went wrong. Please try again.' };
+    console.error("updateProjectStatus failed", {
+      projectId: idParsed.data,
+      err,
+    });
+    return {
+      ok: false,
+      code: "unknown",
+      message: "Something went wrong. Please try again.",
+    };
   }
 }
 
@@ -219,35 +241,37 @@ export async function updateProjectSettings(
 
   const idParsed = projectIdSchema.safeParse(projectId);
   if (!idParsed.success) {
-    return { ok: false, code: 'invalid_input', message: 'Invalid project id.' };
+    return { ok: false, code: "invalid_input", message: "Invalid project id." };
   }
   const changesParsed = projectSettingsChangesSchema.safeParse(changes);
   if (!changesParsed.success) {
     return {
       ok: false,
-      code: 'invalid_input',
-      message: changesParsed.error.issues[0]?.message ?? 'Invalid input.',
+      code: "invalid_input",
+      message: changesParsed.error.issues[0]?.message ?? "Invalid input.",
     };
   }
   const validChanges = changesParsed.data;
 
   const update: ProjectUpdate = {};
   if (validChanges.title !== undefined) update.title = validChanges.title;
-  if (validChanges.description !== undefined) update.description = validChanges.description;
-  if (validChanges.categories !== undefined) update.categories = validChanges.categories;
+  if (validChanges.description !== undefined)
+    update.description = validChanges.description;
+  if (validChanges.categories !== undefined)
+    update.categories = validChanges.categories;
 
   try {
     if (validChanges.identifier !== undefined) {
       const parsed = parseIdentifier(validChanges.identifier);
       if (!parsed.ok) {
-        return { ok: false, code: 'invalid_identifier', message: parsed.error };
+        return { ok: false, code: "invalid_identifier", message: parsed.error };
       }
       await renameProjectIdentifier(idParsed.data, parsed.value);
     }
     if (Object.keys(update).length > 0) {
       const result = await updateProject(idParsed.data, update);
       if (!result) {
-        return { ok: false, code: 'not_found', message: 'Project not found.' };
+        return { ok: false, code: "not_found", message: "Project not found." };
       }
     }
     return { ok: true };
@@ -255,28 +279,31 @@ export async function updateProjectSettings(
     if (err instanceof InsufficientRoleError) {
       return {
         ok: false,
-        code: 'forbidden',
-        message: 'Only team admins can rename project identifiers.',
+        code: "forbidden",
+        message: "Only team admins can rename project identifiers.",
       };
     }
     if (err instanceof ForbiddenError) {
-      return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
+      return { ok: false, code: "forbidden", message: FORBIDDEN_MESSAGE };
     }
     if (err instanceof ProjectNotFoundError) {
-      return { ok: false, code: 'not_found', message: 'Project not found.' };
+      return { ok: false, code: "not_found", message: "Project not found." };
     }
     if (isUniqueViolation(err)) {
       return {
         ok: false,
-        code: 'identifier_conflict',
-        message: 'That identifier is already in use by another project',
+        code: "identifier_conflict",
+        message: "That identifier is already in use by another project",
       };
     }
-    console.error('updateProjectSettings failed', { projectId: idParsed.data, err });
+    console.error("updateProjectSettings failed", {
+      projectId: idParsed.data,
+      err,
+    });
     return {
       ok: false,
-      code: 'unknown',
-      message: 'Something went wrong. Please try again.',
+      code: "unknown",
+      message: "Something went wrong. Please try again.",
     };
   }
 }
@@ -300,7 +327,11 @@ export async function renameProjectCategory(
   const oldParsed = categoryNameSchema.safeParse(oldName);
   const newParsed = categoryNameSchema.safeParse(newName);
   if (!idParsed.success || !oldParsed.success || !newParsed.success) {
-    return { ok: false, code: 'invalid_input', message: 'Invalid project id or category name.' };
+    return {
+      ok: false,
+      code: "invalid_input",
+      message: "Invalid project id or category name.",
+    };
   }
 
   try {
@@ -308,13 +339,16 @@ export async function renameProjectCategory(
     return { ok: true };
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
+      return { ok: false, code: "forbidden", message: FORBIDDEN_MESSAGE };
     }
     if (err instanceof ProjectNotFoundError) {
-      return { ok: false, code: 'not_found', message: 'Project not found.' };
+      return { ok: false, code: "not_found", message: "Project not found." };
     }
-    console.error('renameProjectCategory failed', { projectId: idParsed.data, err });
-    return { ok: false, code: 'unknown', message: 'Failed to rename category' };
+    console.error("renameProjectCategory failed", {
+      projectId: idParsed.data,
+      err,
+    });
+    return { ok: false, code: "unknown", message: "Failed to rename category" };
   }
 }
 
@@ -334,7 +368,11 @@ export async function deleteProjectCategory(
   const idParsed = projectIdSchema.safeParse(projectId);
   const nameParsed = categoryNameSchema.safeParse(categoryName);
   if (!idParsed.success || !nameParsed.success) {
-    return { ok: false, code: 'invalid_input', message: 'Invalid project id or category name.' };
+    return {
+      ok: false,
+      code: "invalid_input",
+      message: "Invalid project id or category name.",
+    };
   }
 
   try {
@@ -342,12 +380,15 @@ export async function deleteProjectCategory(
     return { ok: true };
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      return { ok: false, code: 'forbidden', message: FORBIDDEN_MESSAGE };
+      return { ok: false, code: "forbidden", message: FORBIDDEN_MESSAGE };
     }
     if (err instanceof ProjectNotFoundError) {
-      return { ok: false, code: 'not_found', message: 'Project not found.' };
+      return { ok: false, code: "not_found", message: "Project not found." };
     }
-    console.error('deleteProjectCategory failed', { projectId: idParsed.data, err });
-    return { ok: false, code: 'unknown', message: 'Failed to remove category' };
+    console.error("deleteProjectCategory failed", {
+      projectId: idParsed.data,
+      err,
+    });
+    return { ok: false, code: "unknown", message: "Failed to remove category" };
   }
 }

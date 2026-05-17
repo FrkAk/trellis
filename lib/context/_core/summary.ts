@@ -1,10 +1,6 @@
 import "server-only";
 
-import type {
-  EdgeType,
-  Priority,
-  Estimate,
-} from "@/lib/types";
+import type { EdgeType, Priority, Estimate } from "@/lib/types";
 import { getTaskEdgesDetailedTx } from "@/lib/data/edge";
 import { getTaskFullTx } from "@/lib/data/task";
 import type { TaskLinkRef } from "@/lib/data/views";

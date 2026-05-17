@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { Avatar } from '@/components/shared/Avatar';
-import type { HistoryEntry } from '@/lib/types';
-import { SectionHeader } from './SectionHeader';
+import { Avatar } from "@/components/shared/Avatar";
+import type { HistoryEntry } from "@/lib/types";
+import { SectionHeader } from "./SectionHeader";
 
 interface ActivitySectionProps {
   /** History entries from the schema. */
@@ -50,11 +50,11 @@ interface ActivityRowProps {
  * @returns List item element.
  */
 function ActivityRow({ entry, isLast }: ActivityRowProps) {
-  const author = entry.actor === 'ai' ? 'agent' : 'user';
+  const author = entry.actor === "ai" ? "agent" : "user";
   return (
     <li className="relative flex items-center gap-2.5 py-2">
       <span className="relative flex w-[22px] justify-center">
-        <Avatar name={author} size={18} accent={entry.actor === 'ai'} />
+        <Avatar name={author} size={18} accent={entry.actor === "ai"} />
         {!isLast && (
           <span
             aria-hidden="true"
@@ -63,7 +63,7 @@ function ActivityRow({ entry, isLast }: ActivityRowProps) {
         )}
       </span>
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-text-secondary">
-        <span className="font-medium text-text-primary">{author}</span>{' '}
+        <span className="font-medium text-text-primary">{author}</span>{" "}
         {entry.label.toLowerCase()}
       </span>
       <span className="font-mono text-[10px] tabular-nums text-text-faint">
@@ -82,10 +82,10 @@ function ActivityRow({ entry, isLast }: ActivityRowProps) {
  */
 function formatRelative(iso: string): string {
   const ts = Date.parse(iso);
-  if (Number.isNaN(ts)) return '—';
+  if (Number.isNaN(ts)) return "—";
   const diff = Date.now() - ts;
   const min = Math.floor(diff / 60_000);
-  if (min < 1) return 'now';
+  if (min < 1) return "now";
   if (min < 60) return `${min}m`;
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr}h`;

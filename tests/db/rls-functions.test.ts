@@ -58,12 +58,14 @@ describe("invite-code SECURITY DEFINER functions", () => {
       useCount: 2,
     });
     const sr = superuserPool();
-    const rows = await sr<Array<{
-      revoked_at: Date | null;
-      expires_at: Date | null;
-      max_uses: number | null;
-      use_count: number;
-    }>>`SELECT revoked_at, expires_at, max_uses, use_count FROM public.lookup_team_invite_code(${"LOOKUP1"})`;
+    const rows = await sr<
+      Array<{
+        revoked_at: Date | null;
+        expires_at: Date | null;
+        max_uses: number | null;
+        use_count: number;
+      }>
+    >`SELECT revoked_at, expires_at, max_uses, use_count FROM public.lookup_team_invite_code(${"LOOKUP1"})`;
     expect(rows.length).toBe(1);
     expect(rows[0].revoked_at).toBeNull();
     expect(rows[0].max_uses).toBe(5);
@@ -110,7 +112,9 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
     const sr = serviceRoleConnect();
     try {
-      const [row] = await sr<Array<{ use_count: number; reserved_by: string | null }>>`
+      const [row] = await sr<
+        Array<{ use_count: number; reserved_by: string | null }>
+      >`
         SELECT use_count, reserved_by FROM team_invite_code WHERE id = ${seeded.id}
       `;
       expect(row.use_count).toBe(1);
@@ -198,11 +202,13 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
     const sr = serviceRoleConnect();
     try {
-      const [row] = await sr<Array<{
-        use_count: number;
-        reserved_by: string | null;
-        reserved_until: Date | null;
-      }>>`
+      const [row] = await sr<
+        Array<{
+          use_count: number;
+          reserved_by: string | null;
+          reserved_until: Date | null;
+        }>
+      >`
         SELECT use_count, reserved_by, reserved_until
         FROM team_invite_code WHERE id = ${seeded.id}
       `;
@@ -234,11 +240,13 @@ describe("invite-code SECURITY DEFINER functions", () => {
     }
     const sr = serviceRoleConnect();
     try {
-      const [row] = await sr<Array<{
-        use_count: number;
-        reserved_by: string | null;
-        reserved_until: Date | null;
-      }>>`
+      const [row] = await sr<
+        Array<{
+          use_count: number;
+          reserved_by: string | null;
+          reserved_until: Date | null;
+        }>
+      >`
         SELECT use_count, reserved_by, reserved_until
         FROM team_invite_code WHERE id = ${seeded.id}
       `;
@@ -292,12 +300,16 @@ describe("invite-code SECURITY DEFINER functions", () => {
 
     const cb = appUserConnect();
     try {
-      const finalize = await cb<Array<{ release_team_invite_code_slot: boolean }>>`
+      const finalize = await cb<
+        Array<{ release_team_invite_code_slot: boolean }>
+      >`
         SELECT public.release_team_invite_code_slot(${seeded.id}::uuid, ${fxB.userId}::uuid, TRUE)
       `;
       expect(finalize[0].release_team_invite_code_slot).toBe(false);
 
-      const rollback = await cb<Array<{ release_team_invite_code_slot: boolean }>>`
+      const rollback = await cb<
+        Array<{ release_team_invite_code_slot: boolean }>
+      >`
         SELECT public.release_team_invite_code_slot(${seeded.id}::uuid, ${fxB.userId}::uuid, FALSE)
       `;
       expect(rollback[0].release_team_invite_code_slot).toBe(false);
@@ -307,10 +319,12 @@ describe("invite-code SECURITY DEFINER functions", () => {
 
     const sr = serviceRoleConnect();
     try {
-      const [row] = await sr<Array<{
-        use_count: number;
-        reserved_by: string | null;
-      }>>`
+      const [row] = await sr<
+        Array<{
+          use_count: number;
+          reserved_by: string | null;
+        }>
+      >`
         SELECT use_count, reserved_by FROM team_invite_code WHERE id = ${seeded.id}
       `;
       expect(row.use_count).toBe(1);
@@ -339,7 +353,9 @@ describe("invite-code SECURITY DEFINER functions", () => {
 
     const sr = serviceRoleConnect();
     try {
-      const [row] = await sr<Array<{ use_count: number; reserved_by: string | null }>>`
+      const [row] = await sr<
+        Array<{ use_count: number; reserved_by: string | null }>
+      >`
         SELECT use_count, reserved_by FROM team_invite_code WHERE code = ${"h2reservenoguc"}
       `;
       expect(row.use_count).toBe(0);
@@ -372,7 +388,9 @@ describe("invite-code SECURITY DEFINER functions", () => {
 
     const sr = serviceRoleConnect();
     try {
-      const [row] = await sr<Array<{ use_count: number; reserved_by: string | null }>>`
+      const [row] = await sr<
+        Array<{ use_count: number; reserved_by: string | null }>
+      >`
         SELECT use_count, reserved_by FROM team_invite_code WHERE code = ${"h2reservebind"}
       `;
       expect(row.use_count).toBe(0);
@@ -475,11 +493,13 @@ describe("invite-code SECURITY DEFINER functions", () => {
 
     const sr2 = serviceRoleConnect();
     try {
-      const [row] = await sr2<Array<{
-        use_count: number;
-        reserved_until: Date | null;
-        reserved_by: string | null;
-      }>>`
+      const [row] = await sr2<
+        Array<{
+          use_count: number;
+          reserved_until: Date | null;
+          reserved_by: string | null;
+        }>
+      >`
         SELECT use_count, reserved_until, reserved_by FROM team_invite_code WHERE id = ${seeded.id}
       `;
       expect(row.use_count).toBe(1);
@@ -509,7 +529,11 @@ describe("invite-code SECURITY DEFINER functions", () => {
       ];
       for (const fn of fns) {
         const [row] = await sr<
-          Array<{ app_user: boolean; public_role: boolean; service_role: boolean }>
+          Array<{
+            app_user: boolean;
+            public_role: boolean;
+            service_role: boolean;
+          }>
         >`
           SELECT has_function_privilege('app_user', ${fn}, 'EXECUTE') AS app_user,
                  has_function_privilege('public', ${fn}, 'EXECUTE') AS public_role,
@@ -528,7 +552,9 @@ describe("invite-code SECURITY DEFINER functions", () => {
 describe("CVE-2018-1058 hardening — search_path", () => {
   test("every SECURITY DEFINER function in public.* ends search_path with pg_temp", async () => {
     const sr = serviceRoleConnect();
-    const rows = await sr<Array<{ proname: string; proconfig: string[] | null }>>`
+    const rows = await sr<
+      Array<{ proname: string; proconfig: string[] | null }>
+    >`
       SELECT p.proname, p.proconfig
       FROM pg_proc p
       INNER JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -539,8 +565,13 @@ describe("CVE-2018-1058 hardening — search_path", () => {
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       const settings = row.proconfig ?? [];
-      const searchPath = settings.find((s) => s.toLowerCase().startsWith("search_path="));
-      expect(searchPath, `${row.proname}: missing SET search_path`).toBeDefined();
+      const searchPath = settings.find((s) =>
+        s.toLowerCase().startsWith("search_path="),
+      );
+      expect(
+        searchPath,
+        `${row.proname}: missing SET search_path`,
+      ).toBeDefined();
       expect(
         (searchPath ?? "").endsWith("pg_temp"),
         `${row.proname}: search_path must end with pg_temp (got ${searchPath})`,
@@ -550,7 +581,9 @@ describe("CVE-2018-1058 hardening — search_path", () => {
 
   test("trigger functions reject_*_change pin search_path", async () => {
     const sr = serviceRoleConnect();
-    const rows = await sr<Array<{ proname: string; proconfig: string[] | null }>>`
+    const rows = await sr<
+      Array<{ proname: string; proconfig: string[] | null }>
+    >`
       SELECT p.proname, p.proconfig
       FROM pg_proc p
       INNER JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -564,8 +597,13 @@ describe("CVE-2018-1058 hardening — search_path", () => {
     expect(rows.length).toBe(3);
     for (const row of rows) {
       const settings = row.proconfig ?? [];
-      const searchPath = settings.find((s) => s.toLowerCase().startsWith("search_path="));
-      expect(searchPath, `${row.proname}: missing SET search_path`).toBeDefined();
+      const searchPath = settings.find((s) =>
+        s.toLowerCase().startsWith("search_path="),
+      );
+      expect(
+        searchPath,
+        `${row.proname}: missing SET search_path`,
+      ).toBeDefined();
       expect((searchPath ?? "").endsWith("pg_temp")).toBe(true);
     }
   });
@@ -589,7 +627,10 @@ describe("CVE-2018-1058 hardening — search_path", () => {
 });
 
 describe("is_caller_in_invitation_org SECURITY DEFINER", () => {
-  async function seedInvitation(orgId: string, email: string): Promise<{ id: string }> {
+  async function seedInvitation(
+    orgId: string,
+    email: string,
+  ): Promise<{ id: string }> {
     const su = superuserPool();
     const [row] = await su<{ id: string }[]>`
       INSERT INTO neon_auth."invitation"
@@ -622,7 +663,9 @@ describe("is_caller_in_invitation_org SECURITY DEFINER", () => {
   test("returns true when caller is in invitation's org and expected matches", async () => {
     const fx = await seedUserOrgProject("inv-hit");
     const inv = await seedInvitation(fx.organizationId, "hit@test.local");
-    expect(await callPredicate(fx.userId, inv.id, fx.organizationId)).toBe(true);
+    expect(await callPredicate(fx.userId, inv.id, fx.organizationId)).toBe(
+      true,
+    );
   });
 
   test("returns false when expected org does not match the invitation's org (binding)", async () => {
@@ -634,20 +677,26 @@ describe("is_caller_in_invitation_org SECURITY DEFINER", () => {
       VALUES (${fxB.organizationId}, ${fxA.userId}, 'member', now())
     `;
     const inv = await seedInvitation(fxA.organizationId, "bind@test.local");
-    expect(await callPredicate(fxA.userId, inv.id, fxB.organizationId)).toBe(false);
+    expect(await callPredicate(fxA.userId, inv.id, fxB.organizationId)).toBe(
+      false,
+    );
   });
 
   test("returns false when caller is not a member of the invitation's org", async () => {
     const fxA = await seedUserOrgProject("inv-cross-a");
     const fxB = await seedUserOrgProject("inv-cross-b");
     const inv = await seedInvitation(fxA.organizationId, "cross@test.local");
-    expect(await callPredicate(fxB.userId, inv.id, fxA.organizationId)).toBe(false);
+    expect(await callPredicate(fxB.userId, inv.id, fxA.organizationId)).toBe(
+      false,
+    );
   });
 
   test("returns false on a nonexistent invitation id", async () => {
     const fx = await seedUserOrgProject("inv-bogus");
     const bogus = "00000000-0000-0000-0000-000000000000";
-    expect(await callPredicate(fx.userId, bogus, fx.organizationId)).toBe(false);
+    expect(await callPredicate(fx.userId, bogus, fx.organizationId)).toBe(
+      false,
+    );
   });
 });
 
@@ -1042,4 +1091,3 @@ describe("AsAdmin functions — org-scoped correctness", () => {
     expect(bRows.map((r) => r.id)).not.toContain(a.projectId);
   });
 });
-

@@ -1,11 +1,11 @@
-import { type ReactNode } from 'react';
-import { getProjectChrome } from '@/lib/graph/queries';
-import { requireMembership } from '@/lib/auth/membership';
-import { ForbiddenError } from '@/lib/auth/authorization';
-import { roleHasProjectPermission } from '@/lib/auth/permissions';
-import { AppShell } from '@/components/layout/AppShell';
-import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader';
-import { notFound, redirect } from 'next/navigation';
+import { type ReactNode } from "react";
+import { getProjectChrome } from "@/lib/graph/queries";
+import { requireMembership } from "@/lib/auth/membership";
+import { ForbiddenError } from "@/lib/auth/authorization";
+import { roleHasProjectPermission } from "@/lib/auth/permissions";
+import { AppShell } from "@/components/layout/AppShell";
+import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
+import { notFound, redirect } from "next/navigation";
 
 interface LayoutProps {
   /** @param children - Page content. */
@@ -31,11 +31,11 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
     throw err;
   }
 
-  if (project.status === 'brainstorming' || project.status === 'decomposing') {
-    redirect('/');
+  if (project.status === "brainstorming" || project.status === "decomposing") {
+    redirect("/");
   }
 
-  const canRename = roleHasProjectPermission(project.memberRole, ['rename']);
+  const canRename = roleHasProjectPermission(project.memberRole, ["rename"]);
 
   return (
     <AppShell>
@@ -50,9 +50,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps) {
         taskCount={project.taskCount}
         canRename={canRename}
       />
-      <div className="flex min-h-0 flex-1 flex-col">
-        {children}
-      </div>
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </AppShell>
   );
 }

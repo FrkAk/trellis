@@ -8,11 +8,15 @@
 export function formatRelative(date: Date | string | number): string {
   const d = new Date(date);
   const sec = Math.round((Date.now() - d.getTime()) / 1000);
-  if (sec < 60) return 'just now';
+  if (sec < 60) return "just now";
   if (sec < 3600) return `${Math.round(sec / 60)}m ago`;
   if (sec < 86400) return `${Math.round(sec / 3600)}h ago`;
   if (sec < 86400 * 30) return `${Math.round(sec / 86400)}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /**
@@ -24,8 +28,8 @@ export function formatRelative(date: Date | string | number): string {
  */
 export function formatAbsolute(date: Date | string | number): string {
   return new Date(date).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }

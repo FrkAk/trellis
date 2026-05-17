@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { motion, AnimatePresence } from 'motion/react';
-import { useCallback, useState } from 'react';
+import { motion, AnimatePresence } from "motion/react";
+import { useCallback, useState } from "react";
 
 interface CopyButtonProps {
   /** @param text - Text to copy to clipboard. */
@@ -17,7 +17,11 @@ interface CopyButtonProps {
  * @param props - Copy button configuration.
  * @returns A styled copy button element.
  */
-export function CopyButton({ text, label = 'Copy', className = '' }: CopyButtonProps) {
+export function CopyButton({
+  text,
+  label = "Copy",
+  className = "",
+}: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -35,13 +39,15 @@ export function CopyButton({ text, label = 'Copy', className = '' }: CopyButtonP
       className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md font-mono transition-colors ${className}`}
       style={{
         height: 28,
-        padding: '0 10px',
+        padding: "0 10px",
         fontSize: 12,
-        background: copied ? 'color-mix(in srgb, var(--color-done) 12%, transparent)' : 'transparent',
-        color: copied ? 'var(--color-done)' : 'var(--color-text-secondary)',
+        background: copied
+          ? "color-mix(in srgb, var(--color-done) 12%, transparent)"
+          : "transparent",
+        color: copied ? "var(--color-done)" : "var(--color-text-secondary)",
         border: copied
-          ? '1px solid color-mix(in srgb, var(--color-done) 28%, transparent)'
-          : '1px solid var(--color-border-strong)',
+          ? "1px solid color-mix(in srgb, var(--color-done) 28%, transparent)"
+          : "1px solid var(--color-border-strong)",
       }}
     >
       <AnimatePresence mode="wait" initial={false}>
@@ -76,7 +82,7 @@ export function CopyButton({ text, label = 'Copy', className = '' }: CopyButtonP
           </motion.svg>
         )}
       </AnimatePresence>
-      <span aria-live="polite">{copied ? 'Copied!' : label}</span>
+      <span aria-live="polite">{copied ? "Copied!" : label}</span>
     </motion.button>
   );
 }

@@ -1,10 +1,10 @@
 /** Deterministic 5-stop palette used to colour initial-only avatars. */
 const AVATAR_PALETTE: ReadonlyArray<readonly [string, string]> = [
-  ['#818cf8', '#6ee7d8'],
-  ['#f472b6', '#fb923c'],
-  ['#34d399', '#60a5fa'],
-  ['#fbbf24', '#f87171'],
-  ['#a78bfa', '#22d3ee'],
+  ["#818cf8", "#6ee7d8"],
+  ["#f472b6", "#fb923c"],
+  ["#34d399", "#60a5fa"],
+  ["#fbbf24", "#f87171"],
+  ["#a78bfa", "#22d3ee"],
 ];
 
 interface AvatarProps {
@@ -42,8 +42,11 @@ function paletteIndex(name: string): number {
  */
 function initialsFor(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
-  if (parts.length === 0) return '?';
-  return parts.map((p) => p[0]).join('').toUpperCase();
+  if (parts.length === 0) return "?";
+  return parts
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
 }
 
 /**
@@ -51,14 +54,21 @@ function initialsFor(name: string): string {
  * @param props - Avatar configuration.
  * @returns A round avatar element sized via `size`.
  */
-export function Avatar({ name, src, size = 22, ring = false, accent = false, className = '' }: AvatarProps) {
-  const safeName = (name ?? '').trim() || '?';
+export function Avatar({
+  name,
+  src,
+  size = 22,
+  ring = false,
+  accent = false,
+  className = "",
+}: AvatarProps) {
+  const safeName = (name ?? "").trim() || "?";
   const idx = paletteIndex(safeName);
   const [c1, c2] = AVATAR_PALETTE[idx];
   const initials = initialsFor(safeName);
 
   const background = accent
-    ? 'var(--color-accent-grad)'
+    ? "var(--color-accent-grad)"
     : `linear-gradient(135deg, ${c1}, ${c2})`;
 
   if (src) {
@@ -69,16 +79,16 @@ export function Avatar({ name, src, size = 22, ring = false, accent = false, cla
           width: size,
           height: size,
           flexShrink: 0,
-          boxShadow: ring ? '0 0 0 2px var(--color-surface)' : undefined,
+          boxShadow: ring ? "0 0 0 2px var(--color-surface)" : undefined,
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- avatar images are 18-56px, next/image optimization is overkill and external OAuth avatars require remote pattern config */}
         <img
           src={src}
-          alt={safeName === '?' ? '' : safeName}
+          alt={safeName === "?" ? "" : safeName}
           width={size}
           height={size}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       </span>
     );
@@ -87,18 +97,18 @@ export function Avatar({ name, src, size = 22, ring = false, accent = false, cla
   return (
     <span
       role="img"
-      aria-label={safeName === '?' ? 'Unknown user' : safeName}
+      aria-label={safeName === "?" ? "Unknown user" : safeName}
       className={`inline-flex items-center justify-center rounded-full font-mono ${className}`}
       style={{
         width: size,
         height: size,
         flexShrink: 0,
         background,
-        color: 'rgba(0,0,0,0.65)',
+        color: "rgba(0,0,0,0.65)",
         fontSize: Math.round(size * 0.38),
         fontWeight: 600,
-        letterSpacing: '0.01em',
-        boxShadow: ring ? '0 0 0 2px var(--color-surface)' : undefined,
+        letterSpacing: "0.01em",
+        boxShadow: ring ? "0 0 0 2px var(--color-surface)" : undefined,
       }}
     >
       {initials}

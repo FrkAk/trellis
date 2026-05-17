@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Copy-to-clipboard lifecycle state. */
-export type CopyStatus = 'idle' | 'copied' | 'error';
+export type CopyStatus = "idle" | "copied" | "error";
 
 /**
  * Copy-to-clipboard state with auto-reset and error surfacing.
@@ -14,7 +14,7 @@ export type CopyStatus = 'idle' | 'copied' | 'error';
  * @returns `{ status, copy }` — call `copy(text)` per invocation.
  */
 export function useCopyToClipboard(resetMs = 1200) {
-  const [status, setStatus] = useState<CopyStatus>('idle');
+  const [status, setStatus] = useState<CopyStatus>("idle");
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -31,22 +31,25 @@ export function useCopyToClipboard(resetMs = 1200) {
    * @param text - String to write to the clipboard.
    * @returns Resolves once status has transitioned.
    */
-  const copy = useCallback(async (text: string) => {
-    if (timeoutRef.current !== null) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      setStatus('copied');
-    } catch {
-      setStatus('error');
-    }
-    timeoutRef.current = setTimeout(() => {
-      setStatus('idle');
-      timeoutRef.current = null;
-    }, resetMs);
-  }, [resetMs]);
+  const copy = useCallback(
+    async (text: string) => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus("copied");
+      } catch {
+        setStatus("error");
+      }
+      timeoutRef.current = setTimeout(() => {
+        setStatus("idle");
+        timeoutRef.current = null;
+      }, resetMs);
+    },
+    [resetMs],
+  );
 
   return { status, copy };
 }

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { AnimatePresence, motion } from 'motion/react';
-import { useEffect } from 'react';
-import { IconX } from '@/components/shared/icons';
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect } from "react";
+import { IconX } from "@/components/shared/icons";
 
 interface PropRailDrawerProps {
   /** Whether the drawer is open. */
@@ -21,17 +21,22 @@ interface PropRailDrawerProps {
  * @param props - Drawer configuration.
  * @returns Backdrop + sliding panel.
  */
-export function PropRailDrawer({ open, onClose, children }: PropRailDrawerProps) {
+export function PropRailDrawer({
+  open,
+  onClose,
+  children,
+}: PropRailDrawerProps) {
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         e.stopPropagation();
         onClose();
       }
     };
-    document.addEventListener('keydown', handler, { capture: true });
-    return () => document.removeEventListener('keydown', handler, { capture: true });
+    document.addEventListener("keydown", handler, { capture: true });
+    return () =>
+      document.removeEventListener("keydown", handler, { capture: true });
   }, [open, onClose]);
 
   return (
@@ -50,12 +55,12 @@ export function PropRailDrawer({ open, onClose, children }: PropRailDrawerProps)
           />
           <motion.aside
             key="panel"
-            initial={{ x: '100%' }}
+            initial={{ x: "100%" }}
             animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
+            exit={{ x: "100%" }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             className="fixed right-0 top-[var(--topbar-h)] z-50 flex h-[calc(var(--viewport-height)-var(--topbar-h))] flex-col border-l border-border bg-base shadow-[var(--shadow-float)]"
-            style={{ width: 'var(--rail-w)' }}
+            style={{ width: "var(--rail-w)" }}
             role="dialog"
             aria-label="Task properties"
           >

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { IconUndo } from '@/components/shared/icons';
+import { useState, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { IconUndo } from "@/components/shared/icons";
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -31,8 +31,12 @@ export function useUndo<T>(opts: UseUndoOptions<T>): {
   const stackRef = useRef(stack);
   const onUndoRef = useRef(opts.onUndo);
 
-  useEffect(() => { stackRef.current = stack; }, [stack]);
-  useEffect(() => { onUndoRef.current = opts.onUndo; }, [opts.onUndo]);
+  useEffect(() => {
+    stackRef.current = stack;
+  }, [stack]);
+  useEffect(() => {
+    onUndoRef.current = opts.onUndo;
+  }, [opts.onUndo]);
 
   const canUndo = stack.length > 0;
 
@@ -60,20 +64,23 @@ export function useUndo<T>(opts: UseUndoOptions<T>): {
     if (!opts.keyboard || !canUndo) return;
 
     const panelSelector =
-      typeof opts.keyboard === 'object' ? opts.keyboard.panelSelector : undefined;
+      typeof opts.keyboard === "object"
+        ? opts.keyboard.panelSelector
+        : undefined;
 
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-        if (panelSelector && !(e.target as HTMLElement)?.closest(panelSelector)) return;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        if (panelSelector && !(e.target as HTMLElement)?.closest(panelSelector))
+          return;
         e.preventDefault();
         undo();
       }
     };
 
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [opts.keyboard, canUndo, undo]);
 
   return { canUndo, push, undo };
@@ -97,7 +104,11 @@ interface UndoButtonProps {
  * @param props - Visibility flag, click handler, optional className.
  * @returns AnimatePresence-wrapped motion button, or nothing when canUndo is false.
  */
-export function UndoButton({ canUndo, onUndo, className = '' }: UndoButtonProps) {
+export function UndoButton({
+  canUndo,
+  onUndo,
+  className = "",
+}: UndoButtonProps) {
   return (
     <AnimatePresence>
       {canUndo && (

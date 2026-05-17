@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { LoadingSpinner } from './LoadingSpinner';
+import { useEffect, useState } from "react";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 /**
  * `LoadingSpinner` that does not mount until `delay` ms have elapsed since
@@ -19,8 +19,8 @@ import { LoadingSpinner } from './LoadingSpinner';
  */
 export function DeferredLoadingSpinner({
   delay = 250,
-  label = 'Loading',
-  className = '',
+  label = "Loading",
+  className = "",
 }: {
   delay?: number;
   label?: string;
@@ -34,5 +34,7 @@ export function DeferredLoadingSpinner({
   }, [delay]);
 
   if (!show) return null;
-  return <LoadingSpinner label={label} className={`loading-fade-in ${className}`} />;
+  return (
+    <LoadingSpinner label={label} className={`loading-fade-in ${className}`} />
+  );
 }

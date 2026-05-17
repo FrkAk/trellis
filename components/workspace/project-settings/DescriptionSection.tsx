@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useCallback, useState } from 'react';
-import { updateProjectSettings } from '@/lib/actions/project';
-import { AutoGrowTextarea } from '@/components/shared/AutoGrowTextarea';
-import { Markdown } from '@/components/shared/Markdown';
+import { useCallback, useState } from "react";
+import { updateProjectSettings } from "@/lib/actions/project";
+import { AutoGrowTextarea } from "@/components/shared/AutoGrowTextarea";
+import { Markdown } from "@/components/shared/Markdown";
 
 interface DescriptionSectionProps {
   projectId: string;
@@ -12,17 +12,22 @@ interface DescriptionSectionProps {
 }
 
 const SECTION_LABEL_CLASS =
-  'font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted';
+  "font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted";
 
 /**
  * Click-to-edit textarea (3 rows) that persists on blur.
  * @param props - Section props.
  * @returns Description row.
  */
-export function DescriptionSection({ projectId, initialDescription, onUpdated }: DescriptionSectionProps) {
+export function DescriptionSection({
+  projectId,
+  initialDescription,
+  onUpdated,
+}: DescriptionSectionProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(initialDescription);
-  const [syncedInitialDescription, setSyncedInitialDescription] = useState(initialDescription);
+  const [syncedInitialDescription, setSyncedInitialDescription] =
+    useState(initialDescription);
   const [serverError, setServerError] = useState<string | null>(null);
 
   if (initialDescription !== syncedInitialDescription && !editing) {
@@ -38,10 +43,18 @@ export function DescriptionSection({ projectId, initialDescription, onUpdated }:
     setEditing(false);
     const trimmed = value.trim();
     if (trimmed !== value) setValue(trimmed);
-    if (trimmed === initialDescription) { setServerError(null); return; }
+    if (trimmed === initialDescription) {
+      setServerError(null);
+      return;
+    }
     setServerError(null);
-    const result = await updateProjectSettings(projectId, { description: trimmed });
-    if (!result.ok) { setServerError(result.message); return; }
+    const result = await updateProjectSettings(projectId, {
+      description: trimmed,
+    });
+    if (!result.ok) {
+      setServerError(result.message);
+      return;
+    }
     onUpdated?.();
   }, [value, initialDescription, projectId, onUpdated]);
 
@@ -55,7 +68,11 @@ export function DescriptionSection({ projectId, initialDescription, onUpdated }:
           onChange={(e) => setValue(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') { setValue(initialDescription); setServerError(null); setEditing(false); }
+            if (e.key === "Escape") {
+              setValue(initialDescription);
+              setServerError(null);
+              setEditing(false);
+            }
           }}
           autoFocus
           className="w-full resize-none rounded-lg border border-border-strong bg-base px-3 py-2 text-sm text-text-secondary outline-none transition-colors focus:border-accent"
@@ -66,7 +83,10 @@ export function DescriptionSection({ projectId, initialDescription, onUpdated }:
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); }
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setEditing(true);
+            }
           }}
           className="cursor-pointer rounded-lg border border-transparent px-3 py-2 text-sm text-text-secondary transition-colors hover:border-border hover:bg-surface-hover/40"
         >

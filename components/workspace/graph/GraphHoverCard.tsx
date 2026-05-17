@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { StatusGlyph } from '@/components/shared/StatusGlyph';
-import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
-import { IconArrowRight } from '@/components/shared/icons';
-import type { TaskGraphSlim } from '@/lib/data/views';
+import { StatusGlyph } from "@/components/shared/StatusGlyph";
+import { MonoId, type MonoIdTone } from "@/components/shared/MonoId";
+import { IconArrowRight } from "@/components/shared/icons";
+import type { TaskGraphSlim } from "@/lib/data/views";
 
 interface GraphHoverCardProps {
   /** @param task - Hovered task. */
@@ -31,7 +31,13 @@ interface GraphHoverCardProps {
  * @param props - Hovered task + edge counts + open handler.
  * @returns Clickable preview card.
  */
-export function GraphHoverCard({ task, upstreamCount, downstreamCount, onOpen, stage }: GraphHoverCardProps) {
+export function GraphHoverCard({
+  task,
+  upstreamCount,
+  downstreamCount,
+  onOpen,
+  stage,
+}: GraphHoverCardProps) {
   return (
     <button
       type="button"

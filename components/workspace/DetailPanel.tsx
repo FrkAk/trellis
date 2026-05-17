@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { DetailView } from './detail/DetailView';
-import type { TaskEdge } from '@/lib/db/schema';
-import type { TaskFull, TaskGraphSlim } from '@/lib/data/views';
+import { DetailView } from "./detail/DetailView";
+import type { TaskEdge } from "@/lib/db/schema";
+import type { TaskFull, TaskGraphSlim } from "@/lib/data/views";
 
 interface DetailPanelProps {
   /** Task UUID. */
@@ -69,7 +69,7 @@ export function DetailPanel({
   onToggleNavigator,
   propRailOpen,
   onTogglePropRail,
-  className = '',
+  className = "",
 }: DetailPanelProps) {
   return (
     <div className={`h-full ${className}`}>

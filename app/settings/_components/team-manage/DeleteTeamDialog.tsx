@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'motion/react';
-import { Button } from '@/components/shared/Button';
-import { useModalChrome } from '@/hooks/useModalChrome';
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
+import { Button } from "@/components/shared/Button";
+import { useModalChrome } from "@/hooks/useModalChrome";
 import {
   deleteTeamAction,
   previewTeamDeleteAction,
   type TeamDeletePreview,
-} from '@/lib/actions/team';
+} from "@/lib/actions/team";
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent';
+  "w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
 
 interface DeleteTeamDialogProps {
   /** Modal visibility. */
@@ -90,7 +90,7 @@ function DeleteTeamDialogBody({
   onError,
 }: DeleteTeamDialogBodyProps) {
   const router = useRouter();
-  const [typedName, setTypedName] = useState('');
+  const [typedName, setTypedName] = useState("");
   const [preview, setPreview] = useState<TeamDeletePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
   const [pending, startTransition] = useTransition();
@@ -127,7 +127,7 @@ function DeleteTeamDialogBody({
         onError(result.message);
         return;
       }
-      router.replace('/');
+      router.replace("/");
     });
   };
 
@@ -157,7 +157,10 @@ function DeleteTeamDialogBody({
         transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
         className="relative w-full max-w-md rounded-xl border border-danger/30 bg-surface p-6 shadow-[var(--shadow-float)]"
       >
-        <h3 id="delete-team-title" className="text-lg font-semibold text-text-primary">
+        <h3
+          id="delete-team-title"
+          className="text-lg font-semibold text-text-primary"
+        >
           Delete <span className="text-danger">{teamName}</span>?
         </h3>
 
@@ -171,24 +174,25 @@ function DeleteTeamDialogBody({
             </p>
           ) : (
             <p>
-              This permanently removes{' '}
+              This permanently removes{" "}
               <span className="font-semibold text-text-primary">
-                {preview.projectCount}{' '}
-                {preview.projectCount === 1 ? 'project' : 'projects'}
+                {preview.projectCount}{" "}
+                {preview.projectCount === 1 ? "project" : "projects"}
               </span>
-              ,{' '}
+              ,{" "}
               <span className="font-semibold text-text-primary">
-                {preview.taskCount} {preview.taskCount === 1 ? 'task' : 'tasks'}
+                {preview.taskCount} {preview.taskCount === 1 ? "task" : "tasks"}
               </span>
-              , every dependency edge, all team invitations, and revokes every member&apos;s
-              MCP sessions. User accounts stay.
+              , every dependency edge, all team invitations, and revokes every
+              member&apos;s MCP sessions. User accounts stay.
             </p>
           )}
         </div>
 
         <label className="mt-4 block">
           <span className="mb-1 block text-xs font-medium text-text-secondary">
-            Type <span className="font-mono text-text-primary">{teamName}</span> to confirm
+            Type <span className="font-mono text-text-primary">{teamName}</span>{" "}
+            to confirm
           </span>
           <input
             type="text"
@@ -202,7 +206,12 @@ function DeleteTeamDialogBody({
         </label>
 
         <div className="mt-5 flex items-center justify-end gap-2">
-          <Button variant="ghost" size="md" onClick={onClose} disabled={pending}>
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={onClose}
+            disabled={pending}
+          >
             Cancel
           </Button>
           <motion.button
@@ -214,8 +223,8 @@ function DeleteTeamDialogBody({
             whileTap={canConfirm ? { scale: 0.98 } : undefined}
             className={`inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold transition-colors ${
               canConfirm
-                ? 'cursor-pointer border-danger/40 bg-danger/10 text-danger hover:border-danger hover:bg-danger/15'
-                : 'cursor-not-allowed border-border bg-transparent text-text-muted opacity-40'
+                ? "cursor-pointer border-danger/40 bg-danger/10 text-danger hover:border-danger hover:bg-danger/15"
+                : "cursor-not-allowed border-border bg-transparent text-text-muted opacity-40"
             }`}
           >
             {pending ? (
@@ -225,7 +234,7 @@ function DeleteTeamDialogBody({
                 <span className="loading-dot h-1.5 w-1.5 rounded-full bg-current" />
               </span>
             ) : (
-              'Delete team'
+              "Delete team"
             )}
           </motion.button>
         </div>

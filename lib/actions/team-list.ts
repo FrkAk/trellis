@@ -1,12 +1,12 @@
-'use server';
+"use server";
 
-import { requireSession } from '@/lib/auth/session';
-import { teamFail, type TeamActionResult } from '@/lib/actions/team-errors';
-import { mapTeamViews, type TeamView } from '@/lib/actions/team-list-map';
-import { listMembershipsWithCounts } from '@/lib/data/membership';
-import type { Cursor } from '@/lib/data/cursor';
+import { requireSession } from "@/lib/auth/session";
+import { teamFail, type TeamActionResult } from "@/lib/actions/team-errors";
+import { mapTeamViews, type TeamView } from "@/lib/actions/team-list-map";
+import { listMembershipsWithCounts } from "@/lib/data/membership";
+import type { Cursor } from "@/lib/data/cursor";
 
-export type { TeamView } from '@/lib/actions/team-list-map';
+export type { TeamView } from "@/lib/actions/team-list-map";
 
 /** Paginated team list result. */
 export type ListTeamsResult = {
@@ -21,7 +21,9 @@ export type ListTeamsResult = {
  *
  * @returns Discriminated result; `data` is the team list.
  */
-export async function listUserTeamsAction(): Promise<TeamActionResult<TeamView[]>> {
+export async function listUserTeamsAction(): Promise<
+  TeamActionResult<TeamView[]>
+> {
   const result = await listUserTeamsPagedAction({ limit: 100 });
   if (!result.ok) return result;
   return { ok: true, data: result.data.rows };
@@ -42,17 +44,21 @@ export async function listUserTeamsPagedAction(
     const session = await requireSession();
     userId = session.user.id;
   } catch {
-    return teamFail('unauthorized');
+    return teamFail("unauthorized");
   }
 
   try {
-    const { memberships, countByOrg, nextCursor } = await listMembershipsWithCounts(userId, {
-      limit: input.limit,
-      cursor: input.cursor,
-    });
-    return { ok: true, data: { rows: mapTeamViews(memberships, countByOrg), nextCursor } };
+    const { memberships, countByOrg, nextCursor } =
+      await listMembershipsWithCounts(userId, {
+        limit: input.limit,
+        cursor: input.cursor,
+      });
+    return {
+      ok: true,
+      data: { rows: mapTeamViews(memberships, countByOrg), nextCursor },
+    };
   } catch (err) {
-    console.error('listUserTeamsPagedAction failed', err);
-    return teamFail('unknown');
+    console.error("listUserTeamsPagedAction failed", err);
+    return teamFail("unknown");
   }
 }

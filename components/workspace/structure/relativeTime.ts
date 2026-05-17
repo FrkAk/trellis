@@ -8,10 +8,13 @@
  * @param nowMs - Reference time, defaults to `Date.now()` so unit tests stay deterministic.
  * @returns Compact tag.
  */
-export function formatRelative(input: string | Date | null | undefined, nowMs: number = Date.now()): string {
-  if (!input) return '—';
-  const ts = typeof input === 'string' ? Date.parse(input) : input.getTime();
-  if (Number.isNaN(ts)) return '—';
+export function formatRelative(
+  input: string | Date | null | undefined,
+  nowMs: number = Date.now(),
+): string {
+  if (!input) return "—";
+  const ts = typeof input === "string" ? Date.parse(input) : input.getTime();
+  if (Number.isNaN(ts)) return "—";
 
   const diffMs = Math.max(0, nowMs - ts);
   const minute = 60_000;
@@ -21,7 +24,7 @@ export function formatRelative(input: string | Date | null | undefined, nowMs: n
   const month = day * 30;
   const year = day * 365;
 
-  if (diffMs < minute) return 'now';
+  if (diffMs < minute) return "now";
   if (diffMs < hour) return `${Math.floor(diffMs / minute)}m`;
   if (diffMs < day) return `${Math.floor(diffMs / hour)}h`;
   if (diffMs < week) return `${Math.floor(diffMs / day)}d`;

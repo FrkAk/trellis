@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
-import { signOut } from '@/lib/auth-client';
-import { Avatar } from '@/components/shared/Avatar';
-import { Kbd } from '@/components/shared/Kbd';
-import { projectColor } from '@/lib/ui/project-color';
-import { getTeamColor } from '@/lib/ui/team-color';
-import { useSidebarCollapse } from '@/components/layout/SidebarCollapseProvider';
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
+import { signOut } from "@/lib/auth-client";
+import { Avatar } from "@/components/shared/Avatar";
+import { Kbd } from "@/components/shared/Kbd";
+import { projectColor } from "@/lib/ui/project-color";
+import { getTeamColor } from "@/lib/ui/team-color";
+import { useSidebarCollapse } from "@/components/layout/SidebarCollapseProvider";
 import {
   IconChevronRight,
   IconInbox,
@@ -17,7 +17,7 @@ import {
   IconSearch,
   IconSettings,
   IconUser,
-} from '@/components/shared/icons';
+} from "@/components/shared/icons";
 
 /** Slim user shape the sidebar needs — fed by AppShell from `getSession()`. */
 export interface SidebarUser {
@@ -71,9 +71,14 @@ interface SidebarProps {
  * @param props - User, workspace label, and project list.
  * @returns Aside element styled per the design spec.
  */
-export function Sidebar({ user, workspaceLabel, projects, teams }: SidebarProps) {
+export function Sidebar({
+  user,
+  workspaceLabel,
+  projects,
+  teams,
+}: SidebarProps) {
   const [openProjects, setOpenProjects] = useState(true);
-  const pathname = usePathname() ?? '/';
+  const pathname = usePathname() ?? "/";
   const activeProjectId = pathname.match(/^\/project\/([^/]+)/)?.[1];
   const { collapsed, toggle } = useSidebarCollapse();
 
@@ -81,7 +86,9 @@ export function Sidebar({ user, workspaceLabel, projects, teams }: SidebarProps)
     () => groupProjectsByTeam(projects, teams),
     [projects, teams],
   );
-  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(() => new Set());
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(
+    () => new Set(),
+  );
   const toggleTeam = useCallback((teamKey: string) => {
     setCollapsedTeams((prev) => {
       const next = new Set(prev);
@@ -95,9 +102,9 @@ export function Sidebar({ user, workspaceLabel, projects, teams }: SidebarProps)
     <aside
       className="hidden lg:flex h-[var(--viewport-height)] flex-col border-r border-border"
       style={{
-        width: collapsed ? 56 : 'var(--sidebar-w)',
-        background: 'var(--color-base-2)',
-        transition: 'width 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+        width: collapsed ? 56 : "var(--sidebar-w)",
+        background: "var(--color-base-2)",
+        transition: "width 220ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
       {collapsed ? (
@@ -106,7 +113,7 @@ export function Sidebar({ user, workspaceLabel, projects, teams }: SidebarProps)
           workspaceLabel={workspaceLabel}
           projects={projects}
           activeProjectId={activeProjectId}
-          settingsActive={pathname.startsWith('/settings')}
+          settingsActive={pathname.startsWith("/settings")}
           onExpand={toggle}
         />
       ) : (
@@ -148,8 +155,16 @@ export function Sidebar({ user, workspaceLabel, projects, teams }: SidebarProps)
           </div>
 
           <nav className="flex flex-col gap-px px-2">
-            <NavItem icon={<IconInbox size={12} />} label="Inbox" disabledHint="Coming soon" />
-            <NavItem icon={<IconUser size={12} />} label="My tasks" disabledHint="Coming soon" />
+            <NavItem
+              icon={<IconInbox size={12} />}
+              label="Inbox"
+              disabledHint="Coming soon"
+            />
+            <NavItem
+              icon={<IconUser size={12} />}
+              label="My tasks"
+              disabledHint="Coming soon"
+            />
           </nav>
 
           <div className="flex items-center gap-1.5 px-3 pb-1.5 pt-4">
@@ -160,7 +175,9 @@ export function Sidebar({ user, workspaceLabel, projects, teams }: SidebarProps)
             >
               <span
                 className="inline-flex transition-transform duration-150"
-                style={{ transform: openProjects ? 'rotate(90deg)' : undefined }}
+                style={{
+                  transform: openProjects ? "rotate(90deg)" : undefined,
+                }}
               >
                 <IconChevronRight size={10} />
               </span>
@@ -171,7 +188,9 @@ export function Sidebar({ user, workspaceLabel, projects, teams }: SidebarProps)
           {openProjects && (
             <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-2">
               {projects.length === 0 ? (
-                <p className="px-2 py-1 text-[11px] italic text-text-muted">No projects yet</p>
+                <p className="px-2 py-1 text-[11px] italic text-text-muted">
+                  No projects yet
+                </p>
               ) : projectGroups.length === 1 ? (
                 projectGroups[0].projects.map((p) => (
                   <ProjectNavItem
@@ -201,7 +220,10 @@ export function Sidebar({ user, workspaceLabel, projects, teams }: SidebarProps)
 
           {!openProjects && <div className="flex-1" />}
 
-          <UserFooter user={user} settingsActive={pathname.startsWith('/settings')} />
+          <UserFooter
+            user={user}
+            settingsActive={pathname.startsWith("/settings")}
+          />
         </>
       )}
     </aside>
@@ -247,7 +269,7 @@ function CompactSidebar({
   /** Sign out and bounce to the sign-in page. */
   const handleSignOut = async () => {
     await signOut();
-    router.replace('/sign-in');
+    router.replace("/sign-in");
   };
 
   return (
@@ -272,9 +294,21 @@ function CompactSidebar({
       </div>
 
       <nav className="flex flex-col items-center gap-1 px-2 pt-1">
-        <CompactNavIcon icon={<IconSearch size={14} />} label="Search or jump — coming soon" disabled />
-        <CompactNavIcon icon={<IconInbox size={14} />} label="Inbox — coming soon" disabled />
-        <CompactNavIcon icon={<IconUser size={14} />} label="My tasks — coming soon" disabled />
+        <CompactNavIcon
+          icon={<IconSearch size={14} />}
+          label="Search or jump — coming soon"
+          disabled
+        />
+        <CompactNavIcon
+          icon={<IconInbox size={14} />}
+          label="Inbox — coming soon"
+          disabled
+        />
+        <CompactNavIcon
+          icon={<IconUser size={14} />}
+          label="My tasks — coming soon"
+          disabled
+        />
       </nav>
 
       <div className="my-2 mx-3 h-px bg-border" />
@@ -288,14 +322,14 @@ function CompactSidebar({
               href={`/project/${p.id}`}
               title={`${p.title} · ${p.identifier}`}
               className={`relative flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                active ? 'bg-surface-hover' : 'hover:bg-surface-hover/60'
+                active ? "bg-surface-hover" : "hover:bg-surface-hover/60"
               }`}
             >
               {active && (
                 <span
                   aria-hidden="true"
                   className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-sm"
-                  style={{ background: 'var(--color-accent-grad)' }}
+                  style={{ background: "var(--color-accent-grad)" }}
                 />
               )}
               <span
@@ -318,8 +352,8 @@ function CompactSidebar({
           title="Settings"
           className={`inline-flex h-6 w-6 items-center justify-center rounded transition-colors ${
             settingsActive
-              ? 'bg-surface-hover text-text-primary'
-              : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+              ? "bg-surface-hover text-text-primary"
+              : "text-text-muted hover:bg-surface-hover hover:text-text-secondary"
           }`}
         >
           <IconSettings size={13} />
@@ -364,8 +398,8 @@ function CompactNavIcon({ icon, label, disabled }: CompactNavIconProps) {
       aria-label={label}
       className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
         disabled
-          ? 'cursor-not-allowed text-text-muted opacity-80'
-          : 'cursor-pointer text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+          ? "cursor-not-allowed text-text-muted opacity-80"
+          : "cursor-pointer text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       }`}
     >
       {icon}
@@ -383,9 +417,9 @@ function BrandMark() {
       aria-hidden="true"
       className="inline-flex h-[22px] w-[22px] items-center justify-center font-mono text-[11px] font-bold"
       style={{
-        background: 'var(--color-accent-grad)',
+        background: "var(--color-accent-grad)",
         borderRadius: 5,
-        color: '#0b0c10',
+        color: "#0b0c10",
       }}
     >
       m
@@ -413,7 +447,7 @@ function NavItem({ icon, label, disabledHint }: NavItemProps) {
     <button
       type="button"
       disabled
-      aria-label={`${label} (${disabledHint ?? 'disabled'})`}
+      aria-label={`${label} (${disabledHint ?? "disabled"})`}
       title={disabledHint}
       className="flex h-7 w-full cursor-not-allowed items-center gap-2 rounded-md border-none bg-transparent px-2 text-left text-[12px] font-medium text-text-secondary opacity-80"
     >
@@ -490,7 +524,13 @@ interface ProjectTeamGroupProps {
  * @param props - Group, active route, and collapse handlers.
  * @returns Header button followed by project rows when expanded.
  */
-function ProjectTeamGroup({ group, activeProjectId, showSpacer, collapsed, onToggle }: ProjectTeamGroupProps) {
+function ProjectTeamGroup({
+  group,
+  activeProjectId,
+  showSpacer,
+  collapsed,
+  onToggle,
+}: ProjectTeamGroupProps) {
   const team = group.team;
   const teamColor = team ? getTeamColor(team.id) : null;
   const containsActive = activeProjectId
@@ -509,18 +549,18 @@ function ProjectTeamGroup({ group, activeProjectId, showSpacer, collapsed, onTog
       >
         <span
           aria-hidden="true"
-          className={`inline-flex transition-transform duration-150 ${teamColor ? teamColor.text : 'text-text-faint'}`}
-          style={{ transform: collapsed ? undefined : 'rotate(90deg)' }}
+          className={`inline-flex transition-transform duration-150 ${teamColor ? teamColor.text : "text-text-faint"}`}
+          style={{ transform: collapsed ? undefined : "rotate(90deg)" }}
         >
           <IconChevronRight size={10} />
         </span>
         <span
           className={`flex-1 truncate text-left font-mono text-[10px] font-semibold uppercase tracking-[0.10em] ${
-            containsActive ? 'text-text-secondary' : 'text-text-muted'
+            containsActive ? "text-text-secondary" : "text-text-muted"
           } group-hover/team:text-text-secondary`}
-          title={team?.name ?? 'Other projects'}
+          title={team?.name ?? "Other projects"}
         >
-          {team?.name ?? 'Other'}
+          {team?.name ?? "Other"}
         </span>
         {collapsed && (
           <span className="font-mono text-[10px] tabular-nums text-text-faint">
@@ -529,7 +569,10 @@ function ProjectTeamGroup({ group, activeProjectId, showSpacer, collapsed, onTog
         )}
       </button>
       {!collapsed && (
-        <div id={team ? `sidebar-team-${team.id}` : undefined} className="flex flex-col gap-px">
+        <div
+          id={team ? `sidebar-team-${team.id}` : undefined}
+          className="flex flex-col gap-px"
+        >
           {group.projects.map((p) => (
             <ProjectNavItem
               key={p.id}
@@ -563,7 +606,9 @@ function ProjectNavItem({ project, color, active }: ProjectNavItemProps) {
     <Link
       href={`/project/${project.id}`}
       className={`flex h-[26px] items-center gap-2 rounded-md px-2 text-[12px] font-medium transition-colors ${
-        active ? 'bg-surface-hover text-text-primary' : 'text-text-secondary hover:bg-surface-hover'
+        active
+          ? "bg-surface-hover text-text-primary"
+          : "text-text-secondary hover:bg-surface-hover"
       }`}
     >
       <span
@@ -572,7 +617,9 @@ function ProjectNavItem({ project, color, active }: ProjectNavItemProps) {
         style={{ background: color }}
       />
       <span className="flex-1 truncate">{project.title}</span>
-      <span className="font-mono text-[10px] text-text-faint">{project.identifier}</span>
+      <span className="font-mono text-[10px] text-text-faint">
+        {project.identifier}
+      </span>
     </Link>
   );
 }
@@ -595,7 +642,7 @@ function UserFooter({ user, settingsActive }: UserFooterProps) {
   /** Sign out and redirect to sign-in page. */
   const handleSignOut = async () => {
     await signOut();
-    router.replace('/sign-in');
+    router.replace("/sign-in");
   };
 
   const displayName = user.name?.trim() || user.email;
@@ -624,8 +671,8 @@ function UserFooter({ user, settingsActive }: UserFooterProps) {
         title="Settings"
         className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded transition-colors ${
           settingsActive
-            ? 'bg-surface-hover text-text-primary'
-            : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+            ? "bg-surface-hover text-text-primary"
+            : "text-text-muted hover:bg-surface-hover hover:text-text-secondary"
         }`}
       >
         <IconSettings size={13} />

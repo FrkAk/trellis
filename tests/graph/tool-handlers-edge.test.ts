@@ -31,7 +31,13 @@ async function seedTwoTasks() {
   }
 }
 
-for (const placeholder of ["needed", "depends", "related", " Needed ", "DEPENDS"]) {
+for (const placeholder of [
+  "needed",
+  "depends",
+  "related",
+  " Needed ",
+  "DEPENDS",
+]) {
   test(`handleEdge create rejects placeholder note "${placeholder}"`, async () => {
     const { fx, sourceId, targetId } = await seedTwoTasks();
     const ctx = makeAuthContext(fx.userId);

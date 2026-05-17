@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { type ReactNode } from 'react';
+import { type ReactNode } from "react";
 
 interface PageShellProps {
   /** @param children - Page content. */
@@ -15,10 +15,12 @@ interface PageShellProps {
  * @param props - Page shell configuration.
  * @returns A scrollable content container element with a centered max-width inner.
  */
-export function PageShell({ children, className = '' }: PageShellProps) {
+export function PageShell({ children, className = "" }: PageShellProps) {
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className={`mx-auto max-w-3xl px-4 pb-12 pt-6 sm:px-6 lg:max-w-4xl lg:px-8 xl:max-w-5xl ${className}`}>
+      <div
+        className={`mx-auto max-w-3xl px-4 pb-12 pt-6 sm:px-6 lg:max-w-4xl lg:px-8 xl:max-w-5xl ${className}`}
+      >
         {children}
       </div>
     </div>

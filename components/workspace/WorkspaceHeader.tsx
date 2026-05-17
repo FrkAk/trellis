@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { TopBar } from '@/components/layout/TopBar';
-import { ProjectSettingsModal } from '@/components/workspace/project-settings/ProjectSettingsModal';
-import type { ProjectStatus } from '@/lib/types';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { TopBar } from "@/components/layout/TopBar";
+import { ProjectSettingsModal } from "@/components/workspace/project-settings/ProjectSettingsModal";
+import type { ProjectStatus } from "@/lib/types";
 
 interface WorkspaceHeaderProps {
   /** @param projectId - UUID of the project. */
@@ -71,7 +71,13 @@ export function WorkspaceHeader({
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         projectId={projectId}
-        project={{ title: projectName, description, identifier, status, categories }}
+        project={{
+          title: projectName,
+          description,
+          identifier,
+          status,
+          categories,
+        }}
         team={team}
         taskCount={taskCount}
         canRename={canRename}

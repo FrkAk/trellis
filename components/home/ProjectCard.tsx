@@ -1,15 +1,18 @@
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
-import Link from 'next/link';
-import { motion } from 'motion/react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { TeamChip } from '@/components/shared/TeamChip';
-import { ProjectStatusModal, type CliManagedStatus } from '@/components/home/ProjectStatusModal';
-import { IconMore, IconTrash } from '@/components/shared/icons';
-import { projectColor } from '@/lib/ui/project-color';
-import { deleteProjectAction } from '@/lib/actions/project';
-import { projectKeys } from '@/lib/query/keys';
+import { useState, useCallback } from "react";
+import Link from "next/link";
+import { motion } from "motion/react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { TeamChip } from "@/components/shared/TeamChip";
+import {
+  ProjectStatusModal,
+  type CliManagedStatus,
+} from "@/components/home/ProjectStatusModal";
+import { IconMore, IconTrash } from "@/components/shared/icons";
+import { projectColor } from "@/lib/ui/project-color";
+import { deleteProjectAction } from "@/lib/actions/project";
+import { projectKeys } from "@/lib/query/keys";
 
 interface ProjectCardProps {
   /** @param id - Project ID. */
@@ -46,7 +49,7 @@ interface ProjectCardProps {
  * @returns True for `brainstorming` / `decomposing`.
  */
 function isCliManagedStatus(status: string): status is CliManagedStatus {
-  return status === 'brainstorming' || status === 'decomposing';
+  return status === "brainstorming" || status === "decomposing";
 }
 
 /**
@@ -89,12 +92,13 @@ export function ProjectCard({
       setConfirming(false);
     },
   });
-  const opensWorkspace = status === 'active' || status === 'archived';
+  const opensWorkspace = status === "active" || status === "archived";
   const activeTotal = Math.max(totalTasks - cancelledTasks, 0);
-  const percent = activeTotal > 0 ? Math.round((tasksDone / activeTotal) * 100) : 0;
+  const percent =
+    activeTotal > 0 ? Math.round((tasksDone / activeTotal) * 100) : 0;
   const pending = Math.max(activeTotal - tasksDone - tasksInProgress, 0);
   const color = projectColor(identifier);
-  const initial = (identifier[0] ?? title[0] ?? '?').toUpperCase();
+  const initial = (identifier[0] ?? title[0] ?? "?").toUpperCase();
 
   /** Two-step delete: first click arms confirmation; second runs the server action via useMutation. */
   const handleDelete = useCallback(
@@ -129,14 +133,14 @@ export function ProjectCard({
 
   /** Open the CLI-status modal when the user clicks a non-workspace card. */
   const handleCardClick = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest("button")) return;
     setModalOpen(true);
   }, []);
 
   /** Keyboard equivalent for the CLI-status card click. */
   const handleCardKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    if (e.key === 'Enter' || e.key === ' ') {
+    if ((e.target as HTMLElement).closest("button")) return;
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       setModalOpen(true);
     }
@@ -145,7 +149,7 @@ export function ProjectCard({
   const body = (
     <motion.div
       whileHover={{ y: -1 }}
-      transition={{ type: 'tween', duration: 0.14, ease: 'easeOut' }}
+      transition={{ type: "tween", duration: 0.14, ease: "easeOut" }}
       className="group relative flex h-full min-h-[200px] flex-col gap-3.5 rounded-xl border border-border bg-surface p-4 text-left shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-150 ease-out hover:border-border-strong hover:shadow-[var(--shadow-card-hover)]"
     >
       <div className="flex items-center gap-2.5">
@@ -185,7 +189,9 @@ export function ProjectCard({
       <div>
         <div className="mb-1.5 flex items-center text-[11px] text-text-muted">
           <span className="flex-1">
-            <span className="font-mono tabular-nums text-text-primary">{percent}%</span>
+            <span className="font-mono tabular-nums text-text-primary">
+              {percent}%
+            </span>
             <span className="ml-1">complete</span>
           </span>
           <span className="font-mono tabular-nums text-text-faint">
@@ -261,7 +267,7 @@ function BrandMark({ initial, color }: BrandMarkProps) {
     <span
       aria-hidden="true"
       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] font-mono text-[12px] font-bold"
-      style={{ background, color: 'rgba(0, 0, 0, 0.7)' }}
+      style={{ background, color: "rgba(0, 0, 0, 0.7)" }}
     >
       {initial}
     </span>
@@ -287,7 +293,12 @@ interface LifecycleBarProps {
  * @param props - Counts plus the active-task denominator.
  * @returns Segmented bar with 2px gaps and rounded ends.
  */
-function LifecycleBar({ done, inProgress, pending, totalActive }: LifecycleBarProps) {
+function LifecycleBar({
+  done,
+  inProgress,
+  pending,
+  totalActive,
+}: LifecycleBarProps) {
   if (totalActive === 0) {
     return (
       <div
@@ -355,12 +366,13 @@ function StatusPill({ status }: StatusPillProps) {
  * @returns Background, text, and dot Tailwind classes.
  */
 function pillTone(status: string): { bg: string; text: string; dot: string } {
-  if (status === 'active') return { bg: 'bg-done/15', text: 'text-done', dot: 'bg-done' };
-  if (status === 'decomposing')
-    return { bg: 'bg-progress/15', text: 'text-progress', dot: 'bg-progress' };
-  if (status === 'brainstorming')
-    return { bg: 'bg-accent/15', text: 'text-accent-light', dot: 'bg-accent' };
-  return { bg: 'bg-draft/10', text: 'text-draft', dot: 'bg-draft' };
+  if (status === "active")
+    return { bg: "bg-done/15", text: "text-done", dot: "bg-done" };
+  if (status === "decomposing")
+    return { bg: "bg-progress/15", text: "text-progress", dot: "bg-progress" };
+  if (status === "brainstorming")
+    return { bg: "bg-accent/15", text: "text-accent-light", dot: "bg-accent" };
+  return { bg: "bg-draft/10", text: "text-draft", dot: "bg-draft" };
 }
 
 /**
@@ -370,9 +382,9 @@ function pillTone(status: string): { bg: string; text: string; dot: string } {
  * @returns Display label.
  */
 function pillLabel(status: string): string {
-  if (status === 'brainstorming') return 'Idea';
-  if (status === 'decomposing') return 'Building';
-  if (status === 'active') return 'Active';
+  if (status === "brainstorming") return "Idea";
+  if (status === "decomposing") return "Building";
+  if (status === "active") return "Active";
   return status;
 }
 
@@ -397,7 +409,13 @@ interface CardMenuProps {
  * @param props - Open/confirm state and handlers.
  * @returns Trigger button with a small popover.
  */
-function CardMenu({ open, confirming, onToggle, onConfirmDelete, onCancelDelete }: CardMenuProps) {
+function CardMenu({
+  open,
+  confirming,
+  onToggle,
+  onConfirmDelete,
+  onCancelDelete,
+}: CardMenuProps) {
   return (
     <div className="relative">
       <button

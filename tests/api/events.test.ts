@@ -49,121 +49,112 @@ test("GET /api/events — 429 when caller is at the per-user connection cap", as
   expect(res.headers.get("Retry-After")).toBe("5");
 });
 
-test(
-  "GET /api/events — attaches connection and registers project subs in start(), then cleans up on abort",
-  async () => {
-    const f = await seedUserOrgProject("sse-attach");
-    setSession({ user: { id: f.userId } });
+test("GET /api/events — attaches connection and registers project subs in start(), then cleans up on abort", async () => {
+  const f = await seedUserOrgProject("sse-attach");
+  setSession({ user: { id: f.userId } });
 
-    const ac = new AbortController();
-    const res = await GET(
-      new Request("http://test/api/events", { signal: ac.signal }),
-    );
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("text/event-stream");
+  const ac = new AbortController();
+  const res = await GET(
+    new Request("http://test/api/events", { signal: ac.signal }),
+  );
+  expect(res.status).toBe(200);
+  expect(res.headers.get("Content-Type")).toBe("text/event-stream");
 
-    // Pump the first chunk so `start(controller)` runs and its attach/
-    // register block executes.
-    const stream = res.body as ReadableStream<Uint8Array>;
-    const firstFrame = await pumpFirstFrame(stream);
-    expect(firstFrame).toContain(": hello");
+  // Pump the first chunk so `start(controller)` runs and its attach/
+  // register block executes.
+  const stream = res.body as ReadableStream<Uint8Array>;
+  const firstFrame = await pumpFirstFrame(stream);
+  expect(firstFrame).toContain(": hello");
 
-    // The route's invariant: by the time `start` returns, the broker
-    // sees BOTH a live connection AND a registered project sub. If
-    // attach were to run AFTER register, dispatches racing with the
-    // start would yield a subscriber-without-connection and silently
-    // drop the event.
-    expect(broker.hasConnections(f.userId)).toBe(true);
-    expect([...broker.subscribers(`project:${f.projectId}`)]).toEqual([
-      f.userId,
-    ]);
-    expect([...broker.subscribers(`project-list:${f.userId}`)]).toEqual([
-      f.userId,
-    ]);
+  // The route's invariant: by the time `start` returns, the broker
+  // sees BOTH a live connection AND a registered project sub. If
+  // attach were to run AFTER register, dispatches racing with the
+  // start would yield a subscriber-without-connection and silently
+  // drop the event.
+  expect(broker.hasConnections(f.userId)).toBe(true);
+  expect([...broker.subscribers(`project:${f.projectId}`)]).toEqual([f.userId]);
+  expect([...broker.subscribers(`project-list:${f.userId}`)]).toEqual([
+    f.userId,
+  ]);
 
-    // Aborting the request fires the route's `signal.addEventListener('abort', ...)`
-    // which detaches the connection and (since this is the last conn for
-    // the user) clears every sub for the user.
-    ac.abort();
-    // Yield once so the abort handler can run.
-    await new Promise((r) => setTimeout(r, 0));
+  // Aborting the request fires the route's `signal.addEventListener('abort', ...)`
+  // which detaches the connection and (since this is the last conn for
+  // the user) clears every sub for the user.
+  ac.abort();
+  // Yield once so the abort handler can run.
+  await new Promise((r) => setTimeout(r, 0));
 
-    expect(broker.hasConnections(f.userId)).toBe(false);
-    expect([...broker.subscribers(`project:${f.projectId}`)]).toEqual([]);
-    expect([...broker.subscribers(`project-list:${f.userId}`)]).toEqual([]);
-  },
-);
+  expect(broker.hasConnections(f.userId)).toBe(false);
+  expect([...broker.subscribers(`project:${f.projectId}`)]).toEqual([]);
+  expect([...broker.subscribers(`project-list:${f.userId}`)]).toEqual([]);
+});
 
-test(
-  "GET /api/events — dispatches reach the new connection (sanity check on attach-before-register)",
-  async () => {
-    const f = await seedUserOrgProject("sse-dispatch");
-    setSession({ user: { id: f.userId } });
+test("GET /api/events — dispatches reach the new connection (sanity check on attach-before-register)", async () => {
+  const f = await seedUserOrgProject("sse-dispatch");
+  setSession({ user: { id: f.userId } });
 
-    const ac = new AbortController();
-    const res = await GET(
-      new Request("http://test/api/events", { signal: ac.signal }),
-    );
-    const reader = (res.body as ReadableStream<Uint8Array>).getReader();
-    const dec = new TextDecoder();
+  const ac = new AbortController();
+  const res = await GET(
+    new Request("http://test/api/events", { signal: ac.signal }),
+  );
+  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+  const dec = new TextDecoder();
 
-    // Drain the initial `: hello` so the next read lands on the dispatch.
-    await reader.read();
+  // Drain the initial `: hello` so the next read lands on the dispatch.
+  await reader.read();
 
-    broker.dispatch(`project:${f.projectId}`, {
-      kind: "project",
-      projectId: f.projectId,
-    });
+  broker.dispatch(`project:${f.projectId}`, {
+    kind: "project",
+    projectId: f.projectId,
+  });
 
-    const { value } = await reader.read();
-    const frame = dec.decode(value);
-    expect(frame).toContain(`"kind":"project"`);
-    expect(frame).toContain(`"projectId":"${f.projectId}"`);
+  const { value } = await reader.read();
+  const frame = dec.decode(value);
+  expect(frame).toContain(`"kind":"project"`);
+  expect(frame).toContain(`"projectId":"${f.projectId}"`);
 
-    reader.releaseLock();
-    ac.abort();
-    await new Promise((r) => setTimeout(r, 0));
-  },
-);
+  reader.releaseLock();
+  ac.abort();
+  await new Promise((r) => setTimeout(r, 0));
+});
 
-test(
-  "GET /api/events — concurrent attaches respect the cap atomically (closes the TOCTOU race)",
-  async () => {
-    // Regression guard: the outer `isAtConnectionLimit` check is racy —
-    // N concurrent requests can all read `current < cap` before any of
-    // them runs `attach`. The `tryAttach` call inside `start(controller)`
-    // is the authoritative gate; the (cap+1)-th stream must not exceed
-    // the cap once its `start` runs.
-    const f = await seedUserOrgProject("sse-toctou");
-    setSession({ user: { id: f.userId } });
+test("GET /api/events — concurrent attaches respect the cap atomically (closes the TOCTOU race)", async () => {
+  // Regression guard: the outer `isAtConnectionLimit` check is racy —
+  // N concurrent requests can all read `current < cap` before any of
+  // them runs `attach`. The `tryAttach` call inside `start(controller)`
+  // is the authoritative gate; the (cap+1)-th stream must not exceed
+  // the cap once its `start` runs.
+  const f = await seedUserOrgProject("sse-toctou");
+  setSession({ user: { id: f.userId } });
 
-    // Saturate (cap-1) so the next two requests both pass the outer check.
-    for (let i = 0; i < MAX_CONNECTIONS_PER_USER - 1; i++) {
-      broker.attach(f.userId, { send() {}, close() {} });
-    }
+  // Saturate (cap-1) so the next two requests both pass the outer check.
+  for (let i = 0; i < MAX_CONNECTIONS_PER_USER - 1; i++) {
+    broker.attach(f.userId, { send() {}, close() {} });
+  }
 
-    const ac1 = new AbortController();
-    const ac2 = new AbortController();
-    const [r1, r2] = await Promise.all([
-      GET(new Request("http://test/api/events", { signal: ac1.signal })),
-      GET(new Request("http://test/api/events", { signal: ac2.signal })),
-    ]);
-    expect(r1.status).toBe(200);
-    expect(r2.status).toBe(200);
+  const ac1 = new AbortController();
+  const ac2 = new AbortController();
+  const [r1, r2] = await Promise.all([
+    GET(new Request("http://test/api/events", { signal: ac1.signal })),
+    GET(new Request("http://test/api/events", { signal: ac2.signal })),
+  ]);
+  expect(r1.status).toBe(200);
+  expect(r2.status).toBe(200);
 
-    // Pump both streams so each `start(controller)` runs.
-    await pumpFirstFrame(r1.body as ReadableStream<Uint8Array>);
-    await pumpFirstFrame(r2.body as ReadableStream<Uint8Array>);
+  // Pump both streams so each `start(controller)` runs.
+  await pumpFirstFrame(r1.body as ReadableStream<Uint8Array>);
+  await pumpFirstFrame(r2.body as ReadableStream<Uint8Array>);
 
-    // After both starts run, the broker must hold exactly cap connections —
-    // the second stream's `tryAttach` returned false and closed silently.
-    const set = (broker as unknown as {
+  // After both starts run, the broker must hold exactly cap connections —
+  // the second stream's `tryAttach` returned false and closed silently.
+  const set = (
+    broker as unknown as {
       conns: Map<string, Set<unknown>>;
-    }).conns.get(f.userId);
-    expect(set?.size).toBe(MAX_CONNECTIONS_PER_USER);
+    }
+  ).conns.get(f.userId);
+  expect(set?.size).toBe(MAX_CONNECTIONS_PER_USER);
 
-    ac1.abort();
-    ac2.abort();
-    await new Promise((r) => setTimeout(r, 0));
-  },
-);
+  ac1.abort();
+  ac2.abort();
+  await new Promise((r) => setTimeout(r, 0));
+});

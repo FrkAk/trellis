@@ -1,7 +1,10 @@
-'use client';
+"use client";
 
-import { useEffect, useRef } from 'react';
-import type { InputEvent as ReactInputEvent, TextareaHTMLAttributes } from 'react';
+import { useEffect, useRef } from "react";
+import type {
+  InputEvent as ReactInputEvent,
+  TextareaHTMLAttributes,
+} from "react";
 
 type AutoGrowTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
 
@@ -18,12 +21,12 @@ export function AutoGrowTextarea({ onInput, ...rest }: AutoGrowTextareaProps) {
   const resize = () => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = 'auto';
+    el.style.height = "auto";
     const cssMax = parseFloat(getComputedStyle(el).maxHeight);
     const cap = Number.isFinite(cssMax) ? cssMax : DEFAULT_MAX_HEIGHT_PX;
     const target = Math.min(el.scrollHeight, cap);
     el.style.height = `${target}px`;
-    el.style.overflowY = el.scrollHeight > target ? 'auto' : 'hidden';
+    el.style.overflowY = el.scrollHeight > target ? "auto" : "hidden";
   };
 
   useEffect(() => {

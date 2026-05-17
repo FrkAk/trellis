@@ -10,7 +10,9 @@ const listeners = new Set<() => void>();
  */
 export function subscribeTheme(callback: () => void): () => void {
   listeners.add(callback);
-  return () => { listeners.delete(callback); };
+  return () => {
+    listeners.delete(callback);
+  };
 }
 
 /**
@@ -47,4 +49,3 @@ export function setTheme(theme: "light" | "dark") {
   }
   listeners.forEach((cb) => cb());
 }
-

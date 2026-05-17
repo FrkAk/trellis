@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Button } from '@/components/shared/Button';
-import { GetStartedModal } from '@/components/home/GetStartedModal';
-import { IconPlus } from '@/components/shared/icons';
+import { useState } from "react";
+import { Button } from "@/components/shared/Button";
+import { GetStartedModal } from "@/components/home/GetStartedModal";
+import { IconPlus } from "@/components/shared/icons";
 
 interface NewProjectButtonProps {
   /** Switches the modal between first-time and returning copy. */

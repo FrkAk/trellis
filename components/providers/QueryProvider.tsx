@@ -23,7 +23,10 @@ interface QueryProviderProps {
  * @param props - Children and optional dehydrated state.
  * @returns Provider tree wrapping children.
  */
-export function QueryProvider({ children, dehydratedState }: QueryProviderProps) {
+export function QueryProvider({
+  children,
+  dehydratedState,
+}: QueryProviderProps) {
   const [client] = useState(() => getBrowserQueryClient());
   return (
     <QueryClientProvider client={client}>

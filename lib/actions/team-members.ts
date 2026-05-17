@@ -1,21 +1,21 @@
-'use server';
+"use server";
 
-import { headers } from 'next/headers';
-import { z } from 'zod/v4';
-import { auth } from '@/lib/auth';
-import { getAuthContext } from '@/lib/auth/context';
-import { requireTeamMembership } from '@/lib/auth/membership';
-import { ForbiddenError } from '@/lib/auth/authorization';
+import { headers } from "next/headers";
+import { z } from "zod/v4";
+import { auth } from "@/lib/auth";
+import { getAuthContext } from "@/lib/auth/context";
+import { requireTeamMembership } from "@/lib/auth/membership";
+import { ForbiddenError } from "@/lib/auth/authorization";
 import {
   parseOrFail,
   teamFail,
   type TeamActionResult,
-} from '@/lib/actions/team-errors';
+} from "@/lib/actions/team-errors";
 import {
   toMemberView,
   type BetterAuthMemberRow,
   type MemberView,
-} from '@/lib/actions/team-members-map';
+} from "@/lib/actions/team-members-map";
 
 const inputSchema = z.object({
   organizationId: z.uuid(),
@@ -40,7 +40,7 @@ export async function listTeamMembersAction(input: {
   try {
     ctx = await getAuthContext();
   } catch {
-    return teamFail('unauthorized');
+    return teamFail("unauthorized");
   }
 
   const parsed = parseOrFail(inputSchema, input);
@@ -49,7 +49,7 @@ export async function listTeamMembersAction(input: {
   try {
     await requireTeamMembership(parsed.data.organizationId, ctx);
   } catch (err) {
-    if (err instanceof ForbiddenError) return teamFail('forbidden');
+    if (err instanceof ForbiddenError) return teamFail("forbidden");
     throw err;
   }
 
@@ -61,7 +61,7 @@ export async function listTeamMembersAction(input: {
     const rows = (result?.members ?? []) as BetterAuthMemberRow[];
     return { ok: true, data: rows.map(toMemberView) };
   } catch (err) {
-    console.error('listTeamMembersAction failed', err);
-    return teamFail('unknown');
+    console.error("listTeamMembersAction failed", err);
+    return teamFail("unknown");
   }
 }

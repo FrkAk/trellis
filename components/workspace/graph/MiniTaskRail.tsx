@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useMemo } from 'react';
-import { StatusGlyph } from '@/components/shared/StatusGlyph';
-import { MonoId, type MonoIdTone } from '@/components/shared/MonoId';
-import { IconPanelLeft } from '@/components/shared/icons';
-import { useGraphRailCollapse } from '@/components/workspace/graph/GraphRailCollapseProvider';
-import type { TaskGraphSlim } from '@/lib/data/views';
+import { useMemo } from "react";
+import { StatusGlyph } from "@/components/shared/StatusGlyph";
+import { MonoId, type MonoIdTone } from "@/components/shared/MonoId";
+import { IconPanelLeft } from "@/components/shared/icons";
+import { useGraphRailCollapse } from "@/components/workspace/graph/GraphRailCollapseProvider";
+import type { TaskGraphSlim } from "@/lib/data/views";
 
 /** Width of the rail when expanded. */
 const RAIL_WIDTH_EXPANDED = 240;
@@ -40,7 +40,7 @@ interface MiniTaskRailProps {
  * @returns Numeric tail or 0.
  */
 function refOrder(taskRef: string): number {
-  const tail = taskRef.split('-').pop();
+  const tail = taskRef.split("-").pop();
   const n = tail ? parseInt(tail, 10) : NaN;
   return Number.isFinite(n) ? n : 0;
 }
@@ -63,7 +63,7 @@ export function MiniTaskRail({
   onHover,
   onSelect,
   stageMap,
-  className = '',
+  className = "",
 }: MiniTaskRailProps) {
   const { collapsed, toggle: toggleCollapsed } = useGraphRailCollapse();
 
@@ -82,7 +82,7 @@ export function MiniTaskRail({
     >
       <header
         className={`flex h-9 flex-shrink-0 items-center border-b border-border ${
-          collapsed ? 'justify-center px-1' : 'gap-1.5 px-3'
+          collapsed ? "justify-center px-1" : "gap-1.5 px-3"
         }`}
       >
         {!collapsed && (
@@ -99,8 +99,8 @@ export function MiniTaskRail({
         <button
           type="button"
           onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand node rail' : 'Collapse node rail'}
-          title={collapsed ? 'Expand rail' : 'Collapse rail'}
+          aria-label={collapsed ? "Expand node rail" : "Collapse node rail"}
+          title={collapsed ? "Expand rail" : "Collapse rail"}
           className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
           <IconPanelLeft size={12} />
@@ -120,24 +120,27 @@ export function MiniTaskRail({
                 type="button"
                 onMouseEnter={() => onHover(t.id)}
                 onClick={() => onSelect(t.id)}
-                aria-current={active ? 'true' : undefined}
+                aria-current={active ? "true" : undefined}
                 title={`${t.taskRef} · ${t.title}`}
                 className={`relative flex w-full cursor-pointer items-center justify-center py-1.5 transition-colors ${
                   active
-                    ? 'bg-surface-hover'
+                    ? "bg-surface-hover"
                     : hot
-                      ? 'bg-surface-hover/60'
-                      : 'hover:bg-surface-hover/40'
+                      ? "bg-surface-hover/60"
+                      : "hover:bg-surface-hover/40"
                 }`}
               >
                 {active && (
                   <span
                     aria-hidden="true"
                     className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-sm"
-                    style={{ background: 'var(--color-accent-grad)' }}
+                    style={{ background: "var(--color-accent-grad)" }}
                   />
                 )}
-                <StatusGlyph status={stageMap?.get(t.id) ?? t.status} size={11} />
+                <StatusGlyph
+                  status={stageMap?.get(t.id) ?? t.status}
+                  size={11}
+                />
               </button>
             );
           }
@@ -147,20 +150,20 @@ export function MiniTaskRail({
               type="button"
               onMouseEnter={() => onHover(t.id)}
               onClick={() => onSelect(t.id)}
-              aria-current={active ? 'true' : undefined}
+              aria-current={active ? "true" : undefined}
               className={`relative flex w-full cursor-pointer items-center gap-2 px-3 py-1 text-left transition-colors ${
                 active
-                  ? 'bg-surface-hover'
+                  ? "bg-surface-hover"
                   : hot
-                    ? 'bg-surface-hover/60'
-                    : 'hover:bg-surface-hover/40'
+                    ? "bg-surface-hover/60"
+                    : "hover:bg-surface-hover/40"
               }`}
             >
               {active && (
                 <span
                   aria-hidden="true"
                   className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r-sm"
-                  style={{ background: 'var(--color-accent-grad)' }}
+                  style={{ background: "var(--color-accent-grad)" }}
                 />
               )}
               <StatusGlyph status={stageMap?.get(t.id) ?? t.status} size={11} />
@@ -174,8 +177,8 @@ export function MiniTaskRail({
                 style={{
                   color:
                     active || hot
-                      ? 'var(--color-text-primary)'
-                      : 'var(--color-text-secondary)',
+                      ? "var(--color-text-primary)"
+                      : "var(--color-text-secondary)",
                 }}
               >
                 {t.title}

@@ -1,9 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import type {
-  AppUserConn,
-  RlsTx,
-  ServiceRoleConn,
-} from "@/lib/db/connection";
+import type { AppUserConn, RlsTx, ServiceRoleConn } from "@/lib/db/connection";
 
 export type { AppUserConn, RlsTx, ServiceRoleConn };
 

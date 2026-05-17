@@ -1,12 +1,12 @@
 import {
   getProjectGraphSlim,
   getProjectMaxUpdatedAt,
-} from '@/lib/data/project';
-import { getAuthContext } from '@/lib/auth/context';
-import { ForbiddenError } from '@/lib/auth/authorization';
-import { conditionalRespond, etagMatches } from '@/lib/api/conditional';
-import { internalError } from '@/lib/api/error';
-import { error } from '@/lib/api/response';
+} from "@/lib/data/project";
+import { getAuthContext } from "@/lib/auth/context";
+import { ForbiddenError } from "@/lib/auth/authorization";
+import { conditionalRespond, etagMatches } from "@/lib/api/conditional";
+import { internalError } from "@/lib/api/error";
+import { error } from "@/lib/api/response";
 
 /**
  * Conditional handler for `GET` and `HEAD` on the project slim graph.
@@ -31,13 +31,13 @@ async function handle(req: Request, projectId: string): Promise<Response> {
   try {
     ctx = await getAuthContext();
   } catch {
-    return error('Unauthorized', 401);
+    return error("Unauthorized", 401);
   }
 
   try {
     const max = await getProjectMaxUpdatedAt(ctx, projectId);
 
-    if (req.method === 'HEAD' || etagMatches(req, max)) {
+    if (req.method === "HEAD" || etagMatches(req, max)) {
       return conditionalRespond(req, null, max);
     }
 
@@ -45,9 +45,9 @@ async function handle(req: Request, projectId: string): Promise<Response> {
     return conditionalRespond(req, body, max);
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      return error('Project not found', 404);
+      return error("Project not found", 404);
     }
-    return internalError('graph', err);
+    return internalError("graph", err);
   }
 }
 

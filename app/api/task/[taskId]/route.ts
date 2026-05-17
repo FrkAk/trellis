@@ -1,10 +1,10 @@
-import { getAuthContext } from '@/lib/auth/context';
-import { ForbiddenError, assertTaskAccess } from '@/lib/auth/authorization';
-import { conditionalRespond, etagMatches } from '@/lib/api/conditional';
-import { getTaskFull } from '@/lib/data/task';
-import { broker } from '@/lib/realtime/broker';
-import { internalError } from '@/lib/api/error';
-import { error } from '@/lib/api/response';
+import { getAuthContext } from "@/lib/auth/context";
+import { ForbiddenError, assertTaskAccess } from "@/lib/auth/authorization";
+import { conditionalRespond, etagMatches } from "@/lib/api/conditional";
+import { getTaskFull } from "@/lib/data/task";
+import { broker } from "@/lib/realtime/broker";
+import { internalError } from "@/lib/api/error";
+import { error } from "@/lib/api/response";
 
 /** TTL for fetch-implicit task subscriptions — 10 minutes. */
 const TASK_SUBSCRIPTION_TTL_MS = 10 * 60_000;
@@ -35,7 +35,7 @@ async function handle(req: Request, taskId: string): Promise<Response> {
   try {
     ctx = await getAuthContext();
   } catch {
-    return error('Unauthorized', 401);
+    return error("Unauthorized", 401);
   }
 
   try {
@@ -47,7 +47,7 @@ async function handle(req: Request, taskId: string): Promise<Response> {
     // call authorizes itself.
     const access = await assertTaskAccess(taskId, ctx);
 
-    if (req.method === 'HEAD' || etagMatches(req, access.updatedAt)) {
+    if (req.method === "HEAD" || etagMatches(req, access.updatedAt)) {
       return conditionalRespond(req, null, access.updatedAt);
     }
 
@@ -59,9 +59,9 @@ async function handle(req: Request, taskId: string): Promise<Response> {
     return conditionalRespond(req, task, task.updatedAt);
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      return error('Task not found', 404);
+      return error("Task not found", 404);
     }
-    return internalError('task', err);
+    return internalError("task", err);
   }
 }
 

@@ -45,17 +45,27 @@ export function GraphControls({
       className={`absolute bottom-4 z-10 flex w-7 flex-col overflow-hidden rounded-md border border-border bg-surface shadow-[var(--shadow-float)] ${className}`}
       style={{
         right: 16 + rightInset,
-        transition: 'right 240ms cubic-bezier(0.16, 1, 0.3, 1)',
+        transition: "right 240ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
       <ControlButton label="Zoom in" onClick={onZoomIn} divider>
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-          <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path
+            d="M8 3v10M3 8h10"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
         </svg>
       </ControlButton>
       <ControlButton label="Zoom out" onClick={onZoomOut} divider>
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-          <path d="M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path
+            d="M3 8h10"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
         </svg>
       </ControlButton>
       <ControlButton label="Fit to screen" onClick={onFitToScreen} divider>

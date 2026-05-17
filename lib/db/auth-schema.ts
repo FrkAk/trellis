@@ -31,8 +31,12 @@ export const user = neonAuth.table("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("emailVerified").notNull().default(false),
   image: text("image"),
-  createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("createdAt", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   role: text("role"),
   banned: boolean("banned"),
   banReason: text("banReason"),
@@ -45,7 +49,9 @@ export const session = neonAuth.table(
     id: uuid("id").primaryKey().defaultRandom(),
     expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
     token: text("token").notNull().unique(),
-    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull(),
     ipAddress: text("ipAddress"),
     userAgent: text("userAgent"),
@@ -70,11 +76,17 @@ export const account = neonAuth.table(
     accessToken: text("accessToken"),
     refreshToken: text("refreshToken"),
     idToken: text("idToken"),
-    accessTokenExpiresAt: timestamp("accessTokenExpiresAt", { withTimezone: true }),
-    refreshTokenExpiresAt: timestamp("refreshTokenExpiresAt", { withTimezone: true }),
+    accessTokenExpiresAt: timestamp("accessTokenExpiresAt", {
+      withTimezone: true,
+    }),
+    refreshTokenExpiresAt: timestamp("refreshTokenExpiresAt", {
+      withTimezone: true,
+    }),
     scope: text("scope"),
     password: text("password"),
-    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull(),
   },
   (table) => [index("account_userId_idx").on(table.userId)],
@@ -87,8 +99,12 @@ export const verification = neonAuth.table(
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
     expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
-    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
@@ -136,7 +152,9 @@ export const invitation = neonAuth.table(
     role: text("role"),
     status: text("status").notNull().default("pending"),
     expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
-    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     inviterId: uuid("inviterId")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -192,8 +210,12 @@ export const oauthClient = neonAuth.table(
     softwareStatement: text("softwareStatement"),
     referenceId: text("referenceId"),
     userId: uuid("userId").references(() => user.id, { onDelete: "cascade" }),
-    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
     uniqueIndex("oauthClient_clientId_uidx").on(table.clientId),
@@ -212,7 +234,9 @@ export const oauthAccessToken = neonAuth.table(
     userId: uuid("userId").references(() => user.id, { onDelete: "cascade" }),
     referenceId: text("referenceId"),
     scopes: text("scopes").array().notNull(),
-    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
   },
   (table) => [
@@ -235,7 +259,9 @@ export const oauthRefreshToken = neonAuth.table(
     scopes: text("scopes").array().notNull(),
     revoked: timestamp("revoked", { withTimezone: true }),
     authTime: timestamp("authTime", { withTimezone: true }),
-    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
   },
   (table) => [
@@ -252,8 +278,12 @@ export const oauthConsent = neonAuth.table(
     userId: uuid("userId").references(() => user.id, { onDelete: "cascade" }),
     referenceId: text("referenceId"),
     scopes: text("scopes").array().notNull(),
-    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
     index("oauthConsent_clientId_idx").on(table.clientId),

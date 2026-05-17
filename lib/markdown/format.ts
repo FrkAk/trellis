@@ -1,5 +1,5 @@
-import { remark } from 'remark';
-import remarkGfm from 'remark-gfm';
+import { remark } from "remark";
+import remarkGfm from "remark-gfm";
 
 const processor = remark().use(remarkGfm);
 
@@ -9,7 +9,9 @@ const processor = remark().use(remarkGfm);
  * @param src - Raw markdown source, null, or undefined.
  * @returns Formatted markdown, or null for empty input.
  */
-export async function formatMarkdown(src: string | null | undefined): Promise<string | null> {
+export async function formatMarkdown(
+  src: string | null | undefined,
+): Promise<string | null> {
   if (src == null) return null;
   const trimmed = src.trim();
   if (!trimmed) return null;
@@ -22,18 +24,24 @@ export async function formatMarkdown(src: string | null | undefined): Promise<st
  * @param items - Array of objects with an optional `text` field.
  * @returns New array with formatted text values.
  */
-export async function formatTextFieldArray<T extends { text?: unknown }>(items: readonly T[]): Promise<T[]> {
+export async function formatTextFieldArray<T extends { text?: unknown }>(
+  items: readonly T[],
+): Promise<T[]> {
   return Promise.all(
     items.map(async (item) => {
       const text = item.text;
-      if (typeof text !== 'string' || !text.trim()) return item;
+      if (typeof text !== "string" || !text.trim()) return item;
       const formatted = await formatMarkdown(text);
       return { ...item, text: formatted ?? text };
     }),
   );
 }
 
-const TASK_MARKDOWN_FIELDS = ['description', 'implementationPlan', 'executionRecord'] as const;
+const TASK_MARKDOWN_FIELDS = [
+  "description",
+  "implementationPlan",
+  "executionRecord",
+] as const;
 
 /**
  * Format all markdown-bearing fields on a task create/update payload in place on a clone.
@@ -42,19 +50,25 @@ const TASK_MARKDOWN_FIELDS = ['description', 'implementationPlan', 'executionRec
  * @param input - Task fields to format.
  * @returns New object with formatted fields.
  */
-export async function formatTaskMarkdownFields<T extends Record<string, unknown>>(input: T): Promise<T> {
+export async function formatTaskMarkdownFields<
+  T extends Record<string, unknown>,
+>(input: T): Promise<T> {
   const result: Record<string, unknown> = { ...input };
   for (const field of TASK_MARKDOWN_FIELDS) {
     const val = result[field];
-    if (typeof val === 'string' && val.trim()) {
+    if (typeof val === "string" && val.trim()) {
       result[field] = (await formatMarkdown(val)) ?? val;
     }
   }
   if (Array.isArray(result.acceptanceCriteria)) {
-    result.acceptanceCriteria = await formatTextFieldArray(result.acceptanceCriteria as { text?: unknown }[]);
+    result.acceptanceCriteria = await formatTextFieldArray(
+      result.acceptanceCriteria as { text?: unknown }[],
+    );
   }
   if (Array.isArray(result.decisions)) {
-    result.decisions = await formatTextFieldArray(result.decisions as { text?: unknown }[]);
+    result.decisions = await formatTextFieldArray(
+      result.decisions as { text?: unknown }[],
+    );
   }
   return result as T;
 }

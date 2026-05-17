@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useState, useTransition } from 'react';
-import { Button } from '@/components/shared/Button';
-import { createTeamAction } from '@/lib/actions/team';
-import { deriveTeamSlug } from '@/lib/team/derive-slug';
-import { TEAM_NAME_MAX } from '@/lib/team/slug-rules';
+import { useState, useTransition } from "react";
+import { Button } from "@/components/shared/Button";
+import { createTeamAction } from "@/lib/actions/team";
+import { deriveTeamSlug } from "@/lib/team/derive-slug";
+import { TEAM_NAME_MAX } from "@/lib/team/slug-rules";
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent';
+  "w-full rounded-lg border border-border-strong bg-base px-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition-colors focus:border-accent";
 
 interface CreateTeamPanelProps {
   /** Called when the user dismisses the panel without creating a team. */
@@ -21,7 +21,7 @@ interface CreateTeamPanelProps {
 /** Personalize the placeholder using the caller's first name. */
 function teamNamePlaceholder(name: string | null | undefined): string {
   const first = name?.trim().split(/\s+/)[0];
-  return first ? `${first}'s Team` : 'My Team';
+  return first ? `${first}'s Team` : "My Team";
 }
 
 /**
@@ -32,8 +32,12 @@ function teamNamePlaceholder(name: string | null | undefined): string {
  * @param props - Panel callbacks.
  * @returns Accent-tinted form rendered above the team list.
  */
-export function CreateTeamPanel({ onCancel, onCreated, userName }: CreateTeamPanelProps) {
-  const [name, setName] = useState('');
+export function CreateTeamPanel({
+  onCancel,
+  onCreated,
+  userName,
+}: CreateTeamPanelProps) {
+  const [name, setName] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +59,7 @@ export function CreateTeamPanel({ onCancel, onCreated, userName }: CreateTeamPan
         onCreated(result.data.organizationId);
       } catch {
         setError(
-          'Something went wrong reaching the server. Check your connection and try again.',
+          "Something went wrong reaching the server. Check your connection and try again.",
         );
       }
     });
