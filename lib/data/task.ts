@@ -1321,50 +1321,6 @@ export async function fetchDependencyTasks(
   }));
 }
 
-/** Sibling-task projection for the working-context view. */
-export type SiblingTaskInfo = {
-  id: string;
-  taskRef: string;
-  title: string;
-  status: string;
-};
-
-/**
- * Fetch sibling tasks (same project, excluding the current task) with
- * composed taskRef. Internal helper for context assemblers — caller
- * asserted access on the parent task.
- *
- * @param projectId - UUID of the project.
- * @param excludeTaskId - UUID of the task to omit from the result.
- * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
- * @returns Sibling task projections.
- */
-export async function fetchSiblingTasks(
-  projectId: string,
-  excludeTaskId: string,
-  conn: Conn,
-): Promise<SiblingTaskInfo[]> {
-  const rows = await conn
-    .select({
-      id: tasks.id,
-      title: tasks.title,
-      status: tasks.status,
-      sequenceNumber: tasks.sequenceNumber,
-      identifier: projects.identifier,
-    })
-    .from(tasks)
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(
-      sql`${tasks.projectId} = ${projectId} AND ${tasks.id} != ${excludeTaskId}`,
-    );
-  return rows.map((r) => ({
-    id: r.id,
-    taskRef: composeTaskRef(asIdentifier(r.identifier), r.sequenceNumber),
-    title: r.title,
-    status: r.status,
-  }));
-}
-
 // ---------------------------------------------------------------------------
 // Graph helpers
 // ---------------------------------------------------------------------------
