@@ -117,8 +117,22 @@ export const auth = betterAuth({
       loginPage: "/sign-in",
       consentPage: "/consent",
       allowDynamicClientRegistration: true,
-      allowUnauthenticatedClientRegistration: false,
+      // Anonymous DCR stays open: MCP clients (Claude Code, Codex, Cursor,
+      // Gemini) onboard before the user has signed in. Strategy C scopes the
+      // blast radius by short access-token TTL + cascade hooks on session
+      // and password lifecycle + an explicit scope allowlist below.
+      allowUnauthenticatedClientRegistration: true,
+      accessTokenExpiresIn: 60 * 60, // 1h — pinned to BA default for clarity
       refreshTokenExpiresIn: 60 * 60 * 24 * 7, // 7 days, matches session expiresIn
+      // Defensive allowlist for newly-registered clients. Functional no-op
+      // vs the current default (DCR already inherits these scopes), but
+      // explicit so a future scope addition does not silently widen DCR.
+      clientRegistrationAllowedScopes: [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+      ],
       validAudiences: process.env.BETTER_AUTH_URL
         ? [
             process.env.BETTER_AUTH_URL,
