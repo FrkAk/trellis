@@ -1,5 +1,0 @@
-# Format-only commits. `git config blame.ignoreRevsFile .git-blame-ignore-revs`
-# makes `git blame` skip these, so authorship still points at the real change.
-
-# chore: apply biome format baseline
-7bfa8a51bf433eeb8f0bc63c0e523c9b1ce54348
