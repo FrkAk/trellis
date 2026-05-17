@@ -16,7 +16,7 @@ interface AgentsTabProps {
 }
 
 /** Canonical brands rendered as fixed sections, in display order. */
-const KNOWN_BRANDS = ["Claude Code", "Codex", "Cursor", "Gemini"] as const;
+const KNOWN_BRANDS = ["Claude Code", "Codex", "Gemini", "Cursor"] as const;
 type KnownBrand = (typeof KNOWN_BRANDS)[number];
 const KNOWN_BRAND_SET: ReadonlySet<string> = new Set(KNOWN_BRANDS);
 
@@ -34,8 +34,8 @@ function groupSessions(sessions: OAuthSessionView[]): {
   const byBrand: Record<KnownBrand, OAuthSessionView[]> = {
     "Claude Code": [],
     Codex: [],
-    Cursor: [],
     Gemini: [],
+    Cursor: [],
   };
   const otherSessions: OAuthSessionView[] = [];
 
@@ -108,46 +108,27 @@ export function AgentsTab({ initialSessions }: AgentsTabProps) {
             Agents &amp; devices
           </h1>
           <p className="mt-1 text-[13px] text-text-muted">
-            Sessions authorized to run via MCP. Signing out or changing your
-            password revokes every session automatically.
+            Sessions authorized to run via MCP. Changing your password revokes
+            every session automatically.
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {sessions.length > 0 ? (
-            <InlineConfirm
-              trigger={
-                <button
-                  type="button"
-                  className="inline-flex cursor-pointer items-center rounded-md px-2 py-1 text-[12px] text-text-muted transition-colors hover:text-text-primary"
-                >
-                  Revoke all
-                </button>
-              }
-              prompt="Revoke all sessions?"
-              body="Every connected agent will need to re-authorize."
-              confirmLabel="Revoke all"
-              destructive
-              onConfirm={handleRevokeAll}
-            />
-          ) : null}
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={pending}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-text-muted transition-colors hover:text-text-primary disabled:opacity-40"
-            aria-label="Refresh sessions"
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={pending}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-text-muted transition-colors hover:text-text-primary disabled:opacity-40"
+          aria-label="Refresh sessions"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            aria-hidden="true"
+            className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`}
           >
-            <svg
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              aria-hidden="true"
-              className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`}
-            >
-              <path d="M8 3V1.5a.5.5 0 01.85-.36l2.5 2.5a.5.5 0 010 .72l-2.5 2.5A.5.5 0 018 6.5V5a3 3 0 100 6 .75.75 0 010 1.5A4.5 4.5 0 118 3z" />
-            </svg>
-            Refresh
-          </button>
-        </div>
+            <path d="M8 3V1.5a.5.5 0 01.85-.36l2.5 2.5a.5.5 0 010 .72l-2.5 2.5A.5.5 0 018 6.5V5a3 3 0 100 6 .75.75 0 010 1.5A4.5 4.5 0 118 3z" />
+          </svg>
+          Refresh
+        </button>
       </header>
 
       {error ? (
@@ -160,6 +141,25 @@ export function AgentsTab({ initialSessions }: AgentsTabProps) {
       ) : null}
 
       <div className="space-y-3">
+        {sessions.length > 0 ? (
+          <div className="flex min-h-9 items-center justify-end">
+            <InlineConfirm
+              trigger={
+                <button
+                  type="button"
+                  className="cursor-pointer rounded-md px-2.5 py-1 text-[12px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                >
+                  Revoke all
+                </button>
+              }
+              prompt="Revoke all sessions?"
+              body="Every connected agent will need to re-authorize."
+              confirmLabel="Revoke all"
+              destructive
+              onConfirm={handleRevokeAll}
+            />
+          </div>
+        ) : null}
         {KNOWN_BRANDS.map((brand) => (
           <AgentSection
             key={brand}
