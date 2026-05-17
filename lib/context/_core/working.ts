@@ -231,4 +231,3 @@ function formatEdgesSection(edges: WorkingContext["edges"]): string {
   }
   return lines.join("\n");
 }
-
