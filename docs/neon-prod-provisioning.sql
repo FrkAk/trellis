@@ -161,9 +161,7 @@ WHERE grantee = 'app_user'
 --   public.current_user_has_any_membership()   -- bool, drives /onboarding
 --   public.current_user_visible_member(uuid)   -- single member, cross-team scoped
 --   public.team_member_roles_visible(uuid)     -- last-owner guard data
---   public.team_members_visible(uuid)          -- team roster
---   public.team_invitations_visible(uuid)      -- admin-gated invitations
---   public.lookup_user_names_in_shared_orgs(uuid[]) -- batched name lookup
+--   public.lookup_user_names_in_shared_orgs(uuid[]) -- batched name lookup; capped at 1000 ids
 --   public.is_caller_in_invitation_org(uuid, uuid)  -- boolean predicate, no value disclosed
 --
 -- Functions installed (admin/system, service_role only):
@@ -172,9 +170,10 @@ WHERE grantee = 'app_user'
 --   public.lookup_team_invite_code(text)
 --
 -- Triggers installed:
---   projects_organization_id_immutable      -- block cross-team project moves
---   tasks_project_id_immutable              -- block cross-team task moves
---   task_edges_same_project_immutable       -- BEFORE INSERT/UPDATE; rejects
+--   projects_organization_id_immutable             -- block cross-team project moves
+--   tasks_project_id_immutable                     -- block cross-team task moves
+--   team_invite_code_organization_id_immutable     -- block cross-team invite-code reparenting
+--   task_edges_same_project_immutable              -- BEFORE INSERT/UPDATE; rejects
 --     -- edges whose endpoints resolve to different (or NULL/invisible)
 --     -- project_ids. SECURITY DEFINER so it sees rows hidden from app_user
 --     -- by RLS, closing the dual-org / SQLi cross-tenant edge-wiring hole.
@@ -208,6 +207,24 @@ WHERE grantee = 'app_user'
 -- in `(SELECT public.current_user_org_ids())` so the InitPlan node is
 -- guaranteed by the planner. Apply by re-running docker/rls-policies.sql
 -- against the Neon prod database.
+
+-- [PROD UPDATE 2026-05-17] Added team_invite_code_organization_id_immutable
+-- trigger so the invite-code row pointer cannot be reparented across teams
+-- under any RLS evaluation order. Added RESTRICTIVE per-command floor on
+-- task_edges writes so a future permissive write policy cannot OR-relax
+-- the both-endpoints-visible gate. Added explicit WITH CHECK on the
+-- tasks/task_assignees/task_acceptance_criteria/task_decisions/task_links
+-- policies (matching the team_invite_code convention). Added cardinality
+-- guard (max 1000 ids) on lookup_user_names_in_shared_orgs. Dropped the
+-- unused team_members_visible and team_invitations_visible SDFs.
+-- Apply by re-running docker/rls-functions.sql then docker/rls-policies.sql
+-- against the Neon prod database.
+--
+-- [PROD UPDATE 2026-05-17] Added REVOKE CREATE ON SCHEMA public FROM PUBLIC
+-- to docker/grants.sql (CVE-2018-1058 belt). PG ≤ 14 grants CREATE on
+-- schema public to PUBLIC by default; PG 15+ removes the default but the
+-- bootstrap should not depend on server version. Apply by re-running
+-- docker/grants.sql as neondb_owner.
 
 -- [PROD UPDATE 2026-05-16] Every SECURITY DEFINER function now pins
 -- pg_temp last in SET search_path (CVE-2018-1058 layer 1). Already
