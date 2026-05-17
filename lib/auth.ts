@@ -11,9 +11,9 @@ import { findOrgMemberUserIdsAsAdmin } from "@/lib/data/membership";
 import { grantOrgAccess, revokeOrgAccess } from "@/lib/realtime/access";
 
 /**
- * Better Auth server instance.
- * Uses Neon Auth's existing schema (neon_auth) via drizzleAdapter.
- * Provides email/password auth and organization-based team management.
+ * Better Auth server instance with email/password auth and
+ * organization-based team management. Adapts the `neon_auth` schema via
+ * drizzleAdapter.
  */
 export const auth = betterAuth({
   database: drizzleAdapter(authDb, {
@@ -117,16 +117,9 @@ export const auth = betterAuth({
       loginPage: "/sign-in",
       consentPage: "/consent",
       allowDynamicClientRegistration: true,
-      // Anonymous DCR stays open: MCP clients (Claude Code, Codex, Cursor,
-      // Gemini) onboard before the user has signed in. Strategy C scopes the
-      // blast radius by short access-token TTL + cascade hooks on session
-      // and password lifecycle + an explicit scope allowlist below.
       allowUnauthenticatedClientRegistration: true,
-      accessTokenExpiresIn: 60 * 60, // 1h — pinned to BA default for clarity
-      refreshTokenExpiresIn: 60 * 60 * 24 * 7, // 7 days, matches session expiresIn
-      // Defensive allowlist for newly-registered clients. Functional no-op
-      // vs the current default (DCR already inherits these scopes), but
-      // explicit so a future scope addition does not silently widen DCR.
+      accessTokenExpiresIn: 60 * 60, // 1h
+      refreshTokenExpiresIn: 60 * 60 * 24 * 7, // 7 days
       clientRegistrationAllowedScopes: [
         "openid",
         "profile",

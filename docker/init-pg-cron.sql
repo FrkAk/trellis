@@ -1,9 +1,3 @@
--- Requires Neon pg_cron extension enabled in the project console. Apply manually after init-auth.sql.
--- Schedules a nightly janitor that purges revoked or expired OAuth refresh
--- tokens and expired access tokens. Belt-and-braces alongside the cascade
--- hooks in lib/auth.ts: tokens that survive a crashed hook still get
--- collected here. Idempotent — re-running re-schedules the same job.
-
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
 DO $$

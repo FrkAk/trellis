@@ -104,14 +104,9 @@ export async function revokeOAuthSessionAction(input: {
 }
 
 /**
- * Revoke every active OAuth refresh token (and the access tokens minted
- * from them) the caller owns. Reuses the same hard-delete helper the BA
- * cascade hooks call, so the user-facing bulk revoke and the lifecycle
- * cascade share one code path. Rate-limited tighter than single revoke
- * because a single click drops every connected agent.
+ * Revoke every active OAuth refresh and access token owned by the caller.
  *
- * @returns Discriminated result; `ok` on success, `unauthorized` /
- * `rate_limited` / `unknown` on failure.
+ * @returns Discriminated result.
  */
 export async function revokeAllOAuthSessionsAction(): Promise<TeamActionResult> {
   let userId: string;

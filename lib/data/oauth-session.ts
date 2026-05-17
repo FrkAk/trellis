@@ -138,20 +138,9 @@ export async function revokeOAuthSession(
 }
 
 /**
- * Hard-delete every OAuth refresh and access token belonging to a user.
+ * Hard-delete every OAuth refresh and access token owned by a user.
  *
- * Called from Better Auth `databaseHooks` (`session.delete.after`,
- * `account.update.after`) to cascade-clean tokens whenever a session is
- * deleted or a credential account is updated. Must remain idempotent:
- * Drizzle DELETE WHERE is a no-op on zero rows, so concurrent invocations
- * from overlapping hooks are safe.
- *
- * Hard-delete instead of soft-revoke because `listActiveOAuthSessions`
- * already filters on `isNull(revoked)`; row removal is observationally
- * equivalent and reclaims space. The user-facing revoke flow keeps using
- * `revokeOAuthSession` for its audit-row semantics.
- *
- * @param userId - Owner of the tokens to remove.
+ * @param userId - Verified user id.
  * @returns Resolves once both deletes commit.
  */
 export async function clearUserOAuthArtifacts(userId: string): Promise<void> {
