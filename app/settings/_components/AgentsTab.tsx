@@ -3,10 +3,12 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   listOAuthSessionsAction,
+  revokeAllOAuthSessionsAction,
   type OAuthSessionView,
 } from "@/lib/actions/oauth-session";
 import { formatOAuthClientName } from "@/lib/ui/oauth-client-name";
 import { AgentSection } from "./AgentSection";
+import { InlineConfirm } from "./InlineConfirm";
 
 interface AgentsTabProps {
   /** Initial session list, hydrated from the server component. */
@@ -14,7 +16,7 @@ interface AgentsTabProps {
 }
 
 /** Canonical brands rendered as fixed sections, in display order. */
-const KNOWN_BRANDS = ["Claude Code", "Codex", "Cursor", "Gemini"] as const;
+const KNOWN_BRANDS = ["Claude Code", "Codex", "Gemini", "Cursor"] as const;
 type KnownBrand = (typeof KNOWN_BRANDS)[number];
 const KNOWN_BRAND_SET: ReadonlySet<string> = new Set(KNOWN_BRANDS);
 
@@ -32,8 +34,8 @@ function groupSessions(sessions: OAuthSessionView[]): {
   const byBrand: Record<KnownBrand, OAuthSessionView[]> = {
     "Claude Code": [],
     Codex: [],
-    Cursor: [],
     Gemini: [],
+    Cursor: [],
   };
   const otherSessions: OAuthSessionView[] = [];
 
@@ -83,6 +85,16 @@ export function AgentsTab({ initialSessions }: AgentsTabProps) {
     });
   };
 
+  const handleRevokeAll = async () => {
+    setError(null);
+    const result = await revokeAllOAuthSessionsAction();
+    if (result.ok) {
+      setSessions([]);
+    } else {
+      setError(result.message);
+    }
+  };
+
   const { byBrand, otherSessions } = useMemo(
     () => groupSessions(sessions),
     [sessions],
@@ -96,7 +108,8 @@ export function AgentsTab({ initialSessions }: AgentsTabProps) {
             Agents &amp; devices
           </h1>
           <p className="mt-1 text-[13px] text-text-muted">
-            Sessions authorized to run via MCP. Revoke any time.
+            Sessions authorized to run via MCP. Changing your password revokes
+            every session automatically.
           </p>
         </div>
         <button
@@ -128,6 +141,25 @@ export function AgentsTab({ initialSessions }: AgentsTabProps) {
       ) : null}
 
       <div className="space-y-3">
+        {sessions.length > 0 ? (
+          <div className="flex min-h-9 items-center justify-end">
+            <InlineConfirm
+              trigger={
+                <button
+                  type="button"
+                  className="cursor-pointer rounded-md px-2.5 py-1 text-[12px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                >
+                  Revoke all
+                </button>
+              }
+              prompt="Revoke all sessions?"
+              body="Every connected agent will need to re-authorize."
+              confirmLabel="Revoke all"
+              destructive
+              onConfirm={handleRevokeAll}
+            />
+          </div>
+        ) : null}
         {KNOWN_BRANDS.map((brand) => (
           <AgentSection
             key={brand}

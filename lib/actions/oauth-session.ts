@@ -11,6 +11,7 @@ import {
 } from "@/lib/actions/team-errors";
 import type { OAuthSessionView } from "@/lib/actions/oauth-session-types";
 import {
+  clearUserOAuthArtifacts,
   listActiveOAuthSessions,
   revokeOAuthSession,
   userOwnsActiveSession,
@@ -98,6 +99,41 @@ export async function revokeOAuthSessionAction(input: {
     return { ok: true };
   } catch (err) {
     console.error("revokeOAuthSessionAction failed", err);
+    return teamFail("unknown");
+  }
+}
+
+/**
+ * Revoke every active OAuth refresh and access token owned by the caller.
+ *
+ * @returns Discriminated result.
+ */
+export async function revokeAllOAuthSessionsAction(): Promise<TeamActionResult> {
+  let userId: string;
+  try {
+    const session = await requireSession();
+    userId = session.user.id;
+  } catch {
+    return teamFail("unauthorized");
+  }
+
+  const limit = await checkActionRateLimit(
+    {
+      action: "oauth.revoke_all",
+      windowSeconds: 60,
+      perUserMax: 3,
+      perIpMax: 10,
+    },
+    userId,
+  );
+  if (!limit.ok) return teamFail("rate_limited");
+
+  try {
+    await clearUserOAuthArtifacts(userId);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (err) {
+    console.error("revokeAllOAuthSessionsAction failed", err);
     return teamFail("unknown");
   }
 }

@@ -5,14 +5,15 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import * as authSchema from "@/lib/db/auth-schema";
 import { authDb } from "@/lib/db/connection";
 import { clearOrgMembershipArtifacts } from "@/lib/data/account";
+import { clearUserOAuthArtifacts } from "@/lib/data/oauth-session";
 import { ac, owner, admin, member as memberRole } from "@/lib/auth/permissions";
 import { findOrgMemberUserIdsAsAdmin } from "@/lib/data/membership";
 import { grantOrgAccess, revokeOrgAccess } from "@/lib/realtime/access";
 
 /**
- * Better Auth server instance.
- * Uses Neon Auth's existing schema (neon_auth) via drizzleAdapter.
- * Provides email/password auth and organization-based team management.
+ * Better Auth server instance with email/password auth and
+ * organization-based team management. Adapts the `neon_auth` schema via
+ * drizzleAdapter.
  */
 export const auth = betterAuth({
   database: drizzleAdapter(authDb, {
@@ -117,6 +118,14 @@ export const auth = betterAuth({
       consentPage: "/consent",
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
+      accessTokenExpiresIn: 60 * 60, // 1h
+      refreshTokenExpiresIn: 60 * 60 * 24 * 7, // 7 days
+      clientRegistrationAllowedScopes: [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+      ],
       validAudiences: process.env.BETTER_AUTH_URL
         ? [
             process.env.BETTER_AUTH_URL,
@@ -139,6 +148,23 @@ export const auth = betterAuth({
       silenceWarnings: { oauthAuthServerConfig: true },
     }),
   ],
+  databaseHooks: {
+    account: {
+      update: {
+        after: async (account) => {
+          if (account.providerId !== "credential") return;
+          try {
+            await clearUserOAuthArtifacts(account.userId);
+          } catch (err) {
+            console.error("account.update.after cascade failure", {
+              userId: account.userId,
+              err,
+            });
+          }
+        },
+      },
+    },
+  },
 });
 
 export type Session = typeof auth.$Infer.Session;

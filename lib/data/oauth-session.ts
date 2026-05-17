@@ -138,6 +138,23 @@ export async function revokeOAuthSession(
 }
 
 /**
+ * Hard-delete every OAuth refresh and access token owned by a user.
+ *
+ * @param userId - Verified user id.
+ * @returns Resolves once both deletes commit.
+ */
+export async function clearUserOAuthArtifacts(userId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(oauthAccessToken)
+      .where(eq(oauthAccessToken.userId, userId));
+    await tx
+      .delete(oauthRefreshToken)
+      .where(eq(oauthRefreshToken.userId, userId));
+  });
+}
+
+/**
  * Check whether a user has previously approved a specific OAuth client.
  * Drives the consent page's first-time warning. Uses `oauthConsent` rather
  * than `oauthAccessToken` so that token rotation or expiry never re-flags
