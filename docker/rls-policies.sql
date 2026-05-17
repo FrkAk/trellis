@@ -152,6 +152,20 @@ CREATE POLICY "team_invite_code_delete_admin_only" ON "team_invite_code"
   USING (public.current_user_org_role(organization_id) IN ('admin', 'owner'));
 
 
+-- ENABLE turns the policies on. Required because the testcontainer / self-host
+-- path gets this for free from drizzle-kit push (it reads `.enableRLS()` markers
+-- in lib/db/schema.ts), but the Neon prod path runs drizzle-kit migrate against
+-- generated migrations in drizzle/, which do not emit ENABLE. Without this block,
+-- FORCE below is a no-op and policies never fire.
+ALTER TABLE "projects" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "tasks" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "task_edges" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "task_assignees" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "task_acceptance_criteria" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "task_decisions" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "task_links" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "team_invite_code" ENABLE ROW LEVEL SECURITY;
+
 -- FORCE makes the table owner subject to RLS. Targets the Neon prod
 -- owner (`neondb_owner`, which is NOT a superuser); BYPASSRLS roles and
 -- real superusers still sidestep.
