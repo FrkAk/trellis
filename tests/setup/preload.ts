@@ -1,5 +1,52 @@
 import { mock } from "bun:test";
 
+// Better Auth refuses to boot in production without a non-default secret;
+// any non-default value satisfies the validator. `??=` preserves a real
+// secret if the developer has loaded `.env.local` into this shell.
+process.env.BETTER_AUTH_SECRET ??=
+  "test-only-secret-not-used-outside-this-suite-0000";
+// BA emits a base-URL warning otherwise; harmless but noisy in test logs.
+process.env.BETTER_AUTH_URL ??= "https://example.test";
+
+/**
+ * Force `NODE_ENV=production` at the test process boundary.
+ *
+ * Bun defaults to `NODE_ENV=test`. `lib/auth.ts:45` evaluates
+ * `process.env.NODE_ENV === "production"` inside `betterAuth({...})`
+ * at module instantiation, so the value at preload time is the value
+ * BA freezes into `useSecureCookies`. This also matches the deployed
+ * Cloudflare Worker runtime, where `NODE_ENV` is `"production"` —
+ * tests therefore exercise the same gate the deployed app will see.
+ *
+ * Consumers that branch on NODE_ENV (`lib/api/error.ts`,
+ * `lib/graph/tool-handlers.ts`, `lib/mcp/create-server.ts`) all gate
+ * verbose output on `=== "development"`, so production is the
+ * fail-safe default. `tests/api/error.test.ts` mutates per-test via
+ * `Object.defineProperty` and restores in `afterEach`.
+ *
+ * Uses `Object.defineProperty` (matching `tests/api/error.test.ts:9`)
+ * so the assignment is type-safe under `@types/node` ≥ 20 where
+ * `NODE_ENV` is declared `readonly`.
+ */
+Object.defineProperty(process.env, "NODE_ENV", {
+  value: "production",
+  configurable: true,
+});
+
+// Load-bearing invariant guard. If a future contributor flips
+// `NODE_ENV` higher up the load order (e.g. via a `bun --define` or
+// an additional preload), cookie tests would silently lose the
+// `Secure` / `__Secure-` flags and the failure would look like a BA
+// regression. Fail loud here instead.
+if (process.env.NODE_ENV !== "production") {
+  throw new Error(
+    `tests/setup/preload.ts requires NODE_ENV=production at boot; ` +
+      `got ${JSON.stringify(process.env.NODE_ENV)}. ` +
+      `lib/auth.ts:45 evaluates this once at module load and bakes ` +
+      `useSecureCookies into the auth instance.`,
+  );
+}
+
 // Neutralize `server-only` so lib/ modules can be imported in the test process.
 mock.module("server-only", () => ({}));
 
