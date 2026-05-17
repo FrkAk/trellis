@@ -3,10 +3,12 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   listOAuthSessionsAction,
+  revokeAllOAuthSessionsAction,
   type OAuthSessionView,
 } from "@/lib/actions/oauth-session";
 import { formatOAuthClientName } from "@/lib/ui/oauth-client-name";
 import { AgentSection } from "./AgentSection";
+import { InlineConfirm } from "./InlineConfirm";
 
 interface AgentsTabProps {
   /** Initial session list, hydrated from the server component. */
@@ -83,6 +85,16 @@ export function AgentsTab({ initialSessions }: AgentsTabProps) {
     });
   };
 
+  const handleRevokeAll = async () => {
+    setError(null);
+    const result = await revokeAllOAuthSessionsAction();
+    if (result.ok) {
+      setSessions([]);
+    } else {
+      setError(result.message);
+    }
+  };
+
   const { byBrand, otherSessions } = useMemo(
     () => groupSessions(sessions),
     [sessions],
@@ -96,26 +108,46 @@ export function AgentsTab({ initialSessions }: AgentsTabProps) {
             Agents &amp; devices
           </h1>
           <p className="mt-1 text-[13px] text-text-muted">
-            Sessions authorized to run via MCP. Revoke any time.
+            Sessions authorized to run via MCP. Signing out or changing your
+            password revokes every session automatically.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={pending}
-          className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-text-muted transition-colors hover:text-text-primary disabled:opacity-40"
-          aria-label="Refresh sessions"
-        >
-          <svg
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            aria-hidden="true"
-            className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`}
+        <div className="flex shrink-0 items-center gap-2">
+          {sessions.length > 0 ? (
+            <InlineConfirm
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex cursor-pointer items-center rounded-md px-2 py-1 text-[12px] text-text-muted transition-colors hover:text-text-primary"
+                >
+                  Revoke all
+                </button>
+              }
+              prompt="Revoke all sessions?"
+              body="Every connected agent will need to re-authorize."
+              confirmLabel="Revoke all"
+              destructive
+              onConfirm={handleRevokeAll}
+            />
+          ) : null}
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={pending}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-text-muted transition-colors hover:text-text-primary disabled:opacity-40"
+            aria-label="Refresh sessions"
           >
-            <path d="M8 3V1.5a.5.5 0 01.85-.36l2.5 2.5a.5.5 0 010 .72l-2.5 2.5A.5.5 0 018 6.5V5a3 3 0 100 6 .75.75 0 010 1.5A4.5 4.5 0 118 3z" />
-          </svg>
-          Refresh
-        </button>
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+              className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`}
+            >
+              <path d="M8 3V1.5a.5.5 0 01.85-.36l2.5 2.5a.5.5 0 010 .72l-2.5 2.5A.5.5 0 018 6.5V5a3 3 0 100 6 .75.75 0 010 1.5A4.5 4.5 0 118 3z" />
+            </svg>
+            Refresh
+          </button>
+        </div>
       </header>
 
       {error ? (
