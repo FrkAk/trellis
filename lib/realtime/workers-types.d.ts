@@ -38,3 +38,37 @@ declare module "cloudflare:workers" {
     constructor(ctx: DurableObjectStateLike, env: Env);
   }
 }
+
+/**
+ * Ambient shims for `@opennextjs/cloudflare`. The package is a Workers-only
+ * devDependency, so `bun install --production` on a self-host install does
+ * not include it. The webpack alias in `next.config.ts` ensures the files
+ * that import from this module are never loaded on self-host runtime; the
+ * shims below only need to satisfy the build-time typecheck. When the real
+ * package is installed (regular `bun install`), TypeScript prefers the
+ * package's own declarations from `node_modules/@opennextjs/cloudflare`.
+ */
+declare module "@opennextjs/cloudflare" {
+  export function getCloudflareContext(options?: { async?: boolean }): {
+    ctx: { waitUntil: (promise: Promise<unknown>) => void };
+    env: unknown;
+    cf?: unknown;
+  };
+  export function initOpenNextCloudflareForDev(): void;
+  export function defineCloudflareConfig(config: unknown): unknown;
+}
+
+declare module "@opennextjs/cloudflare/overrides/incremental-cache/r2-incremental-cache" {
+  const r2IncrementalCache: unknown;
+  export default r2IncrementalCache;
+}
+
+declare module "@opennextjs/cloudflare/overrides/tag-cache/d1-next-tag-cache" {
+  const d1NextTagCache: unknown;
+  export default d1NextTagCache;
+}
+
+declare module "@opennextjs/cloudflare/overrides/queue/do-queue" {
+  const doQueue: unknown;
+  export default doQueue;
+}

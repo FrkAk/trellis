@@ -30,7 +30,7 @@ Clone the repo and install dependencies:
 ```bash
 git clone git@github.com:FrkAk/mymir.git
 cd mymir
-bun install
+bun install --production
 cp .env.local.example .env.local
 ```
 
