@@ -4,7 +4,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { type Conn } from "@/lib/db/raw";
 import { withUserContext, type Tx } from "@/lib/db/rls";
 import { tasks, projects, taskEdges } from "@/lib/db/schema";
-import { fetchDependencyChain } from "@/lib/db/raw/fetch-dependency-chain";
 import { fetchDownstream } from "@/lib/db/raw/fetch-downstream";
 import { asIdentifier, composeTaskRef } from "@/lib/graph/identifier";
 import { buildEffectiveDepGraph } from "@/lib/graph/effective-deps";
@@ -45,39 +44,6 @@ export async function getAncestors(
   if (!project) return [];
 
   return [{ id: project.id, type: "project", title: project.title }];
-}
-
-// ---------------------------------------------------------------------------
-// Dependency chain — internal helper (recursive CTE)
-// ---------------------------------------------------------------------------
-
-/** A task in a dependency chain with depth. */
-type DependencyNode = {
-  id: string;
-  depth: number;
-};
-
-/**
- * Follow `depends_on` edges recursively up to maxDepth. Internal —
- * caller asserted task access first.
- *
- * Defense-in-depth: every step joins `tasks` and filters on `projectId` so
- * a stale or hand-crafted cross-project edge cannot pull tasks from another
- * project (and therefore another team) into the result.
- *
- * @param taskId - UUID of the starting task.
- * @param projectId - UUID of the project the starting task belongs to.
- * @param maxDepth - Maximum traversal depth (default 10).
- * @param conn - RLS-scoped {@link Conn} from an active `withUserContext` frame.
- * @returns Array of dependency tasks with depth.
- */
-export async function getDependencyChain(
-  taskId: string,
-  projectId: string,
-  maxDepth = 10,
-  conn: Conn,
-): Promise<DependencyNode[]> {
-  return fetchDependencyChain(conn, taskId, projectId, maxDepth);
 }
 
 // ---------------------------------------------------------------------------
