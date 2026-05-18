@@ -13,8 +13,8 @@ const TARGET_FILES = [
 ] as const;
 
 const REPLACEMENT_REGEX = new RegExp(
-  `(^|/)lib/(?:db|realtime)/(${TARGET_FILES.map(
-    ([from]) => from.split("/").pop(),
+  `(^|/)lib/(?:db|realtime)/(${TARGET_FILES.map(([from]) =>
+    from.split("/").pop(),
   ).join("|")})(\\.[cm]?[tj]sx?)?$`,
 );
 

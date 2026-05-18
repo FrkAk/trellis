@@ -77,9 +77,11 @@ function fakeSocket(): FakeSocket {
 }
 
 /** Build a `MymirBroker` with our fake ctx and the test secret bound. */
-function makeBroker(env: { BROKER_DO_SECRET?: string } = {
-  BROKER_DO_SECRET: TEST_SECRET,
-}) {
+function makeBroker(
+  env: { BROKER_DO_SECRET?: string } = {
+    BROKER_DO_SECRET: TEST_SECRET,
+  },
+) {
   const ctx = fakeCtx();
   const broker = new MymirBroker(ctx as never, env as never);
   return { ctx, broker };
@@ -399,7 +401,11 @@ test("rejects RPC signed with wrong secret with 401", async () => {
 test("rejects RPC with stale timestamp with 401", async () => {
   const { broker } = makeBroker();
   const stale = Date.now() - 120_000;
-  const r = await rpc(broker, { op: "detach", userId: "u1" }, { tsOverride: stale });
+  const r = await rpc(
+    broker,
+    { op: "detach", userId: "u1" },
+    { tsOverride: stale },
+  );
   expect(r.status).toBe(401);
 });
 

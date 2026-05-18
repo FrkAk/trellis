@@ -103,8 +103,7 @@ export class MymirBroker extends DurableObject<BrokerEnv> {
   private async verifyEnvelope(
     request: Request,
   ): Promise<
-    | { ok: true; body: string }
-    | { ok: false; status: number; error: string }
+    { ok: true; body: string } | { ok: false; status: number; error: string }
   > {
     const secret = this.env.BROKER_DO_SECRET;
     if (!secret) {
@@ -116,7 +115,11 @@ export class MymirBroker extends DurableObject<BrokerEnv> {
     }
     const header = parseSignatureHeader(request.headers.get(BROKER_SIG_HEADER));
     if (!header) {
-      return { ok: false, status: 401, error: "Missing or malformed signature" };
+      return {
+        ok: false,
+        status: 401,
+        error: "Missing or malformed signature",
+      };
     }
     const now = Date.now();
     if (Math.abs(now - header.ts) > BROKER_SIG_MAX_SKEW_MS) {
