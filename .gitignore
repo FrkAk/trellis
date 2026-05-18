@@ -10,6 +10,10 @@
 /.next/
 /out/
 
+# OpenNext + Wrangler build artifacts
+/.open-next/
+/.wrangler/
+
 # production
 /build
 /dist
@@ -26,6 +30,10 @@ yarn-error.log*
 # env files
 .env*
 !.env.local.example
+
+# wrangler local dev secrets
+.dev.vars
+.dev.vars.*
 
 # vercel
 .vercel

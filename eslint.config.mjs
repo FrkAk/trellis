@@ -21,6 +21,12 @@ const eslintConfig = [
   ...baseConfig,
   ...tsConfig,
   {
+    // Generated outputs: wrangler env types and OpenNext / Wrangler build
+    // artifacts. Linting these adds no value and surfaces noise from
+    // generated code.
+    ignores: ["cloudflare-env.d.ts", ".open-next/**", ".wrangler/**"],
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-unused-vars": [
@@ -97,12 +103,17 @@ const eslintConfig = [
             {
               name: "@/lib/db",
               message:
-                "Application code must import from @/lib/data, not @/lib/db. The data layer is defined in lib/data/. Boundary documented in docs/superpowers/plans/2026-05-06-db-access-rework.md.",
+                "Application code must import from @/lib/data, not @/lib/db. The data layer is defined in lib/data/.",
             },
             {
               name: "@/lib/db/connection",
               message:
-                "Application code must import from @/lib/data, not @/lib/db. The data layer is defined in lib/data/. Boundary documented in docs/superpowers/plans/2026-05-06-db-access-rework.md.",
+                "Application code must import from @/lib/data, not @/lib/db. The data layer is defined in lib/data/.",
+            },
+            {
+              name: "@cloudflare/workers-types",
+              message:
+                "Importing @cloudflare/workers-types pulls its ambient declarations globally and clobbers DOM Request/Response types, breaking unrelated tests. Declare minimal local type stubs in the workers-only file that needs them (see lib/realtime/broker-do.ts for the pattern).",
             },
           ],
         },
