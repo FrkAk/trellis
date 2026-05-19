@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getDependencyChain, getDownstreamTx } from "@/lib/data/traversal";
+import { loadBundleDeps } from "@/lib/graph/effective-deps";
 import {
   fetchDependencyTasks,
   fetchEdgeNotesBySource,
@@ -31,7 +31,12 @@ export async function buildPlanningContext(
 ): Promise<string> {
   return withUserContext(ctx.userId, async (tx) => {
     const task = await getTaskFullTx(tx, taskId);
-    const downstream = await getDownstreamTx(tx, taskId, 2);
+
+    const [{ deps, downstream }, upstreamEdgeNotes] = await Promise.all([
+      loadBundleDeps(task.projectId, taskId, 2, tx),
+      fetchEdgeNotesBySource(task.projectId, taskId, tx),
+    ]);
+
     const project = await getProjectHeader(task.projectId, tx);
     if (!project) {
       console.error("Task has no joinable project", {
@@ -77,11 +82,6 @@ export async function buildPlanningContext(
           task.implementationPlan,
       );
     }
-
-    const [deps, upstreamEdgeNotes] = await Promise.all([
-      getDependencyChain(taskId, task.projectId, 2, tx),
-      fetchEdgeNotesBySource(task.projectId, taskId, tx),
-    ]);
 
     if (deps.length > 0) {
       const prereqLines: string[] = [];

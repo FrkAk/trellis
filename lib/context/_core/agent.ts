@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getDependencyChain, getDownstreamTx } from "@/lib/data/traversal";
+import { loadBundleDeps } from "@/lib/graph/effective-deps";
 import {
   fetchDependencyTasks,
   fetchEdgeNotesBySource,
@@ -39,10 +39,8 @@ export async function buildAgentContext(
     const assignees = task.assignees;
     const links = task.links;
 
-    const downstream = await getDownstreamTx(tx, taskId, 2);
-
-    const [deps, upstreamEdgeNotes] = await Promise.all([
-      getDependencyChain(taskId, task.projectId, 2, tx),
+    const [{ deps, downstream }, upstreamEdgeNotes] = await Promise.all([
+      loadBundleDeps(task.projectId, taskId, 2, tx),
       fetchEdgeNotesBySource(task.projectId, taskId, tx),
     ]);
 
